@@ -249,7 +249,7 @@ namespace hpp {
 				(*actual_configuration_ptr_)[4] = 0;
 				(*actual_configuration_ptr_)[5] = 0;
 				(*actual_configuration_ptr_)[6] = 0;
-				cout << "act conf" << endl << *actual_configuration_ptr_ << endl;
+				cout << "act conf" << endl << (*actual_configuration_ptr_).transpose() << endl;
 			
 				/////////////////////////////////////////////////////////
 				// translation
@@ -438,8 +438,15 @@ namespace hpp {
 	// Find nearest node in roadmap
 	value_type distance;
 	NodePtr_t near = roadmap ()->nearestNode (q_rand, *itcc, distance);
-	path = extend (near, q_rand);	// modif nassime
-	//path = extend (near, actual_configuration_ptr_);
+	//path = extend (near, q_rand);	// modif nassime
+//	(*actual_configuration_ptr_)[0] = (*q_rand)[0];
+//	(*actual_configuration_ptr_)[1] = (*q_rand)[1];
+	(*actual_configuration_ptr_)[2] = (*q_rand)[2];
+	(*actual_configuration_ptr_)[3] = (*q_rand)[3];
+	(*actual_configuration_ptr_)[4] = (*q_rand)[4];
+	(*actual_configuration_ptr_)[5] = (*q_rand)[5];
+	(*actual_configuration_ptr_)[6] = (*q_rand)[6];
+	path = extend (near, actual_configuration_ptr_);
 	if (path) {
 	  bool pathValid = pathValidation->validate (path, false, validPath);
 	  // Insert new path to q_near in roadmap
