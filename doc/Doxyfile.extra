@@ -1,0 +1,4 @@
+INPUT = /local/hpp/src/hpp-interactive/include \
+      /local/hpp/src/hpp-interactive/doc
+
+TAGFILES = /local/hpp/install/share/doc/hpp-core/doxygen-html/hpp-core.doxytag=/local/hpp/install/share/doc/hpp-core/doxygen-html
