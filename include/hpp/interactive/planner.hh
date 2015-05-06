@@ -63,9 +63,10 @@ namespace hpp {
       virtual PathPtr_t extend (const NodePtr_t& near,
 				const ConfigurationPtr_t& target);
 
+			/*/
 			const RoadmapPtr_t& getRoadmap(){
 				return roadmap_;
-			};
+			};*/
 
     private:
       ConfigurationShooterPtr_t configurationShooter_;

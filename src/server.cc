@@ -12,11 +12,12 @@
 #include <hpp/core/roadmap.hh>
 #include <hpp/core/steering-method.hh>
 #include <hpp/corbaserver/server.hh>
+#include <iostream>
 
 #include "hpp/interactive/planner.hh"
 
 
-
+using namespace std;
 
 // main function of the server
 int main (int argc, const char* argv[])
@@ -28,7 +29,9 @@ int main (int argc, const char* argv[])
   // Add the new planner type in order to be able to select it from python
   // client.
   //problemSolver->addPathPlannerType ("PRM", hpp::tutorial::Planner::create);
-  problemSolver->addPathPlannerType (
+
+	cout << "adding path planner type" << endl;
+	problemSolver->addPathPlannerType (
 			"interactive", hpp::interactive::Planner::createWithRoadmap);
   // Create the CORBA server.
   hpp::corbaServer::Server server (problemSolver, argc, argv, true);
