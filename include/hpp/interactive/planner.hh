@@ -23,6 +23,7 @@
 # include <boost/thread/thread.hpp>
 # include <hpp/interactive/fwd.hh>
 # include <hpp/core/path-planner.hh>
+#include <boost/thread/mutex.hpp>
 
 #include <iostream>
 #include <fstream>
@@ -46,9 +47,9 @@ namespace hpp {
       /// Set configuration shooter.
       void configurationShooter (const ConfigurationShooterPtr_t& shooter);
 			
-			void InteractiveDeviceInit();
-			static void ReadInteractiveDevice(void* arg);
-			static void getData(std::ofstream& file);
+//			void InteractiveDeviceInit();
+//			static void ReadInteractiveDevice(void* arg);
+//			static void getData();
 
     protected:
       /// Constructor
@@ -87,7 +88,10 @@ namespace hpp {
 			static Configuration_t actual_configuration_;
 			static ConfigurationPtr_t actual_configuration_ptr_;
 
-		int bravo;	
+			static double random_prob_;
+			static short int iteration_;
+		
+			static boost::mutex mutex_;	
 
     };
 

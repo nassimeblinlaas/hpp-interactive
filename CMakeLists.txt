@@ -26,6 +26,7 @@ SET(PROJECT_URL "")
 
 SET(${PROJECT_NAME}_HEADERS
   include/hpp/interactive/planner.hh
+	include/hpp/interactive/sixDOFMousePlanner.hh
   include/hpp/interactive/fwd.hh
 )
 
