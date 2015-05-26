@@ -47,9 +47,9 @@ namespace hpp {
       /// Set configuration shooter.
       void configurationShooter (const ConfigurationShooterPtr_t& shooter);
 			
-//			void InteractiveDeviceInit();
-//			static void ReadInteractiveDevice(void* arg);
-//			static void getData();
+			void InteractiveDeviceInit();
+			static void ReadInteractiveDevice(void* arg);
+			static void getData();
 
     protected:
       /// Constructor
