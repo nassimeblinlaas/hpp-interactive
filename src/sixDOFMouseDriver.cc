@@ -80,8 +80,6 @@ inline se3::SE3::Matrix3 operatorHat(const se3::SE3::Vector3& v){
 void SixDOFMouseDriver::MouseInit()
 {
 
-	std::cout << "SixDOFMouseDriver::Interac" << std::endl;
-
 	// TODO
 	/*   Open the Device with non-blocking reads. In real life,
 	 *         don't use a hard coded path; use libudev instead. */
