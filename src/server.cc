@@ -28,9 +28,6 @@ int main (int argc, const char* argv[])
   hpp::core::ProblemSolverPtr_t problemSolver = new hpp::core::ProblemSolver;
   // Add the new planner type in order to be able to select it from python
   // client.
-  //problemSolver->addPathPlannerType ("PRM", hpp::tutorial::Planner::create);
-
-	cout << "adding path planner type" << endl;
 	problemSolver->addPathPlannerType (
 			"interactive", hpp::interactive::Planner::createWithRoadmap);
   // Create the CORBA server.

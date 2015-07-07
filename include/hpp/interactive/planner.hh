@@ -51,6 +51,9 @@ namespace hpp {
 			static void ReadInteractiveDevice(void* arg);
 			static void getData();
 
+			void setActConf(int n, double val){actual_configuration_[n]=val;};
+			static ConfigurationPtr_t actual_configuration_ptr_;
+
     protected:
       /// Constructor
       Planner (const Problem& problem, const RoadmapPtr_t& roadmap);
@@ -86,7 +89,6 @@ namespace hpp {
 			static RoadmapPtr_t roadmap_i;
 			static const Problem* problem_i;
 			static Configuration_t actual_configuration_;
-			static ConfigurationPtr_t actual_configuration_ptr_;
 
 			static double random_prob_;
 			static short int iteration_;
@@ -101,114 +103,3 @@ namespace hpp {
 } // namespace hpp
 #endif // HPP_INTERACTIVE_PLANNER_HH
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// test pour classe templatée
-//   namespace interactive {
-//
-//		template <typename T> class Planner;
-//
-//		template <typename T>
-//		struct PlannerPtr_t
-//		{
-//			typedef boost::shared_ptr<Planner<T> > type;
-//		};
-//
-//		template<typename T>
-//		class HPP_CORE_DLLAPI Planner : public T
-//		{
-//    public:
-//      /// Return shared pointer to new object.
-//      static typename PlannerPtr_t<T>::type create
-//				(const Problem& problem);
-//			/// Return shared pointer to new object.
-//      static typename PlannerPtr_t<T>::type createWithRoadmap
-//				(const Problem& problem, const RoadmapPtr_t& roadmap);
-//      /// One step of extension.
-//      virtual void oneStep ();
-//      /// Set configuration shooter.
-//      void configurationShooter (const ConfigurationShooterPtr_t& shooter);
-//    protected:
-//      // Constructor
-//      Planner (const Problem& problem, const RoadmapPtr_t& roadmap);
-//			// Store weak pointer to itself
-//			void init (const PlannerWkPtr_t& weak);
-//    private:
-//      PlannerWkPtr_t weakPtr_;
-//			ConfigurationShooterPtr_t configurationShooter_;
-//
-////      typedef boost::tuple <NodePtr_t, ConfigurationPtr_t, PathPtr_t>
-////	DelayedEdge_t;
-////      typedef std::vector <DelayedEdge_t> DelayedEdges_t;
-//
-//    }; // class Planner
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//			// coding inside header for template and compilation reason
-//
-//
-//			// Constructor
-//			template<typename T>
-//			Planner<T>::Planner
-//				(const Problem& problem, const RoadmapPtr_t& roadmap) :
-//					PathPlanner(problem, roadmap),
-//			configurationShooter_( new BasicConfigurationShooter (problem.robot()) )
-//			{
-//			}
-//
-//			template<typename T>
-//			typename PlannerPtr_t<T>::type Planner<T>::create
-//				(const Problem& problem)
-//			{
-//				Planner* ptr = new Planner (problem);
-//				return PlannerPtr_t<T>(ptr);;;
-//			}
-//
-//
-//
-//	 } // namespace interactive

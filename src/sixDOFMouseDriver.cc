@@ -2,6 +2,10 @@
 #include <hpp/interactive/sixDOFMouseDriver.hh>
 #include <stdlib.h>
 #include <stdio.h>
+#include <libudev.h>
+#include <locale.h>
+#include <unistd.h>
+
 #include <iostream>
 
 boost::thread* SixDOFMouseDriver::interactiveDeviceThread_ = 0;
@@ -79,6 +83,26 @@ inline se3::SE3::Matrix3 operatorHat(const se3::SE3::Vector3& v){
 
 void SixDOFMouseDriver::MouseInit()
 {
+	struct udev *udev;
+	struct udev_enumerate *enumerate;
+	struct udev_list_entry *devices, *dev_list_entry;
+	struct udev_device *dev;
+	struct udev_monitor *mon;
+	int fd;
+
+//	udev = udev_new();
+//	mon = udev_monitor_new_from_netlink(udev, "udev");
+//	udev_monitor_filter_add_match_subsystem_devtype(mon, "hidraw", NULL);
+//	udev_monitor_enable_receiving(mon);
+//	fd = udev_monitor_get_fd(mon);
+//
+//	enumerate = udev_enumerate_new(udev);
+//	udev_enumerate_add_match_subsystem(enumerate, "hidraw");
+//	udev_enumerate_scan_devices(enumerate);
+//	devices = udev_enumerate_get_list_entry(enumerate);
+
+
+
 
 	// TODO
 	/*   Open the Device with non-blocking reads. In real life,
