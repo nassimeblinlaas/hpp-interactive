@@ -93,7 +93,8 @@ namespace hpp {
 			(const Problem& problem, const RoadmapPtr_t& roadmap)
 			{
 				Planner* ptr = new Planner (problem, roadmap);
-				Planner::random_prob_ = 0.6; // 0 all human 1 all machine
+                Planner::random_prob_ = 0.6; // 0 all human 1 all machine
+                Planner::random_prob_ = 0; // 0 all human 1 all machine
 				return PlannerPtr_t (ptr);
 			}
 
@@ -125,6 +126,7 @@ Planner::Planner (const Problem& problem,
 			float f = (float) 0.1;
 
 			// add landmark to viewer
+			cout << "adding landmark to viewer\n";
 			p.createGroup ("scene_hpp_");
 			gepetto::corbaserver::Color color;
 			color[0] = 1;	color[1] = 1;	color[2] = 1;	color[3] = 1.;
@@ -133,17 +135,19 @@ Planner::Planner (const Problem& problem,
 			p.addLandmark("scene_hpp_/curseur", 1.);
 			p.addSceneToWindow ("scene_hpp_", 0);
 
-//			hpp::corbaserver::Client::robot_ ;
+			this->problem().robot()->name();
+
 		
 			ConfigurationPtr_t q_rand = configurationShooter_->shoot (); // décale le rand initial
 			SixDOFMouseDriver::MouseInit();
-			boost::thread th(InteractiveDeviceThread);
+			int * arg;
 
+			boost::thread th(&Planner::InteractiveDeviceThread, this, arg);
 
 		}
 
 
-		void InteractiveDeviceThread(){
+		void Planner::InteractiveDeviceThread(int * arg){
 
 			while(1){
 
@@ -176,17 +180,33 @@ Planner::Planner (const Problem& problem,
 
 				Eigen::Matrix3f a(trans_temp.rotation());
 
-//			Eigen::Quaternionf q(a);
-//			Eigen::Quaternionf q(fcl::Quaternion3f::toRotation(trans_temp.rotation()));
-//				std::cout << "mat " << a << std::endl;
-//				std::cout << "quat " << q.norm() << " " << q.x() << " " << q.y() << " " << q.z() << " " << std::endl;
-//				(*Planner::actual_configuration_ptr_)[3] = q.norm();
-//				(*Planner::actual_configuration_ptr_)[4] = q.x();
-//				(*Planner::actual_configuration_ptr_)[5] = q.y();
-//				(*Planner::actual_configuration_ptr_)[6] = q.z();
+				Eigen::Quaternionf q(a);
+				//Eigen::Quaternionf q(fcl::Quaternion3f::toRotation(trans_temp.rotation()));
+				//std::cout << "mat " << a << std::endl;
+				//std::cout << "quat " << q.norm() << " " << q.x() << " " << q.y() << " " << q.z() << " " << std::endl;
+				//(*Planner::actual_configuration_ptr_)[3] = q.norm();
+				//(*Planner::actual_configuration_ptr_)[4] = q.x();
+				//(*Planner::actual_configuration_ptr_)[5] = q.y();
+				//(*Planner::actual_configuration_ptr_)[6] = q.z();
 
 				// show modifications on screen
-				p.refresh();
+
+//				if (problem().robot() != 0)
+				//	this->problem().robot()->distanceResults();
+//				ab = this->problem().robot()->distanceResults().begin();
+//				ab->distance();
+
+				std::cout << this->problem().robot()->name() << std::endl;
+				cout << "deb ";
+				std::vector<hpp::model::DistanceResult>::const_iterator ab;
+				this->problem().robot()->computeDistances();
+				for (ab = this->problem().robot()->distanceResults().begin(); 
+						ab != this->problem().robot()->distanceResults().end(); ++ab)
+					cout << ab->distance() << " ";
+				cout << " fin" << endl;
+
+
+            p.refresh();
 			}
 		}
 

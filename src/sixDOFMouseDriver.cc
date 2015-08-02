@@ -107,7 +107,7 @@ void SixDOFMouseDriver::MouseInit()
 	// TODO
 	/*   Open the Device with non-blocking reads. In real life,
 	 *         don't use a hard coded path; use libudev instead. */
-	fd_ = open("/dev/hidraw2", O_RDONLY);
+	fd_ = open("/dev/hidraw3", O_RDONLY);
 
 	if (fd_ < 0) {
 		perror("Unable to open interactive device");
