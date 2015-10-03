@@ -52,7 +52,7 @@ namespace hpp {
 			static void getData();
 
 			void setActConf(int n, double val){actual_configuration_[n]=val;};
-			static ConfigurationPtr_t actual_configuration_ptr_;
+			static ConfigurationPtr_t actual_configuration_ptr_;        
 
     protected:
       /// Constructor

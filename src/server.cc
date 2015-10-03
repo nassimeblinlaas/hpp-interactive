@@ -12,6 +12,8 @@
 #include <hpp/core/roadmap.hh>
 #include <hpp/core/steering-method.hh>
 #include <hpp/corbaserver/server.hh>
+#include <hpp/core/fwd.hh>
+#include <hpp/core/distance-between-objects.hh>
 #include <iostream>
 
 #include "hpp/interactive/planner.hh"
@@ -25,7 +27,14 @@ int main (int argc, const char* argv[])
   // create a ProblemSolver instance.
   // This class is a container that does the interface between hpp-core library
   // and component to be running in a middleware like CORBA or ROS.
-  hpp::core::ProblemSolverPtr_t problemSolver = new hpp::core::ProblemSolver;
+  hpp::core::ProblemSolverPtr_t problemSolver = 
+	hpp::core::ProblemSolver::create();
+
+ // const hpp::core::DistanceBetweenObjectsPtr_t& dstobj =
+ //         problemSolver->distanceBetweenObjects();
+
+ // dstobj->computeDistances();
+
   // Add the new planner type in order to be able to select it from python
   // client.
 	problemSolver->addPathPlannerType (
