@@ -40,6 +40,7 @@ SETUP_PROJECT()
 ADD_REQUIRED_DEPENDENCY("hpp-core")
 ADD_REQUIRED_DEPENDENCY("hpp-corbaserver >= 3")
 ADD_REQUIRED_DEPENDENCY("gepetto-viewer-corba")
+ADD_REQUIRED_DEPENDENCY("hpp-model")
 
 
 
