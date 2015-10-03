@@ -148,6 +148,7 @@ namespace hpp {
 			float f = (float) 0.1;
 
 			// add landmark to viewer
+			cout << "adding landmark to viewer\n";
 			p.createGroup ("scene_hpp_");
 			gepetto::corbaserver::Color color;
 			color[0] = 1;	color[1] = 1;	color[2] = 1;	color[3] = 1.;
@@ -156,19 +157,14 @@ namespace hpp {
 			p.addLandmark("scene_hpp_/curseur", 1.);
 			p.addSceneToWindow ("scene_hpp_", 0);
 
+			this->problem().robot()->name();
 
-			//			hpp::corbaserver::Client::robot_ ;
-
+		
 			ConfigurationPtr_t q_rand = configurationShooter_->shoot (); // décale le rand initial
 			SixDOFMouseDriver::MouseInit();
-			boost::thread th(InteractiveDeviceThread, this);
+			int * arg;
 
-			/*
-			 * this->problem().robot()->computeDistances();
-			 const hpp::model::DistanceResults_t& distancesResults =
-			 this->problem().robot()->distanceResults();
-			 */
-
+			boost::thread th(&Planner::InteractiveDeviceThread, this, arg);
 
 		}
 
