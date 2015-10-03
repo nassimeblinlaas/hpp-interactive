@@ -164,7 +164,7 @@ namespace hpp {
 			SixDOFMouseDriver::MouseInit();
 			int * arg;
 
-			boost::thread th(&Planner::InteractiveDeviceThread, this, arg);
+			boost::thread th(&InteractiveDeviceThread, this);
 
 		}
 
@@ -220,6 +220,8 @@ namespace hpp {
 			//				(*Planner::actual_configuration_ptr_)[6] = q.z();
 
 
+				
+            //PathValidationPtr_t pV = this->problem().pathValidation();
             PathValidationPtr_t pV = (arg_->problem().pathValidation());
             core::DiscretizedCollisionChecking* DCC = (core::DiscretizedCollisionChecking*)(&*pV);
             core::CollisionValidation* cV = (core::CollisionValidation*)(&*DCC->getConfigValid());

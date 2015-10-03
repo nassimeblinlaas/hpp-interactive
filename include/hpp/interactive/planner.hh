@@ -74,7 +74,8 @@ namespace hpp {
 
     private:
 
-			void InteractiveDeviceThread(int* arg);
+
+//		void InteractiveDeviceThread(void* arg);
 
       ConfigurationShooterPtr_t configurationShooter_;
       mutable Configuration_t qProj_;
