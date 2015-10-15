@@ -36,68 +36,78 @@ namespace hpp {
     /// Generic implementation of RRT algorithm
     class HPP_INTERACTIVE_DLLAPI Planner : public core::PathPlanner
     {
-    public:
-      /// Return shared pointer to new object.
-      static PlannerPtr_t createWithRoadmap
-	( const Problem& problem,  const RoadmapPtr_t& roadmap);
-      /// Return shared pointer to new object.
-      static PlannerPtr_t create ( const Problem& problem);
-      /// One step of extension.
-      virtual void oneStep ();
-      /// Set configuration shooter.
-      void configurationShooter (const ConfigurationShooterPtr_t& shooter);
-			
-			void InteractiveDeviceInit();
-			static void ReadInteractiveDevice(void* arg);
-			static void getData();
+        public:
 
-			void setActConf(int n, double val){actual_configuration_[n]=val;};
-			static ConfigurationPtr_t actual_configuration_ptr_;        
+        /// Return shared pointer to new object.
+        static PlannerPtr_t createWithRoadmap
+        (const Problem& problem,  const RoadmapPtr_t& roadmap);
+        /// Return shared pointer to new object.
+        static PlannerPtr_t create ( const Problem& problem);
+        /// One step of extension.
+        virtual void oneStep ();
+        /// Set configuration shooter.
+        void configurationShooter (const ConfigurationShooterPtr_t& shooter);
 
-    protected:
-      /// Constructor
-      Planner (const Problem& problem, const RoadmapPtr_t& roadmap);
-      /// Constructor with roadmap
-      Planner (const Problem& problem);
-      /// Store weak pointer to itself
-      void init (const PlannerWkPtr_t& weak);
-      /// Extend a node in the direction of a configuration
-      /// \param near node in the roadmap,
-      /// \param target target configuration
-      virtual PathPtr_t extend (const NodePtr_t& near,
-				const ConfigurationPtr_t& target);
+        void InteractiveDeviceInit();
+        static void ReadInteractiveDevice(void* arg);
+        static void getData();
 
-			/*/
-			const RoadmapPtr_t& getRoadmap(){
-				return roadmap_;
-			};*/
+        //void setActConf(int n, double val){actual_configuration_[n]=val;};
 
-    private:
+        // TODO geters/setters etmettre en private
+        static ConfigurationPtr_t actual_configuration_ptr_;
+        // true if an obstacle exist between robot and goal -> contact mode
+        static bool exist_obstacle_;
+        // repère local au plan tangeant au point le plus proche de l'obstacle
+        static double repere_local_[3][3];
+
+        protected:
+        /// Constructor
+        Planner (const Problem& problem, const RoadmapPtr_t& roadmap);
+        /// Constructor with roadmap
+        Planner (const Problem& problem);
+        /// Store weak pointer to itself
+        void init (const PlannerWkPtr_t& weak);
+        /// Extend a node in the direction of a configuration
+        /// \param near node in the roadmap,
+        /// \param target target configuration
+        virtual PathPtr_t extend (const NodePtr_t& near,
+        const ConfigurationPtr_t& target);
 
 
-//		void InteractiveDeviceThread(void* arg);
+        private:
 
-      ConfigurationShooterPtr_t configurationShooter_;
-      mutable Configuration_t qProj_;
-      PlannerWkPtr_t weakPtr_;
 
-			// file descriptor for interactive device
-			static int fd_;
-			// memory buffer for interactive device
-			static char data_[14];
-			// thread for reading interactive device
-			static boost::thread* interactiveDeviceThread_;			
-			// converted position and orientation values table
-			static short int deviceValues_[6];
-			static float deviceValuesNormalized_[6];
-			static RoadmapPtr_t roadmap_i;
-			static const Problem* problem_i;
-			static Configuration_t actual_configuration_;
+        // void InteractiveDeviceThread(void* arg);
 
-			static double random_prob_;
-			static short int iteration_;
-		
-			static boost::mutex mutex_;	
+        ConfigurationShooterPtr_t configurationShooter_;
+        mutable Configuration_t qProj_;
+        PlannerWkPtr_t weakPtr_;
+
+        // file descriptor for interactive device
+        static int fd_;
+        // memory buffer for interactive device
+        static char data_[14];
+        // thread for reading interactive device
+        static boost::thread* interactiveDeviceThread_;
+        // converted position and orientation values table
+        static short int deviceValues_[6];
+        // values between 0 and 1
+        static float deviceValuesNormalized_[6];
+
+        //static RoadmapPtr_t roadmap_i;
+        //static const Problem* problem_i;
+        static Configuration_t actual_configuration_;
+
+        // machine probability to shoot (= 1- human probability)
+        static double random_prob_;
+
+        // unused
+        static short int iteration_;
+
+        // unused
+        static boost::mutex mutex_;
+
 
     };
 

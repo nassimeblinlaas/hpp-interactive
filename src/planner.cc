@@ -100,6 +100,8 @@ namespace hpp {
 	boost::mutex Planner::mutex_;
 	double Planner::random_prob_;
 	short int Planner::iteration_; // unused
+    bool Planner::exist_obstacle_;
+    double Planner::repere_local_[3][3];
 
 	// gloobal variables
 	graphics::corbaServer::ClientCpp p;
@@ -168,6 +170,86 @@ namespace hpp {
 
 		}
 
+    struct Vec3f
+    {
+        float v[3];
+
+        Vec3f() {}
+        Vec3f(float x, float y, float z)
+        {
+            v[0] = x; v[1] = y; v[2] = z;
+        }
+    };
+
+    struct Mat33f
+    {
+        Vec3f col[3];
+    };
+
+    static Vec3f operator +(const Vec3f &a, const Vec3f &b) {
+        return Vec3f(a.v[0] + b.v[0], a.v[1] + b.v[1], a.v[2] + b.v[2]);
+    }
+
+    static Vec3f operator -(const Vec3f &a, const Vec3f &b) {
+        return Vec3f(a.v[0] - b.v[0], a.v[1] - b.v[1], a.v[2] - b.v[2]);
+    }
+    static Vec3f operator *(float s, const Vec3f &a)        { return Vec3f(s * a.v[0], s * a.v[1], s * a.v[2]); }
+
+    static Vec3f &operator -=(Vec3f &a, const Vec3f &b)     { a.v[0] -= b.v[0]; a.v[1] -= b.v[1]; a.v[2] -= b.v[2]; return a; }
+
+
+    static float dot(const Vec3f &a, const Vec3f &b) {
+        return a.v[0]*b.v[0] + a.v[1]*b.v[1] + a.v[2]*b.v[2];
+    }
+
+    static Vec3f normalize(const Vec3f &in){
+        return (1.0f / sqrtf(dot(in, in))) * in;
+    }
+
+    static void modified_gram_schmidt(Mat33f &out, const Mat33f &in)
+    {
+        out.col[0] = normalize(in.col[0]);
+
+        out.col[1] = normalize(in.col[1] - dot(in.col[1], out.col[0])*out.col[0]);
+
+        out.col[2] = in.col[2] - dot(in.col[2], out.col[0])*out.col[0];
+        // note the second dot product is computed from the partial result!
+        out.col[2] -= dot(out.col[2], out.col[1])*out.col[1];
+        out.col[2] = normalize(out.col[2]);
+    }
+
+    static void print_mat(const char *name, const Mat33f &mat)
+    {
+        printf("%s=[\n", name);
+        for(int i=0; i < 3; i++) {
+            for(int j=0; j < 3; j++)
+                printf(" %10.6f%c", mat.col[j].v[i], (j == 2) ? ';' : ',');
+
+            printf("\n");
+        }
+        printf("];\n");
+    }
+
+
+    /*
+    void Normaliser(double* vect, unsigned short int dim){
+        double somme = 0;
+        for (unsigned short int i = 0; i<dim; ++i){
+            somme += pow(vect[i], 2);
+        }
+        double norme = sqrt(somme);
+
+        for(unsigned short int i = 0; i<dim; ++i){
+            vect[i] /= norme;
+        }
+    }
+
+
+    // TODO : ici en dim 3 seulement
+    double dot(const double *a, const double *b) {
+        return a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+    }
+    //*/
 
 	void InteractiveDeviceThread(void* arg){
 
@@ -249,9 +331,9 @@ namespace hpp {
                 fcl::distance(o1, o2, request, result);
 
                 //* std::cout bla bla
-                std::cout << "test paires collision n°" << ++index_paires << " ";
-                std::cout << paire.first->name() << " " << paire.second->name() ;
-                cout << (result.min_distance == -1 ? "\t" : "");
+                //std::cout << "test paires collision n°" << ++index_paires << " ";
+                //std::cout << paire.first->name() << " " << paire.second->name() ;
+                //cout << (result.min_distance == -1 ? "\t" : "");
                 std::cout << " dist=" << result.min_distance << std::endl;
                 std::cout << " pt0 " << result.nearest_points[0] <<
                              " pt1 " << result.nearest_points[1] << std::endl;
@@ -274,6 +356,12 @@ namespace hpp {
                 if (index_lignes > 0){
                     //cout << "index " << index_lignes << " obj à cacher " << nom_ligne << endl;
                     p.setVisibility(nom_ligne.c_str(), "OFF");
+                    string axe = nom_ligne +='a';
+                    p.setVisibility(axe.c_str(), "OFF");
+                    axe = nom_ligne +='b';
+                    p.setVisibility(axe.c_str(), "OFF");
+
+
                 }
                 index_lignes++;
                 nom_ligne = "scene_hpp_/ligne";
@@ -281,16 +369,39 @@ namespace hpp {
                 nom_ligne += ind;
                 p.addLine(nom_ligne.c_str(), v, w, &color[0]);
 
+                double (*rep)[3] = arg_->repere_local_;
+                //*
+                if (result.min_distance != -1){
+                    arg_->exist_obstacle_ = true;
+
+                    Mat33f A;
+
+                    A.col[0] = Vec3f(w[0]-v[0], w[1]-v[1], w[2]-v[2]);
+                    A.col[1] = Vec3f(1,0,0);
+                    A.col[2] = Vec3f(0,0,1);
+                    print_mat("A", A);
+
+                    Mat33f MGS;
+                    modified_gram_schmidt(MGS, A);
+                    print_mat("MGS", MGS);
+
+                    v_[0] = w[0] + A.col[1].v[0];
+                    v_[1] = w[1] + A.col[1].v[1];
+                    v_[2] = w[2] + A.col[1].v[2];
+                    string axe = nom_ligne +='a';
+                    p.addLine(axe.c_str(), v, w, &color[0]);
+
+                    v_[0] = w[0] + A.col[2].v[0];
+                    v_[1] = w[1] + A.col[2].v[1];
+                    v_[2] = w[2] + A.col[2].v[2];
+                    axe = nom_ligne +='b';
+                    p.addLine(axe.c_str(), w, v, &color[0]);
 
 
-
-
-
+                }
+                //*/
 
             }
-
-
-
 
             // show modifications on screen
 			p.refresh();
