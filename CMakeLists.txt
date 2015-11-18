@@ -26,8 +26,9 @@ SET(PROJECT_URL "")
 
 SET(${PROJECT_NAME}_HEADERS
   include/hpp/interactive/planner.hh
-	include/hpp/interactive/sixDOFMouseDriver.hh
+  include/hpp/interactive/sixDOFMouseDriver.hh
   include/hpp/interactive/fwd.hh
+  include/hpp/interactive/gram-schmidt.hh
 )
 
 # Activate hpp-util logging if requested

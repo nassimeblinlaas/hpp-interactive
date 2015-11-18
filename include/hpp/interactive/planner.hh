@@ -102,6 +102,7 @@ namespace hpp {
         // machine probability to shoot (= 1- human probability)
         static double random_prob_;
 
+
         // unused
         static short int iteration_;
 

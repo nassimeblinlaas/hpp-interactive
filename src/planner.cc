@@ -81,6 +81,7 @@
 #include <hpp/core/problem.hh>
 
 #include <hpp/interactive/sixDOFMouseDriver.hh>
+#include <hpp/interactive/gram-schmidt.hh>
 #include <hpp/corbaserver/client.hh>
 #include <hpp/corbaserver/robot.hh>
 
@@ -88,7 +89,7 @@ using namespace std;
 using hpp::model::displayConfig;
 
 namespace hpp {
-	namespace interactive {
+    namespace interactive {
 
 	// typedefs
 	typedef se3::SE3::Vector3 Vector3;
@@ -103,7 +104,7 @@ namespace hpp {
     bool Planner::exist_obstacle_;
     double Planner::repere_local_[3][3];
 
-	// gloobal variables
+   // global variables
 	graphics::corbaServer::ClientCpp p;
 
 	// functions
@@ -111,13 +112,93 @@ namespace hpp {
 	void InteractiveDeviceThread(void* arg);
 
 
+    struct Vec3f
+    {
+        float v[3];
+
+        Vec3f() {}
+        Vec3f(float x, float y, float z)
+        {
+            v[0] = x; v[1] = y; v[2] = z;
+        }
+    };
+
+    struct Mat33f
+    {
+        Vec3f col[3];
+    };
+
+    Vec3f operator +(const Vec3f &a, const Vec3f &b) {
+		return Vec3f(a.v[0] + b.v[0], a.v[1] + b.v[1], a.v[2] + b.v[2]); 
+	}
+  
+	Vec3f operator -(const Vec3f &a, const Vec3f &b) { return Vec3f(a.v[0] - b.v[0], a.v[1] - b.v[1], a.v[2] - b.v[2]); }
+    Vec3f operator *(float s, const Vec3f &a)        { return Vec3f(s * a.v[0], s * a.v[1], s * a.v[2]); }
+
+    Vec3f &operator -=(Vec3f &a, const Vec3f &b)     { a.v[0] -= b.v[0]; a.v[1] -= b.v[1]; a.v[2] -= b.v[2]; return a; }
+
+    float dot(const Vec3f &a, const Vec3f &b)        { return a.v[0]*b.v[0] + a.v[1]*b.v[1] + a.v[2]*b.v[2]; }
+    Vec3f normalize(const Vec3f &in)                 { return (1.0f / sqrtf(dot(in, in))) * in; }
+
+
+
+    void print_mat(const char *name, const Mat33f &mat)
+    {
+        printf("%s=[\n", name);
+        for(int i=0; i < 3; i++) {
+            for(int j=0; j < 3; j++)
+                printf(" %10.6f%c", mat.col[j].v[i], (j == 2) ? ';' : ',');
+
+            printf("\n");
+        }
+        printf("];\n");
+    }
+
+    void classic_gram_schmidt(Mat33f &out, const Mat33f &in)
+    {
+        out.col[0] = normalize(in.col[0]);
+        out.col[1] = normalize(in.col[1] - dot(in.col[1], out.col[0])*out.col[0]);
+        out.col[2] = normalize(in.col[2] - dot(in.col[2], out.col[0])*out.col[0] - dot(in.col[2], out.col[1])*out.col[1]);
+    }
+
+    void modified_gram_schmidt(Mat33f &out, const Mat33f &in)
+    {
+        out.col[0] = normalize(in.col[0]);
+
+        out.col[1] = normalize(in.col[1] - dot(in.col[1], out.col[0])*out.col[0]);
+
+        out.col[2] = in.col[2] - dot(in.col[2], out.col[0])*out.col[0];
+        // note the second dot product is computed from the partial result!
+        out.col[2] -= dot(out.col[2], out.col[1])*out.col[1];
+        out.col[2] = normalize(out.col[2]);
+    }
+
+
+
+    // cte fonction semble correcte
+    Matrix3 quat2Mat(float x1, float x2, float x3, float x4){
+        Matrix3 ret;
+
+        ret(0, 0) = 1 - 2*(pow(x3, 2) + pow(x4, 2));
+        ret(0, 1) = 2*x3*x2 - 2*x4*x1;
+        ret(0, 2) = 2*x4*x2 + 2*x3*x1;
+        ret(1, 0) = 2*x3*x2 + 2*x4*x1;
+        ret(1, 1) = 1 - 2*(pow(x2, 2) + pow(x4, 2));
+        ret(1, 2) = 2*x4*x3 - 2*x2*x1;
+        ret(2, 0) = 2*x4*x2 - 2*x3*x1;
+        ret(2, 1) = 2*x4*x3 + 2*x2*x1;
+        ret(2, 2) = 1 - 2*(pow(x2, 2) + 2*pow(x3, 2));
+
+        return ret;
+    }
+
 
 
 	PlannerPtr_t Planner::createWithRoadmap
 		(const Problem& problem, const RoadmapPtr_t& roadmap)
 	{
 		Planner* ptr = new Planner (problem, roadmap);
-		Planner::random_prob_ = 0.; // 0 all human  1 all machine
+        Planner::random_prob_ = 1; // 0 all human  1 all machine
 														//Planner::random_prob_ = 0.4; // 0 all human  1 all machine
 
 		return PlannerPtr_t (ptr);
@@ -170,86 +251,8 @@ namespace hpp {
 
 		}
 
-    struct Vec3f
-    {
-        float v[3];
-
-        Vec3f() {}
-        Vec3f(float x, float y, float z)
-        {
-            v[0] = x; v[1] = y; v[2] = z;
-        }
-    };
-
-    struct Mat33f
-    {
-        Vec3f col[3];
-    };
-
-    static Vec3f operator +(const Vec3f &a, const Vec3f &b) {
-        return Vec3f(a.v[0] + b.v[0], a.v[1] + b.v[1], a.v[2] + b.v[2]);
-    }
-
-    static Vec3f operator -(const Vec3f &a, const Vec3f &b) {
-        return Vec3f(a.v[0] - b.v[0], a.v[1] - b.v[1], a.v[2] - b.v[2]);
-    }
-    static Vec3f operator *(float s, const Vec3f &a)        { return Vec3f(s * a.v[0], s * a.v[1], s * a.v[2]); }
-
-    static Vec3f &operator -=(Vec3f &a, const Vec3f &b)     { a.v[0] -= b.v[0]; a.v[1] -= b.v[1]; a.v[2] -= b.v[2]; return a; }
 
 
-    static float dot(const Vec3f &a, const Vec3f &b) {
-        return a.v[0]*b.v[0] + a.v[1]*b.v[1] + a.v[2]*b.v[2];
-    }
-
-    static Vec3f normalize(const Vec3f &in){
-        return (1.0f / sqrtf(dot(in, in))) * in;
-    }
-
-    static void modified_gram_schmidt(Mat33f &out, const Mat33f &in)
-    {
-        out.col[0] = normalize(in.col[0]);
-
-        out.col[1] = normalize(in.col[1] - dot(in.col[1], out.col[0])*out.col[0]);
-
-        out.col[2] = in.col[2] - dot(in.col[2], out.col[0])*out.col[0];
-        // note the second dot product is computed from the partial result!
-        out.col[2] -= dot(out.col[2], out.col[1])*out.col[1];
-        out.col[2] = normalize(out.col[2]);
-    }
-
-    static void print_mat(const char *name, const Mat33f &mat)
-    {
-        printf("%s=[\n", name);
-        for(int i=0; i < 3; i++) {
-            for(int j=0; j < 3; j++)
-                printf(" %10.6f%c", mat.col[j].v[i], (j == 2) ? ';' : ',');
-
-            printf("\n");
-        }
-        printf("];\n");
-    }
-
-
-    /*
-    void Normaliser(double* vect, unsigned short int dim){
-        double somme = 0;
-        for (unsigned short int i = 0; i<dim; ++i){
-            somme += pow(vect[i], 2);
-        }
-        double norme = sqrt(somme);
-
-        for(unsigned short int i = 0; i<dim; ++i){
-            vect[i] /= norme;
-        }
-    }
-
-
-    // TODO : ici en dim 3 seulement
-    double dot(const double *a, const double *b) {
-        return a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
-    }
-    //*/
 
 	void InteractiveDeviceThread(void* arg){
 
@@ -267,7 +270,7 @@ namespace hpp {
 			se3::SE3 trans_temp = SixDOFMouseDriver::getTransformation();
 
 			// apply transformation to the cursor
-			p.applyConfiguration("scene_hpp_/curseur", trans_temp);
+            //p.applyConfiguration("scene_hpp_/curseur", trans_temp);
 
 			//					cout << "dans le planneuur " << 
 			//						trans_temp << endl;
@@ -303,13 +306,18 @@ namespace hpp {
 
 
 				
-            //PathValidationPtr_t pV = this->problem().pathValidation();
-            PathValidationPtr_t pV = (arg_->problem().pathValidation());
-            core::DiscretizedCollisionChecking* DCC = (core::DiscretizedCollisionChecking*)(&*pV);
-            core::CollisionValidation* cV = (core::CollisionValidation*)(&*DCC->getConfigValid());
-            core::CollisionPairs_t cP = cV->getCollisionPairs();
+         //   PathValidationPtr_t pV = this->problem().pathValidation();
+            //hpp::core::ObjectVector_t liste = arg_->problem().collisionObstacles();
 
-            //*
+
+            //int s = liste.size();
+
+            //PathValidationPtr_t pV = (arg_->problem().pathValidation());
+            //core::DiscretizedCollisionChecking* DCC = (core::DiscretizedCollisionChecking*)(&*pV);
+            //core::CollisionValidation* cV = (core::CollisionValidation*)(&*DCC->getConfigValid());
+            //core::CollisionPairs_t cP = cV->getCollisionPairs();
+
+            /*
 
             int index_paires=-1;
             for (core::CollisionPairs_t::const_iterator itCol = cP.begin ();
@@ -330,26 +338,29 @@ namespace hpp {
                 // perform distance test
                 fcl::distance(o1, o2, request, result);
 
-                //* std::cout bla bla
+                // std::cout bla bla
                 //std::cout << "test paires collision n°" << ++index_paires << " ";
                 //std::cout << paire.first->name() << " " << paire.second->name() ;
                 //cout << (result.min_distance == -1 ? "\t" : "");
-                std::cout << " dist=" << result.min_distance << std::endl;
-                std::cout << " pt0 " << result.nearest_points[0] <<
-                             " pt1 " << result.nearest_points[1] << std::endl;
-                //*/
+                //std::cout << " dist=" << result.min_distance << std::endl;
+                //std::cout << " pt0 " << result.nearest_points[0] <<
+                //             " pt1 " << result.nearest_points[1] << std::endl;
+               
 
 
-                graphics::corbaServer::ClientCpp::value_type v_[3] = {(float)result.nearest_points[0][0],
-                                                                  (float)result.nearest_points[0][1],
-                                                                  (float)result.nearest_points[0][2]};
-                graphics::corbaServer::ClientCpp::value_type w_[3] = {(float)result.nearest_points[1][0],
-                                                                (float)result.nearest_points[1][1],
-                                                                (float)result.nearest_points[1][2]};
+                graphics::corbaServer::ClientCpp::value_type v_[3] = {
+						(float)result.nearest_points[0][0],
+                  (float)result.nearest_points[0][1],
+                  (float)result.nearest_points[0][2]};
+                graphics::corbaServer::ClientCpp::value_type w_[3] = {
+						(float)result.nearest_points[1][0],
+						(float)result.nearest_points[1][1],
+						(float)result.nearest_points[1][2]};
                 const graphics::corbaServer::ClientCpp::value_type* v = &v_[0];
                 const graphics::corbaServer::ClientCpp::value_type* w = &w_[0];
 
 
+                // afficher des lignes
                 string nom_ligne = "scene_hpp_/ligne";
                 string ind = boost::lexical_cast<std::string>(index_lignes);
                 nom_ligne += ind;
@@ -360,8 +371,6 @@ namespace hpp {
                     p.setVisibility(axe.c_str(), "OFF");
                     axe = nom_ligne +='b';
                     p.setVisibility(axe.c_str(), "OFF");
-
-
                 }
                 index_lignes++;
                 nom_ligne = "scene_hpp_/ligne";
@@ -370,44 +379,54 @@ namespace hpp {
                 p.addLine(nom_ligne.c_str(), v, w, &color[0]);
 
                 double (*rep)[3] = arg_->repere_local_;
-                //*
+                
+                //* algorithme de GRAM-SCHMIDT
                 if (result.min_distance != -1){
                     arg_->exist_obstacle_ = true;
 
                     Mat33f A;
 
                     A.col[0] = Vec3f(w[0]-v[0], w[1]-v[1], w[2]-v[2]);
-                    A.col[1] = Vec3f(1,0,0);
-                    A.col[2] = Vec3f(0,0,1);
+                    double rando1 = rand(), rando2 = rand(), rando3 = rand();
+                    rando1 = rando1 / RAND_MAX; rando2 = rando2 / RAND_MAX; rando3 = rando3 / RAND_MAX;
+                    A.col[1] = Vec3f(rando1,rando2, rando3);
+
+                    rando1 = rand(); rando2 = rand(); rando3 = rand();
+                    rando1 = rando1 / RAND_MAX; rando2 = rando2 / RAND_MAX; rando3 = rando3 / RAND_MAX;
+                    A.col[2] = Vec3f(rando1,rando2, rando3);
+
+
                     print_mat("A", A);
 
                     Mat33f MGS;
                     modified_gram_schmidt(MGS, A);
                     print_mat("MGS", MGS);
 
-                    v_[0] = w[0] + A.col[1].v[0];
-                    v_[1] = w[1] + A.col[1].v[1];
-                    v_[2] = w[2] + A.col[1].v[2];
+							// afficher les deux axes manquants du repère
+                    v_[0] = w[0] + MGS.col[1].v[0];
+                    v_[1] = w[1] + MGS.col[1].v[1];
+                    v_[2] = w[2] + MGS.col[1].v[2];
                     string axe = nom_ligne +='a';
                     p.addLine(axe.c_str(), v, w, &color[0]);
 
-                    v_[0] = w[0] + A.col[2].v[0];
-                    v_[1] = w[1] + A.col[2].v[1];
-                    v_[2] = w[2] + A.col[2].v[2];
+                    v_[0] = w[0] + MGS.col[2].v[0];
+                    v_[1] = w[1] + MGS.col[2].v[1];
+                    v_[2] = w[2] + MGS.col[2].v[2];
                     axe = nom_ligne +='b';
                     p.addLine(axe.c_str(), w, v, &color[0]);
 
 
                 }
-                //*/
 
-            }
+                
+
+            }// fin for paires de collision
+            //*/
 
             // show modifications on screen
 			p.refresh();
 		}
 	}
-
 
 
 
@@ -452,7 +471,37 @@ namespace hpp {
 			if ( rando < Planner::random_prob_)
 			{
 				// keep random config
-				//					usleep(1000);
+                // usleep(1000);
+
+                // créer un nom unique
+                string nom = "scene_hpp_/curseur";
+                string ind = boost::lexical_cast<std::string>((*q_rand)[0]);
+                nom += ind;
+                // une couleur
+                gepetto::corbaserver::Color color;
+                color[0] = 1;	color[1] = 1;	color[2] = 1;	color[3] = 1.;
+                // ajouter une boîte puis un repère
+                float f = (float) 0.1;
+                p.addBox (nom.c_str(), f/10,f/10,f/10, color);
+                p.addLandmark(nom.c_str(), 1.);
+                // mettre à jour la conf du repère
+                se3::SE3 conf;
+                conf.translation()[0] = (float)(*q_rand)[0];
+                conf.translation()[1] = (float)(*q_rand)[1];
+                conf.translation()[2] = (float)(*q_rand)[2];
+                conf.rotation(
+                    quat2Mat((float)(*q_rand)[3],
+                             (float)(*q_rand)[4],
+                             (float)(*q_rand)[5],
+                             (float)(*q_rand)[6])
+                 );
+
+
+                p.applyConfiguration(nom.c_str(), conf);
+
+                //sleep(2);
+                //p.setVisibility(nom.c_str(), "OFF");
+                p.refresh();
 			}
 			else{
 				//mutex_.lock();
@@ -464,7 +513,9 @@ namespace hpp {
 			NodePtr_t near = roadmap ()->nearestNode (q_rand, *itcc, distance);
 			path = extend (near, q_rand);
 			if (path) {
-                bool pathValid = pathValidation->validate (path, false, validPath);
+                //bool pathValid = pathValidation->validate (path, true, validPath);
+                bool pathValid = pathValidation->validate (path, false, validPath); // ancienne version
+
                 // Insert new path to q_near in roadmap
                 value_type t_final = validPath->timeRange ().second;
                 if (t_final != path->timeRange ().first) {
@@ -513,6 +564,8 @@ namespace hpp {
 				}
 			}
 		}
+
+        //usleep(1);
 	}
 
 
