@@ -18,6 +18,7 @@ boost::mutex SixDOFMouseDriver::mutex_;
 double SixDOFMouseDriver::linear_speed_;
 double SixDOFMouseDriver::angular_speed_;
 double SixDOFMouseDriver::rotation_threshold_;
+bool SixDOFMouseDriver::has_moved_;
 
 
 using namespace std;
@@ -89,6 +90,7 @@ void SixDOFMouseDriver::MouseInit()
 	struct udev_device *dev;
 	struct udev_monitor *mon;
 	int fd;
+    SixDOFMouseDriver::has_moved_ = false;
 
 //	udev = udev_new();
 //	mon = udev_monitor_new_from_netlink(udev, "udev");
@@ -125,7 +127,6 @@ void SixDOFMouseDriver::MouseInit()
 	void* arg = 0;
 	SixDOFMouseDriver::interactiveDeviceThread_ = 
 		new boost::thread(boost::thread(SixDOFMouseDriver::ReadMouse, arg));
-
 
 }
 
@@ -183,6 +184,7 @@ void SixDOFMouseDriver::ReadMouse(void* arg)
 		// apply configuration
 		mutex_.lock();
 		transformation_ = temp_trans;
+        SixDOFMouseDriver::has_moved_ = true;
 	}
 }
 
@@ -202,6 +204,7 @@ void SixDOFMouseDriver::getData()
 	// read position
 	if (read(SixDOFMouseDriver::fd_, SixDOFMouseDriver::data_, 7) != 7)
 		std::cout << "read error" << std::endl;
+
 	if (SixDOFMouseDriver::data_[0] == 1){
 		//conversion to big endian
 		for (int i = 0; i<3; i++){
@@ -226,6 +229,7 @@ void SixDOFMouseDriver::getData()
 			SixDOFMouseDriver::deviceValuesNormalized_[3+i] = (float)v.value/512;
 		}
 	}
+
 	
 //	//print values
 //	printf("rawdata position\n");

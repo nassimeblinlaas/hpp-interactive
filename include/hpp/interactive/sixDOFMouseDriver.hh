@@ -31,6 +31,8 @@ class SixDOFMouseDriver{
 		static void MouseInit();
 		// blocking if no data
 		static const se3::SE3& getTransformation();
+		// return false before first data
+		static bool HasMoved(){return has_moved_;};
 
 		static void setLinearSpeed(double sp);
 		static void setAngularSpeed(double sp);
@@ -51,7 +53,7 @@ class SixDOFMouseDriver{
 		static short int deviceValues_[6]; // formatted data
 		static double deviceValuesNormalized_[6]; // normalized data
 		static se3::SE3 transformation_;
-
+		static bool has_moved_;
 };
 
 

@@ -59,6 +59,8 @@
 #include <boost/thread/mutex.hpp>
 
 #include <Eigen/Geometry>
+#include <Eigen/Dense>
+#include <Eigen/LU>
 #include <unsupported/Eigen/MatrixFunctions>
 
 
@@ -84,12 +86,15 @@
 #include <hpp/interactive/gram-schmidt.hh>
 #include <hpp/corbaserver/client.hh>
 #include <hpp/corbaserver/robot.hh>
+#include <hpp/interactive/gram-schmidt.hh>
 
 using namespace std;
 using hpp::model::displayConfig;
 
 namespace hpp {
     namespace interactive {
+
+
 
 	// typedefs
 	typedef se3::SE3::Vector3 Vector3;
@@ -103,9 +108,11 @@ namespace hpp {
 	short int Planner::iteration_; // unused
     bool Planner::exist_obstacle_;
     double Planner::repere_local_[3][3];
+    bool Planner::mode_contact_;
 
    // global variables
 	graphics::corbaServer::ClientCpp p;
+
 
 	// functions
 	bool belongs (const ConfigurationPtr_t& q, const Nodes_t& nodes);
@@ -127,6 +134,8 @@ namespace hpp {
     {
         Vec3f col[3];
     };
+
+    Mat33f MGS; // todo mettre MGS dehors
 
     Vec3f operator +(const Vec3f &a, const Vec3f &b) {
 		return Vec3f(a.v[0] + b.v[0], a.v[1] + b.v[1], a.v[2] + b.v[2]); 
@@ -198,7 +207,7 @@ namespace hpp {
 		(const Problem& problem, const RoadmapPtr_t& roadmap)
 	{
 		Planner* ptr = new Planner (problem, roadmap);
-        Planner::random_prob_ = 1; // 0 all human  1 all machine
+        Planner::random_prob_ = 0; // 0 all human  1 all machine
 														//Planner::random_prob_ = 0.4; // 0 all human  1 all machine
 
 		return PlannerPtr_t (ptr);
@@ -253,7 +262,7 @@ namespace hpp {
 
 
 
-
+    // //////////////////////////////////////////////////////////////////////////////////////////
 	void InteractiveDeviceThread(void* arg){
 
 		Planner* arg_ = (Planner*) arg;
@@ -265,59 +274,51 @@ namespace hpp {
 
         int index_lignes = 0;
 		while(1){
+        if (SixDOFMouseDriver::HasMoved()){
 
-			// get transformation from device
-			se3::SE3 trans_temp = SixDOFMouseDriver::getTransformation();
+            // get transformation from device
+            se3::SE3 trans_temp = SixDOFMouseDriver::getTransformation();
 
-			// apply transformation to the cursor
+            // apply transformation to the cursor
             //p.applyConfiguration("scene_hpp_/curseur", trans_temp);
 
-			//					cout << "dans le planneuur " << 
-			//						trans_temp << endl;
-			//						//	(*actual_configuration_ptr_)[0] =
-			//						trans_temp.translation()[0] << " " <<
-			//						//		(*actual_configuration_ptr_)[1] =
-			//						trans_temp.translation()[1] << " " << 
-			//						//		(*actual_configuration_ptr_)[2] =
-			//						trans_temp.translation()[2] << endl;
+                                //cout << "dans le planneuur " <<
+                                //    trans_temp << endl;
+                                //    //	(*actual_configuration_ptr_)[0] =
+                                //    cout << trans_temp.translation()[0] << " " <<
+                                //    //		(*actual_configuration_ptr_)[1] =
+                                //    trans_temp.translation()[1] << " " <<
+                                //    //		(*actual_configuration_ptr_)[2] =
+                                //    trans_temp.translation()[2] << endl;
 
-			//					setActConf(0, trans_temp.translation()[0]);
-			//					setActConf(1, trans_temp.translation()[1]);
-			//					setActConf(2, trans_temp.translation()[2]);
+            //					setActConf(0, trans_temp.translation()[0]);
+            //					setActConf(1, trans_temp.translation()[1]);
+            //					setActConf(2, trans_temp.translation()[2]);
 
-			// save current transformation in the planner's memory
-			(*Planner::actual_configuration_ptr_)[0] =
-							trans_temp.translation()[0];
-			(*Planner::actual_configuration_ptr_)[1] =
-							trans_temp.translation()[1];
-			(*Planner::actual_configuration_ptr_)[2] =
-							trans_temp.translation()[2];
+            // save current transformation in the planner's memory
+            (*Planner::actual_configuration_ptr_)[0] =
+                            trans_temp.translation()[0];
+            (*Planner::actual_configuration_ptr_)[1] =
+                            trans_temp.translation()[1];
+            (*Planner::actual_configuration_ptr_)[2] =
+                            trans_temp.translation()[2];
 
             //Eigen::Matrix3f a(trans_temp.rotation()); // TODO rotations
+            //			Eigen::Quaternionf q(a);
+            //			Eigen::Quaternionf q(fcl::Quaternion3f::toRotation(trans_temp.rotation()));
+            //				std::cout << "mat " << a << std::endl;
+            //				std::cout << "quat " << q.norm() << " " << q.x() << " " << q.y() << " " << q.z() << " " << std::endl;
+            //				(*Planner::actual_configuration_ptr_)[3] = q.norm();
+            //				(*Planner::actual_configuration_ptr_)[4] = q.x();
+            //				(*Planner::actual_configuration_ptr_)[5] = q.y();
+            //				(*Planner::actual_configuration_ptr_)[6] = q.z();
 
-			//			Eigen::Quaternionf q(a);
-			//			Eigen::Quaternionf q(fcl::Quaternion3f::toRotation(trans_temp.rotation()));
-			//				std::cout << "mat " << a << std::endl;
-			//				std::cout << "quat " << q.norm() << " " << q.x() << " " << q.y() << " " << q.z() << " " << std::endl;
-			//				(*Planner::actual_configuration_ptr_)[3] = q.norm();
-			//				(*Planner::actual_configuration_ptr_)[4] = q.x();
-			//				(*Planner::actual_configuration_ptr_)[5] = q.y();
-			//				(*Planner::actual_configuration_ptr_)[6] = q.z();
+            PathValidationPtr_t pV = (arg_->problem().pathValidation());
+            core::DiscretizedCollisionChecking* DCC = (core::DiscretizedCollisionChecking*)(&*pV);
+            core::CollisionValidation* cV = (core::CollisionValidation*)(&*DCC->getConfigValid());
+            core::CollisionPairs_t cP = cV->getCollisionPairs();
 
-
-				
-         //   PathValidationPtr_t pV = this->problem().pathValidation();
-            //hpp::core::ObjectVector_t liste = arg_->problem().collisionObstacles();
-
-
-            //int s = liste.size();
-
-            //PathValidationPtr_t pV = (arg_->problem().pathValidation());
-            //core::DiscretizedCollisionChecking* DCC = (core::DiscretizedCollisionChecking*)(&*pV);
-            //core::CollisionValidation* cV = (core::CollisionValidation*)(&*DCC->getConfigValid());
-            //core::CollisionPairs_t cP = cV->getCollisionPairs();
-
-            /*
+            //*
 
             int index_paires=-1;
             for (core::CollisionPairs_t::const_iterator itCol = cP.begin ();
@@ -327,8 +328,8 @@ namespace hpp {
                 // Given two objects o1 and o2
                 fcl::CollisionObject* o1 = paire.first->fcl().get();
                 fcl::CollisionObject* o2 = paire.second->fcl().get();
-                cout << "obj1 " << o1->getTranslation() << "\t";
-                cout << "obj2 " << o2->getTranslation() << "\t";
+                //cout << "obj1 " << o1->getTranslation() << "\t";
+                //cout << "obj2 " << o2->getTranslation() << "\t";
                 // set the distance request structure, here we just use the default setting
                 fcl::DistanceRequest request(true, 0, 0, fcl::GST_INDEP);
                 // result will be returned via the collision result structure
@@ -338,24 +339,25 @@ namespace hpp {
                 // perform distance test
                 fcl::distance(o1, o2, request, result);
 
-                // std::cout bla bla
-                //std::cout << "test paires collision n°" << ++index_paires << " ";
-                //std::cout << paire.first->name() << " " << paire.second->name() ;
-                //cout << (result.min_distance == -1 ? "\t" : "");
-                //std::cout << " dist=" << result.min_distance << std::endl;
+                // cout bla bla
+                std::cout << "test paires collision n°" << ++index_paires << " ";
+                std::cout << paire.first->name() << " " << paire.second->name() ;
+                cout << (result.min_distance == -1 ? "\t" : "");
+                std::cout << " dist=" << result.min_distance << std::endl;
                 //std::cout << " pt0 " << result.nearest_points[0] <<
                 //             " pt1 " << result.nearest_points[1] << std::endl;
-               
 
 
+
+                // enregistrer les coordonnées des extrémités du segment du robot à l'obstacle
                 graphics::corbaServer::ClientCpp::value_type v_[3] = {
-						(float)result.nearest_points[0][0],
+                        (float)result.nearest_points[0][0],
                   (float)result.nearest_points[0][1],
                   (float)result.nearest_points[0][2]};
                 graphics::corbaServer::ClientCpp::value_type w_[3] = {
-						(float)result.nearest_points[1][0],
-						(float)result.nearest_points[1][1],
-						(float)result.nearest_points[1][2]};
+                        (float)result.nearest_points[1][0],
+                        (float)result.nearest_points[1][1],
+                        (float)result.nearest_points[1][2]};
                 const graphics::corbaServer::ClientCpp::value_type* v = &v_[0];
                 const graphics::corbaServer::ClientCpp::value_type* w = &w_[0];
 
@@ -378,8 +380,8 @@ namespace hpp {
                 nom_ligne += ind;
                 p.addLine(nom_ligne.c_str(), v, w, &color[0]);
 
-                double (*rep)[3] = arg_->repere_local_;
-                
+                //double (*rep)[3] = arg_->repere_local_;
+
                 //* algorithme de GRAM-SCHMIDT
                 if (result.min_distance != -1){
                     arg_->exist_obstacle_ = true;
@@ -389,20 +391,20 @@ namespace hpp {
                     A.col[0] = Vec3f(w[0]-v[0], w[1]-v[1], w[2]-v[2]);
                     double rando1 = rand(), rando2 = rand(), rando3 = rand();
                     rando1 = rando1 / RAND_MAX; rando2 = rando2 / RAND_MAX; rando3 = rando3 / RAND_MAX;
-                    A.col[1] = Vec3f(rando1,rando2, rando3);
+                    A.col[1] = Vec3f((float)rando1,(float)rando2, (float)rando3);
 
                     rando1 = rand(); rando2 = rand(); rando3 = rand();
                     rando1 = rando1 / RAND_MAX; rando2 = rando2 / RAND_MAX; rando3 = rando3 / RAND_MAX;
-                    A.col[2] = Vec3f(rando1,rando2, rando3);
+                    A.col[2] = Vec3f((float)rando1,(float)rando2, (float)rando3);
 
+                    //print_mat("A", A);
 
-                    print_mat("A", A);
+                    // la matrice pendant le mode contact pour rester sur le même plan
+                    if (!Planner::mode_contact_)
+                        modified_gram_schmidt(MGS, A);
+                    //print_mat("MGS", MGS);
 
-                    Mat33f MGS;
-                    modified_gram_schmidt(MGS, A);
-                    print_mat("MGS", MGS);
-
-							// afficher les deux axes manquants du repère
+                            // afficher les deux axes manquants du repère
                     v_[0] = w[0] + MGS.col[1].v[0];
                     v_[1] = w[1] + MGS.col[1].v[1];
                     v_[2] = w[2] + MGS.col[1].v[2];
@@ -416,18 +418,28 @@ namespace hpp {
                     p.addLine(axe.c_str(), w, v, &color[0]);
 
 
+
+                    //cout << "d=" << result.min_distance << " ";//<< std::endl;
+                    if (result.min_distance<0.1 && !Planner::mode_contact_){
+                    //if (0){
+                        cout << "distance inférieure à 0.1" << std::endl;
+                        std::cout << " pt0 " << result.nearest_points[0] <<
+                                     " pt1 " << result.nearest_points[1] << std::endl;
+                        Planner::mode_contact_ = true;
+                        Planner::iteration_ = 0;
+                    }
+
                 }
-
-                
-
             }// fin for paires de collision
             //*/
 
             // show modifications on screen
 			p.refresh();
-		}
-	}
 
+        }// fin if has_moved_
+        }// fin while
+	}
+    // //////////////////////////////////////////////////////////////////////////////////////////
 
 
 	/* 
@@ -439,7 +451,6 @@ namespace hpp {
 		typedef boost::tuple <NodePtr_t, ConfigurationPtr_t, PathPtr_t>	DelayedEdge_t;
 		typedef std::vector <DelayedEdge_t> DelayedEdges_t;
 
-
 		DelayedEdges_t delayedEdges;
 		DevicePtr_t robot (problem ().robot ());
 		PathValidationPtr_t pathValidation (problem ().pathValidation ());
@@ -447,7 +458,50 @@ namespace hpp {
 		PathPtr_t validPath, path;
 		// Pick a random node
 		ConfigurationPtr_t q_rand = configurationShooter_->shoot ();
-		//
+
+        // decide whether to keep a random config or choose manual configuration from device
+        double rando = rand();
+        rando = rando / RAND_MAX;
+        // keep random config
+        if ( (rando < Planner::random_prob_) || (Planner::mode_contact_) ) // todo : ce serait pas un peu casse gueule cette condition ?
+        {
+            if (Planner::mode_contact_){
+                cout << "mode contact " << Planner::iteration_ << std::endl;
+
+                Matrix3 rot;
+                rot(0,0) = MGS.col[0].v[0];
+                rot(0,1) = MGS.col[0].v[1];
+                rot(0,2) = MGS.col[0].v[2];
+                rot(1,0) = MGS.col[1].v[0];
+                rot(1,1) = MGS.col[1].v[1];
+                rot(1,2) = MGS.col[1].v[2];
+                rot(2,0) = MGS.col[2].v[0];
+                rot(2,1) = MGS.col[2].v[1];
+                rot(2,2) = MGS.col[2].v[2];
+                // garder z à zéro
+                Vector3 val((*q_rand)[0], (*q_rand)[1], 0);//(*q_rand)[3]);
+                cout << "rot " << rot << endl;
+                cout << "val " << val << endl;
+                val = val.transpose() * rot;
+                cout << "nouveau val " << val << endl;
+                (*q_rand)[0] = val[0];
+                (*q_rand)[1] = val[1];
+                (*q_rand)[2] = val[2];
+
+                Planner::iteration_++;
+                if(Planner::iteration_ == 10)
+                    Planner::mode_contact_ = false;
+            }
+            else cout << "pas contact\n";
+
+        }
+        else{
+            //mutex_.lock();
+            *q_rand = *Planner::actual_configuration_ptr_;
+            //mutex_.unlock();
+        }
+
+        //
 		// First extend each connected component toward q_rand
 		//
 		for (ConnectedComponents_t::const_iterator itcc =
@@ -455,60 +509,7 @@ namespace hpp {
 			itcc != roadmap ()->connectedComponents ().end (); ++itcc) {
 			
 			// Find nearest node in roadmap
-			value_type distance;
-			//				(*actual_configuration_ptr_)[0] = (*q_rand)[0];
-			//				(*actual_configuration_ptr_)[1] = (*q_rand)[1];
-			//				(*actual_configuration_ptr_)[2] = (*q_rand)[2];
-			//				(*actual_configuration_ptr_)[3] = (*q_rand)[3];
-			//				(*actual_configuration_ptr_)[4] = (*q_rand)[4];
-			//				(*actual_configuration_ptr_)[5] = (*q_rand)[5];
-			//				(*actual_configuration_ptr_)[6] = (*q_rand)[6];
-			//				cout << "extend to " << *actual_configuration_ptr_ << endl;
-
-			// decide whether to keep a random config or choose manual configuration from device
-			double rando = rand();
-			rando = rando / RAND_MAX;	
-			if ( rando < Planner::random_prob_)
-			{
-				// keep random config
-                // usleep(1000);
-
-                // créer un nom unique
-                string nom = "scene_hpp_/curseur";
-                string ind = boost::lexical_cast<std::string>((*q_rand)[0]);
-                nom += ind;
-                // une couleur
-                gepetto::corbaserver::Color color;
-                color[0] = 1;	color[1] = 1;	color[2] = 1;	color[3] = 1.;
-                // ajouter une boîte puis un repère
-                float f = (float) 0.1;
-                p.addBox (nom.c_str(), f/10,f/10,f/10, color);
-                p.addLandmark(nom.c_str(), 1.);
-                // mettre à jour la conf du repère
-                se3::SE3 conf;
-                conf.translation()[0] = (float)(*q_rand)[0];
-                conf.translation()[1] = (float)(*q_rand)[1];
-                conf.translation()[2] = (float)(*q_rand)[2];
-                conf.rotation(
-                    quat2Mat((float)(*q_rand)[3],
-                             (float)(*q_rand)[4],
-                             (float)(*q_rand)[5],
-                             (float)(*q_rand)[6])
-                 );
-
-
-                p.applyConfiguration(nom.c_str(), conf);
-
-                //sleep(2);
-                //p.setVisibility(nom.c_str(), "OFF");
-                p.refresh();
-			}
-			else{
-				//mutex_.lock();
-				*q_rand = *Planner::actual_configuration_ptr_;
-				//mutex_.unlock();
-			}
-
+            value_type distance;
 
 			NodePtr_t near = roadmap ()->nearestNode (q_rand, *itcc, distance);
 			path = extend (near, q_rand);
@@ -565,7 +566,6 @@ namespace hpp {
 			}
 		}
 
-        //usleep(1);
 	}
 
 
@@ -637,3 +637,48 @@ namespace hpp {
 } // namespace hpp
 
 
+
+/* // afficher des repères à chaque config -> inutile
+// créer un nom unique
+string nom = "scene_hpp_/curseur";
+string ind = boost::lexical_cast<std::string>((*q_rand)[0]);
+nom += ind;
+// une couleur
+gepetto::corbaserver::Color color;
+color[0] = 1;	color[1] = 1;	color[2] = 1;	color[3] = 1.;
+// ajouter une boîte puis un repère
+float f = (float) 0.1;
+p.addBox (nom.c_str(), f/10,f/10,f/10, color);
+p.addLandmark(nom.c_str(), 1.);
+// mettre à jour la conf du repère
+se3::SE3 conf;
+conf.translation()[0] = (float)(*q_rand)[0];
+conf.translation()[1] = (float)(*q_rand)[1];
+conf.translation()[2] = (float)(*q_rand)[2];
+Matrix3 rotation = quat2Mat((float)(*q_rand)[3], (float)(*q_rand)[4], (float)(*q_rand)[5],   (float)(*q_rand)[6]);
+conf.rotation(rotation);
+p.applyConfiguration(nom.c_str(), conf);
+//p.setVisibility(nom.c_str(), "OFF");
+p.refresh();
+//*/
+
+
+
+/*
+// méthode 2 (et propre) et identique en résultats
+PathValidationPtr_t pV2 = arg_->problem().pathValidation();
+hpp::core::ObjectVector_t liste = arg_->problem().collisionObstacles();
+cout << "méthode 2, liste des éléments ";
+fcl::DistanceRequest req(true, 0, 0, fcl::GST_INDEP);
+fcl::DistanceResult res;
+res.clear();
+for (hpp::core::ObjectVector_t::iterator it = liste.begin(); it != liste.end(); ++it){
+    cout << " elem " << (*it)->name();
+    fcl::CollisionObject o1 = *(*it)->fcl();
+    cout << " rob " << (*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->name();
+    fcl::CollisionObject o2 = *(*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->fcl();
+    fcl::distance(&o1, &o2, req, res);
+
+    cout << " dist " << res.min_distance << std::endl;
+}
+//*/

@@ -84,8 +84,7 @@ namespace hpp {
         mutable Configuration_t qProj_;
         PlannerWkPtr_t weakPtr_;
 
-        // file descriptor for interactive device
-        static int fd_;
+
         // memory buffer for interactive device
         static char data_[14];
         // thread for reading interactive device
@@ -99,16 +98,18 @@ namespace hpp {
         //static const Problem* problem_i;
         static Configuration_t actual_configuration_;
 
-        // machine probability to shoot (= 1- human probability)
+        // machine probability to shoot (= 1 - human probability)
         static double random_prob_;
 
+    public :    // todo mettre le thread dans la classe pour enlever le public du mode
+        //contact mode
+        static bool mode_contact_;
 
         // unused
         static short int iteration_;
-
-        // unused
         static boost::mutex mutex_;
-
+        // file descriptor for interactive device
+        static int fd_;
 
     };
 
