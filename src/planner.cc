@@ -112,6 +112,7 @@ namespace hpp {
 
    // global variables
 	graphics::corbaServer::ClientCpp p;
+    fcl::Vec3f org_;
 
 
 	// functions
@@ -254,7 +255,7 @@ namespace hpp {
 		
 			ConfigurationPtr_t q_rand = configurationShooter_->shoot (); // décale le rand initial
 			SixDOFMouseDriver::MouseInit();
-			int * arg;
+            //int * arg;
 
 			boost::thread th(&InteractiveDeviceThread, this);
 
@@ -280,7 +281,7 @@ namespace hpp {
             se3::SE3 trans_temp = SixDOFMouseDriver::getTransformation();
 
             // apply transformation to the cursor
-            //p.applyConfiguration("scene_hpp_/curseur", trans_temp);
+            p.applyConfiguration("scene_hpp_/curseur", trans_temp);
 
                                 //cout << "dans le planneuur " <<
                                 //    trans_temp << endl;
@@ -349,6 +350,8 @@ namespace hpp {
 
 
 
+
+
                 // enregistrer les coordonnées des extrémités du segment du robot à l'obstacle
                 graphics::corbaServer::ClientCpp::value_type v_[3] = {
                         (float)result.nearest_points[0][0],
@@ -386,6 +389,7 @@ namespace hpp {
                 if (result.min_distance != -1){
                     arg_->exist_obstacle_ = true;
 
+
                     Mat33f A;
 
                     A.col[0] = Vec3f(w[0]-v[0], w[1]-v[1], w[2]-v[2]);
@@ -397,12 +401,12 @@ namespace hpp {
                     rando1 = rando1 / RAND_MAX; rando2 = rando2 / RAND_MAX; rando3 = rando3 / RAND_MAX;
                     A.col[2] = Vec3f((float)rando1,(float)rando2, (float)rando3);
 
-                    //print_mat("A", A);
+                    print_mat("A", A);
 
                     // la matrice pendant le mode contact pour rester sur le même plan
                     if (!Planner::mode_contact_)
                         modified_gram_schmidt(MGS, A);
-                    //print_mat("MGS", MGS);
+                    print_mat("MGS", MGS);
 
                             // afficher les deux axes manquants du repère
                     v_[0] = w[0] + MGS.col[1].v[0];
@@ -420,11 +424,13 @@ namespace hpp {
 
 
                     //cout << "d=" << result.min_distance << " ";//<< std::endl;
-                    if (result.min_distance<0.1 && !Planner::mode_contact_){
+                    if (result.min_distance<0.15 && !Planner::mode_contact_){
                     //if (0){
                         cout << "distance inférieure à 0.1" << std::endl;
                         std::cout << " pt0 " << result.nearest_points[0] <<
                                      " pt1 " << result.nearest_points[1] << std::endl;
+
+                        org_ = result.nearest_points[1];
                         Planner::mode_contact_ = true;
                         Planner::iteration_ = 0;
                     }
@@ -459,6 +465,8 @@ namespace hpp {
 		// Pick a random node
 		ConfigurationPtr_t q_rand = configurationShooter_->shoot ();
 
+
+        // ////////////////////////////////////////////////////////////////////////////
         // decide whether to keep a random config or choose manual configuration from device
         double rando = rand();
         rando = rando / RAND_MAX;
@@ -479,11 +487,13 @@ namespace hpp {
                 rot(2,1) = MGS.col[2].v[1];
                 rot(2,2) = MGS.col[2].v[2];
                 // garder z à zéro
-                Vector3 val((*q_rand)[0], (*q_rand)[1], 0);//(*q_rand)[3]);
+                Vector3 val(0, (float)(*q_rand)[0], (float)(*q_rand)[2]);
                 cout << "rot " << rot << endl;
-                cout << "val " << val << endl;
-                val = val.transpose() * rot;
-                cout << "nouveau val " << val << endl;
+                cout << "val " << val.transpose() << endl;
+                Vector3 org((float)org_[0],(float)org_[1]-0.2,(float)org_[2]);
+                cout << "org " << org.transpose() << endl;
+                val = rot.transpose()*val + org;
+                cout << "nouveau val " << val.transpose() << endl;
                 (*q_rand)[0] = val[0];
                 (*q_rand)[1] = val[1];
                 (*q_rand)[2] = val[2];
@@ -493,13 +503,14 @@ namespace hpp {
                     Planner::mode_contact_ = false;
             }
             else cout << "pas contact\n";
-
         }
         else{
             //mutex_.lock();
             *q_rand = *Planner::actual_configuration_ptr_;
             //mutex_.unlock();
         }
+        // ////////////////////////////////////////////////////////////////////////////
+
 
         //
 		// First extend each connected component toward q_rand
