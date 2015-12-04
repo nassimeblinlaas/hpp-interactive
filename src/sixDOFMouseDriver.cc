@@ -148,8 +148,8 @@ void SixDOFMouseDriver::ReadMouse(void* arg)
 		pos[2] = (float) -SixDOFMouseDriver::deviceValuesNormalized_[2]/divideFactor;
 		
 		// limits for maze problem TODO to remove ----------------
-		if (pos[2]+transformation_.translation()[2]<0) pos[2] = 0;
-		if (pos[2]+transformation_.translation()[2]>1) pos[2] = 0;
+        //if (pos[2]+transformation_.translation()[2]<0) pos[2] = 0;
+        //if (pos[2]+transformation_.translation()[2]>1) pos[2] = 0;
 		// -------------------------------------------------------
 
 		se3::SE3 temp_trans = transformation_;

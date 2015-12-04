@@ -112,7 +112,8 @@ namespace hpp {
 
    // global variables
 	graphics::corbaServer::ClientCpp p;
-    fcl::Vec3f org_;
+    fcl::Vec3f org_;    // origine du point de référence pour gram schmidt
+    float distance_;    // distancecentre du robot -> surface
 
 
 	// functions
@@ -212,6 +213,8 @@ namespace hpp {
 														//Planner::random_prob_ = 0.4; // 0 all human  1 all machine
 
 		return PlannerPtr_t (ptr);
+
+
 	}
 
 
@@ -275,6 +278,7 @@ namespace hpp {
 
         int index_lignes = 0;
 		while(1){
+
         if (SixDOFMouseDriver::HasMoved()){
 
             // get transformation from device
@@ -345,8 +349,15 @@ namespace hpp {
                 std::cout << paire.first->name() << " " << paire.second->name() ;
                 cout << (result.min_distance == -1 ? "\t" : "");
                 std::cout << " dist=" << result.min_distance << std::endl;
-                //std::cout << " pt0 " << result.nearest_points[0] <<
-                //             " pt1 " << result.nearest_points[1] << std::endl;
+
+                // distance du centre de l'objet à sa surface
+                distance_ = sqrt(
+                        pow((float)result.nearest_points[1][0] - trans_temp.translation()[0], 2) +
+                        pow((float)result.nearest_points[1][0] - trans_temp.translation()[0], 2) +
+                        pow((float)result.nearest_points[1][0] - trans_temp.translation()[0], 2));
+                std::cout << "distance centre/surf " << distance_ << std::endl;
+                std::cout << " pt0 " << result.nearest_points[0] <<
+                             " pt1 " << result.nearest_points[1] << std::endl;
 
 
 
@@ -401,12 +412,12 @@ namespace hpp {
                     rando1 = rando1 / RAND_MAX; rando2 = rando2 / RAND_MAX; rando3 = rando3 / RAND_MAX;
                     A.col[2] = Vec3f((float)rando1,(float)rando2, (float)rando3);
 
-                    print_mat("A", A);
+                    //print_mat("A", A);
 
                     // la matrice pendant le mode contact pour rester sur le même plan
                     if (!Planner::mode_contact_)
                         modified_gram_schmidt(MGS, A);
-                    print_mat("MGS", MGS);
+                    //print_mat("MGS", MGS);
 
                             // afficher les deux axes manquants du repère
                     v_[0] = w[0] + MGS.col[1].v[0];
@@ -466,6 +477,16 @@ namespace hpp {
 		ConfigurationPtr_t q_rand = configurationShooter_->shoot ();
 
 
+        /*
+        std::cout << "joint bounds " <<
+                     this->problem().robot()->rootJoint()->lowerBound(0) << " " <<
+                     this->problem().robot()->rootJoint()->upperBound(0) << " " <<
+                     this->problem().robot()->rootJoint()->lowerBound(1) << " " <<
+                     this->problem().robot()->rootJoint()->upperBound(1) << " " <<
+                     this->problem().robot()->rootJoint()->lowerBound(2) << " " <<
+                     this->problem().robot()->rootJoint()->upperBound(2) << " " <<
+            endl;
+        //*/
         // ////////////////////////////////////////////////////////////////////////////
         // decide whether to keep a random config or choose manual configuration from device
         double rando = rand();
@@ -488,10 +509,10 @@ namespace hpp {
                 rot(2,2) = MGS.col[2].v[2];
                 // garder z à zéro
                 Vector3 val(0, (float)(*q_rand)[0], (float)(*q_rand)[2]);
-                cout << "rot " << rot << endl;
-                cout << "val " << val.transpose() << endl;
+                //cout << "rot " << rot << endl;
+                //cout << "val " << val.transpose() << endl;
                 Vector3 org((float)org_[0],(float)org_[1]-0.2,(float)org_[2]);
-                cout << "org " << org.transpose() << endl;
+                //cout << "org " << org.transpose() << endl;
                 val = rot.transpose()*val + org;
                 cout << "nouveau val " << val.transpose() << endl;
                 (*q_rand)[0] = val[0];
