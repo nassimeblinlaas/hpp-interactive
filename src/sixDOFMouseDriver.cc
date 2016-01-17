@@ -90,6 +90,7 @@ void SixDOFMouseDriver::MouseInit()
 	struct udev_device *dev;
 	struct udev_monitor *mon;
 	int fd;
+
     SixDOFMouseDriver::has_moved_ = false;
 
 //	udev = udev_new();
@@ -109,7 +110,7 @@ void SixDOFMouseDriver::MouseInit()
 	// TODO
 	/*   Open the Device with non-blocking reads. In real life,
 	 *         don't use a hard coded path; use libudev instead. */
-	fd_ = open("/dev/hidraw0", O_RDONLY);
+    fd_ = open("/dev/hidraw0", O_RDONLY);
 
 	if (fd_ < 0) {
 		perror("Unable to open interactive device");
@@ -137,6 +138,7 @@ void SixDOFMouseDriver::ReadMouse(void* arg)
 
 	// infinite loop
 	while (1){
+        //cout << "infinite ReadMouse loop thread\n";
 		getData();
 		mutex_.unlock();
 

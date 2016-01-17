@@ -61,6 +61,10 @@ namespace hpp {
         // repère local au plan tangeant au point le plus proche de l'obstacle
         static double repere_local_[3][3];
 
+        Configuration_t GetActualConfiguration() const {
+            return actual_configuration_;
+        }
+
         protected:
         /// Constructor
         Planner (const Problem& problem, const RoadmapPtr_t& roadmap);
@@ -70,9 +74,13 @@ namespace hpp {
         void init (const PlannerWkPtr_t& weak);
         /// Extend a node in the direction of a configuration
         /// \param near node in the roadmap,
+        ///
         /// \param target target configuration
         virtual PathPtr_t extend (const NodePtr_t& near,
         const ConfigurationPtr_t& target);
+
+
+
 
 
         private:

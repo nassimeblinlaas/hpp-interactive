@@ -96,31 +96,40 @@ namespace hpp {
 
 
 
-	// typedefs
-	typedef se3::SE3::Vector3 Vector3;
-	typedef se3::SE3::Matrix3 Matrix3;
+    // typedefs
+    typedef se3::SE3::Vector3 Vector3;
+    typedef se3::SE3::Matrix3 Matrix3;
 
-	// static variables
-	Configuration_t Planner::actual_configuration_;
-	ConfigurationPtr_t Planner::actual_configuration_ptr_;
-	boost::mutex Planner::mutex_;
-	double Planner::random_prob_;
-	short int Planner::iteration_; // unused
+    // static variables
+    Configuration_t Planner::actual_configuration_;
+    ConfigurationPtr_t Planner::actual_configuration_ptr_;
+    boost::mutex Planner::mutex_;
+    double Planner::random_prob_;
+    short int Planner::iteration_; // unused
     bool Planner::exist_obstacle_;
     double Planner::repere_local_[3][3];
     bool Planner::mode_contact_;
 
-   // global variables
-	graphics::corbaServer::ClientCpp p;
+    // global variables
+    short int nb_launchs = 0; // solve and display relance le planneur qui plante à cause du device
+    graphics::corbaServer::ClientCpp p; // deprecated but used to show cursor
     fcl::Vec3f org_;    // origine du point de référence pour gram schmidt
-    float distance_;    // distancecentre du robot -> surface
+    //boost::mutex org_mutex_; // mutex de l'org
+    fcl::Vec3f obj_;    // point de l'objete plus proche de l'obstacle
+    float distance_;    // distance centre du robot -> surface = rac((obj_-org_)2)
+    boost::mutex distance_mutex_; // protège par mutex l'accès à distance_
+    fcl::CollisionObject* o2ptr;
+    boost::mutex robot_mutex_;
 
 
-	// functions
-	bool belongs (const ConfigurationPtr_t& q, const Nodes_t& nodes);
-	void InteractiveDeviceThread(void* arg);
+    // functions
+    bool belongs (const ConfigurationPtr_t& q, const Nodes_t& nodes);
+    void InteractiveDeviceThread(void* arg);
 
+    // //////////////////////////////////////////////////////////////////////////////////////////
 
+    /// \brief The Vec3f struct
+    ///
     struct Vec3f
     {
         float v[3];
@@ -140,10 +149,10 @@ namespace hpp {
     Mat33f MGS; // todo mettre MGS dehors
 
     Vec3f operator +(const Vec3f &a, const Vec3f &b) {
-		return Vec3f(a.v[0] + b.v[0], a.v[1] + b.v[1], a.v[2] + b.v[2]); 
-	}
-  
-	Vec3f operator -(const Vec3f &a, const Vec3f &b) { return Vec3f(a.v[0] - b.v[0], a.v[1] - b.v[1], a.v[2] - b.v[2]); }
+        return Vec3f(a.v[0] + b.v[0], a.v[1] + b.v[1], a.v[2] + b.v[2]);
+    }
+
+    Vec3f operator -(const Vec3f &a, const Vec3f &b) { return Vec3f(a.v[0] - b.v[0], a.v[1] - b.v[1], a.v[2] - b.v[2]); }
     Vec3f operator *(float s, const Vec3f &a)        { return Vec3f(s * a.v[0], s * a.v[1], s * a.v[2]); }
 
     Vec3f &operator -=(Vec3f &a, const Vec3f &b)     { a.v[0] -= b.v[0]; a.v[1] -= b.v[1]; a.v[2] -= b.v[2]; return a; }
@@ -184,8 +193,6 @@ namespace hpp {
         out.col[2] = normalize(out.col[2]);
     }
 
-
-
     // cte fonction semble correcte
     Matrix3 quat2Mat(float x1, float x2, float x3, float x4){
         Matrix3 ret;
@@ -203,280 +210,96 @@ namespace hpp {
         return ret;
     }
 
+    short int signe (double x) {
+        return ((x < 0) ? -1 : 1);
+    }
 
 
-	PlannerPtr_t Planner::createWithRoadmap
-		(const Problem& problem, const RoadmapPtr_t& roadmap)
-	{
-		Planner* ptr = new Planner (problem, roadmap);
+    // //////////////////////////////////////////////////////////////////////////////////////////
+
+
+    PlannerPtr_t Planner::createWithRoadmap
+        (const Problem& problem, const RoadmapPtr_t& roadmap)
+    {
+        cout << "create with roadmap\n";
+        Planner* ptr = new Planner (problem, roadmap);
         Planner::random_prob_ = 0; // 0 all human  1 all machine
-														//Planner::random_prob_ = 0.4; // 0 all human  1 all machine
+        //Planner::random_prob_ = 0.4; // 0 all human  1 all machine
 
-		return PlannerPtr_t (ptr);
+        return PlannerPtr_t (ptr);
+    }
+
+    PlannerPtr_t Planner::create (const Problem& problem)
+    {
+        cout << "create\n";
+        Planner* ptr = new Planner (problem);
+        return PlannerPtr_t (ptr);
+    }
 
 
-	}
+    Planner::Planner (const Problem& problem,	const RoadmapPtr_t& roadmap) :
+        PathPlanner (problem, roadmap),
+        //configurationShooter_ (new BasicConfigurationShooter (problem.robot ())), // ancienne version avant grosse MAJ à vérifier
+        configurationShooter_ (BasicConfigurationShooter::create (problem.robot ())),
+        qProj_ (problem.robot ()->configSize ())
+        {
+            nb_launchs++;
+            std::cout << "read interactive device thread beginning\n";
+
+            std::ofstream myfile;
+            ConfigurationPtr_t config (new Configuration_t ((hpp::model::size_type)7));
+            (*config)[0] = 0;
+            (*config)[1] = 0;
+            (*config)[2] = 0;
+            (*config)[3] = 1;
+            (*config)[4] = 0;
+            (*config)[5] = 0;
+            (*config)[6] = 0;
+
+            Planner::actual_configuration_ptr_ = config;
+
+            float f = (float) 0.1;
+
+            // add landmark to viewer
+            cout << "adding landmark to viewer\n";
+            p.createGroup ("scene_hpp_");
+            gepetto::corbaserver::Color color;
+            color[0] = 1;	color[1] = 1;	color[2] = 1;	color[3] = 1.;
+
+            p.addBox ("scene_hpp_/curseur", f/10,f/10,f/10, color);
+            p.addLandmark("scene_hpp_/curseur", 1.);
+            p.addSceneToWindow ("scene_hpp_", 0);
+
+            //this->problem().robot()->name();
 
 
-
-
-
-
-	Planner::Planner (const Problem& problem,	const RoadmapPtr_t& roadmap) :
-		PathPlanner (problem, roadmap),
-		configurationShooter_ (new BasicConfigurationShooter (problem.robot ())),
-		qProj_ (problem.robot ()->configSize ())
-		{
-			std::cout << "read interactive device thread beginning\n";
-
-			std::ofstream myfile;
-			ConfigurationPtr_t config (new Configuration_t ((hpp::model::size_type)7));
-			(*config)[0] = 0;
-			(*config)[1] = 0;
-			(*config)[2] = 0;
-			(*config)[3] = 1;
-			(*config)[4] = 0;
-			(*config)[5] = 0;
-			(*config)[6] = 0;
-
-			Planner::actual_configuration_ptr_ = config;
-
-			float f = (float) 0.1;
-
-			// add landmark to viewer
-			cout << "adding landmark to viewer\n";
-			p.createGroup ("scene_hpp_");
-			gepetto::corbaserver::Color color;
-			color[0] = 1;	color[1] = 1;	color[2] = 1;	color[3] = 1.;
-
-			p.addBox ("scene_hpp_/curseur", f/10,f/10,f/10, color);
-			p.addLandmark("scene_hpp_/curseur", 1.);
-			p.addSceneToWindow ("scene_hpp_", 0);
-
-			this->problem().robot()->name();
-
-		
-			ConfigurationPtr_t q_rand = configurationShooter_->shoot (); // décale le rand initial
-			SixDOFMouseDriver::MouseInit();
+            //ConfigurationPtr_t q_rand = configurationShooter_->shoot (); // décale le rand initial
+            SixDOFMouseDriver::MouseInit();
             //int * arg;
 
-			boost::thread th(&InteractiveDeviceThread, this);
+            boost::thread th(&InteractiveDeviceThread, this);
 
-		}
-
+        }
 
 
     // //////////////////////////////////////////////////////////////////////////////////////////
-	void InteractiveDeviceThread(void* arg){
+    void InteractiveDeviceThread(void* arg){
 
-		Planner* arg_ = (Planner*) arg;
+        Planner* arg_ = (Planner*) arg;
 
-        gepetto::corbaserver::Color color;
+        gepetto::corbaserver::Color color, color_rouge;
         color[0] = 1;	color[1] = 1;	color[2] = 1;	color[3] = 1.;
-
-
+        color_rouge[0]=1;color_rouge[1]=1;color_rouge[2]=0;color_rouge[3]=0;
 
         int index_lignes = 0;
-		while(1){
 
-        if (SixDOFMouseDriver::HasMoved()){
-
-            // get transformation from device
-            se3::SE3 trans_temp = SixDOFMouseDriver::getTransformation();
-
-            // apply transformation to the cursor
-            p.applyConfiguration("scene_hpp_/curseur", trans_temp);
-
-                                //cout << "dans le planneuur " <<
-                                //    trans_temp << endl;
-                                //    //	(*actual_configuration_ptr_)[0] =
-                                //    cout << trans_temp.translation()[0] << " " <<
-                                //    //		(*actual_configuration_ptr_)[1] =
-                                //    trans_temp.translation()[1] << " " <<
-                                //    //		(*actual_configuration_ptr_)[2] =
-                                //    trans_temp.translation()[2] << endl;
-
-            //					setActConf(0, trans_temp.translation()[0]);
-            //					setActConf(1, trans_temp.translation()[1]);
-            //					setActConf(2, trans_temp.translation()[2]);
-
-            // save current transformation in the planner's memory
-            (*Planner::actual_configuration_ptr_)[0] =
-                            trans_temp.translation()[0];
-            (*Planner::actual_configuration_ptr_)[1] =
-                            trans_temp.translation()[1];
-            (*Planner::actual_configuration_ptr_)[2] =
-                            trans_temp.translation()[2];
-
-            //Eigen::Matrix3f a(trans_temp.rotation()); // TODO rotations
-            //			Eigen::Quaternionf q(a);
-            //			Eigen::Quaternionf q(fcl::Quaternion3f::toRotation(trans_temp.rotation()));
-            //				std::cout << "mat " << a << std::endl;
-            //				std::cout << "quat " << q.norm() << " " << q.x() << " " << q.y() << " " << q.z() << " " << std::endl;
-            //				(*Planner::actual_configuration_ptr_)[3] = q.norm();
-            //				(*Planner::actual_configuration_ptr_)[4] = q.x();
-            //				(*Planner::actual_configuration_ptr_)[5] = q.y();
-            //				(*Planner::actual_configuration_ptr_)[6] = q.z();
-
-            PathValidationPtr_t pV = (arg_->problem().pathValidation());
-            core::DiscretizedCollisionChecking* DCC = (core::DiscretizedCollisionChecking*)(&*pV);
-            core::CollisionValidation* cV = (core::CollisionValidation*)(&*DCC->getConfigValid());
-            core::CollisionPairs_t cP = cV->getCollisionPairs();
-
-            //*
-
-            int index_paires=-1;
-            for (core::CollisionPairs_t::const_iterator itCol = cP.begin ();
-             itCol != cP.end (); ++itCol){
-                core::CollisionPair_t paire = *itCol;
-
-                // Given two objects o1 and o2
-                fcl::CollisionObject* o1 = paire.first->fcl().get();
-                fcl::CollisionObject* o2 = paire.second->fcl().get();
-                //cout << "obj1 " << o1->getTranslation() << "\t";
-                //cout << "obj2 " << o2->getTranslation() << "\t";
-                // set the distance request structure, here we just use the default setting
-                fcl::DistanceRequest request(true, 0, 0, fcl::GST_INDEP);
-                // result will be returned via the collision result structure
-                fcl::DistanceResult result;
-                result.clear();
-
-                // perform distance test
-                fcl::distance(o1, o2, request, result);
-
-                // cout bla bla
-                std::cout << "test paires collision n°" << ++index_paires << " ";
-                std::cout << paire.first->name() << " " << paire.second->name() ;
-                cout << (result.min_distance == -1 ? "\t" : "");
-                std::cout << " dist=" << result.min_distance << std::endl;
-
-                // distance du centre de l'objet à sa surface
-                distance_ = sqrt(
-                        pow((float)result.nearest_points[1][0] - trans_temp.translation()[0], 2) +
-                        pow((float)result.nearest_points[1][0] - trans_temp.translation()[0], 2) +
-                        pow((float)result.nearest_points[1][0] - trans_temp.translation()[0], 2));
-                std::cout << "distance centre/surf " << distance_ << std::endl;
-                std::cout << " pt0 " << result.nearest_points[0] <<
-                             " pt1 " << result.nearest_points[1] << std::endl;
+        hpp::core::ObjectVector_t liste = arg_->problem().collisionObstacles();
+        hpp::core::ObjectVector_t::iterator it = liste.begin();
 
 
-
-
-
-                // enregistrer les coordonnées des extrémités du segment du robot à l'obstacle
-                graphics::corbaServer::ClientCpp::value_type v_[3] = {
-                        (float)result.nearest_points[0][0],
-                  (float)result.nearest_points[0][1],
-                  (float)result.nearest_points[0][2]};
-                graphics::corbaServer::ClientCpp::value_type w_[3] = {
-                        (float)result.nearest_points[1][0],
-                        (float)result.nearest_points[1][1],
-                        (float)result.nearest_points[1][2]};
-                const graphics::corbaServer::ClientCpp::value_type* v = &v_[0];
-                const graphics::corbaServer::ClientCpp::value_type* w = &w_[0];
-
-
-                // afficher des lignes
-                string nom_ligne = "scene_hpp_/ligne";
-                string ind = boost::lexical_cast<std::string>(index_lignes);
-                nom_ligne += ind;
-                if (index_lignes > 0){
-                    //cout << "index " << index_lignes << " obj à cacher " << nom_ligne << endl;
-                    p.setVisibility(nom_ligne.c_str(), "OFF");
-                    string axe = nom_ligne +='a';
-                    p.setVisibility(axe.c_str(), "OFF");
-                    axe = nom_ligne +='b';
-                    p.setVisibility(axe.c_str(), "OFF");
-                }
-                index_lignes++;
-                nom_ligne = "scene_hpp_/ligne";
-                ind = boost::lexical_cast<std::string>(index_lignes);
-                nom_ligne += ind;
-                p.addLine(nom_ligne.c_str(), v, w, &color[0]);
-
-                //double (*rep)[3] = arg_->repere_local_;
-
-                //* algorithme de GRAM-SCHMIDT
-                if (result.min_distance != -1){
-                    arg_->exist_obstacle_ = true;
-
-
-                    Mat33f A;
-
-                    A.col[0] = Vec3f(w[0]-v[0], w[1]-v[1], w[2]-v[2]);
-                    double rando1 = rand(), rando2 = rand(), rando3 = rand();
-                    rando1 = rando1 / RAND_MAX; rando2 = rando2 / RAND_MAX; rando3 = rando3 / RAND_MAX;
-                    A.col[1] = Vec3f((float)rando1,(float)rando2, (float)rando3);
-
-                    rando1 = rand(); rando2 = rand(); rando3 = rand();
-                    rando1 = rando1 / RAND_MAX; rando2 = rando2 / RAND_MAX; rando3 = rando3 / RAND_MAX;
-                    A.col[2] = Vec3f((float)rando1,(float)rando2, (float)rando3);
-
-                    //print_mat("A", A);
-
-                    // la matrice pendant le mode contact pour rester sur le même plan
-                    if (!Planner::mode_contact_)
-                        modified_gram_schmidt(MGS, A);
-                    //print_mat("MGS", MGS);
-
-                            // afficher les deux axes manquants du repère
-                    v_[0] = w[0] + MGS.col[1].v[0];
-                    v_[1] = w[1] + MGS.col[1].v[1];
-                    v_[2] = w[2] + MGS.col[1].v[2];
-                    string axe = nom_ligne +='a';
-                    p.addLine(axe.c_str(), v, w, &color[0]);
-
-                    v_[0] = w[0] + MGS.col[2].v[0];
-                    v_[1] = w[1] + MGS.col[2].v[1];
-                    v_[2] = w[2] + MGS.col[2].v[2];
-                    axe = nom_ligne +='b';
-                    p.addLine(axe.c_str(), w, v, &color[0]);
-
-
-
-                    //cout << "d=" << result.min_distance << " ";//<< std::endl;
-                    if (result.min_distance<0.15 && !Planner::mode_contact_){
-                    //if (0){
-                        cout << "distance inférieure à 0.1" << std::endl;
-                        std::cout << " pt0 " << result.nearest_points[0] <<
-                                     " pt1 " << result.nearest_points[1] << std::endl;
-
-                        org_ = result.nearest_points[1];
-                        Planner::mode_contact_ = true;
-                        Planner::iteration_ = 0;
-                    }
-
-                }
-            }// fin for paires de collision
-            //*/
-
-            // show modifications on screen
-			p.refresh();
-
-        }// fin if has_moved_
-        }// fin while
-	}
-    // //////////////////////////////////////////////////////////////////////////////////////////
-
-
-	/* 
-	 * 
-	 */
-	void Planner::oneStep ()
-	{
-
-		typedef boost::tuple <NodePtr_t, ConfigurationPtr_t, PathPtr_t>	DelayedEdge_t;
-		typedef std::vector <DelayedEdge_t> DelayedEdges_t;
-
-		DelayedEdges_t delayedEdges;
-		DevicePtr_t robot (problem ().robot ());
-		PathValidationPtr_t pathValidation (problem ().pathValidation ());
-		Nodes_t newNodes;
-		PathPtr_t validPath, path;
-		// Pick a random node
-		ConfigurationPtr_t q_rand = configurationShooter_->shoot ();
-
-
+        // ///////////////////
+        // bornes du problème
+        // TODO pour rotation des bornes
         /*
         std::cout << "joint bounds " <<
                      this->problem().robot()->rootJoint()->lowerBound(0) << " " <<
@@ -485,8 +308,304 @@ namespace hpp {
                      this->problem().robot()->rootJoint()->upperBound(1) << " " <<
                      this->problem().robot()->rootJoint()->lowerBound(2) << " " <<
                      this->problem().robot()->rootJoint()->upperBound(2) << " " <<
-            endl;
+        std::endl;
+
+        p.addLine("borne1", v, w, &color[0]);
         //*/
+        // ///////////////////////////////////////////////////////////////
+
+
+
+
+
+        cout << " obstacle " << (*it)->name();
+        fcl::CollisionObject o1 = *(*it)->fcl();
+
+        cout << " robot " <<
+                (*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->name() << " tr "
+                << (*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->getTransform()
+                << endl;
+        fcl::CollisionObject o2 =
+                *(*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->fcl();
+        o2ptr = new fcl::CollisionObject(o2);
+
+        //hpp::model::BodyPtr_t bptr = arg_->problem().robot()->rootJoint()->linkedBody();
+        //cout << "jai le linked baudie\n";
+        //cout << arg_->problem().robot()->rootJoint()->name() << endl;
+        //cout << bptr->name() << endl;
+
+    while(1){
+    if (SixDOFMouseDriver::HasMoved()){
+
+        // get transformation from device
+        //cout << "get transfo... inter device thread\n";
+        se3::SE3 trans_temp = SixDOFMouseDriver::getTransformation();
+        //trans_temp.translation()[0] = 8.18;
+        //trans_temp.translation()[1] = 6.7;
+        //trans_temp.translation()[2] = 0.44;
+        //const fcl::Transform3f tr = (*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->getTransform();
+        //trans_temp.translation()[0] = tr.getTranslation()[0];
+        //trans_temp.translation()[1] = tr.getTranslation()[1];
+        //trans_temp.translation()[2] = tr.getTranslation()[2];
+        // apply transformation to the cursor
+        p.applyConfiguration("scene_hpp_/curseur", trans_temp);
+
+        //cout << "config curseur        " <<
+        //    trans_temp << endl;
+        //    //	(*actual_configuration_ptr_)[0] =
+        //    trans_temp.translation()[0] << " " <<
+            //		(*actual_configuration_ptr_)[1] =
+        //    trans_temp.translation()[1] << " " <<
+            //		(*actual_configuration_ptr_)[2] =
+        //    trans_temp.translation()[2] << endl;
+
+        //					setActConf(0, trans_temp.translation()[0]);
+        //					setActConf(1, trans_temp.translation()[1]);
+        //					setActConf(2, trans_temp.translation()[2]);
+
+        // save current transformation in the planner's memory
+        (*Planner::actual_configuration_ptr_)[0] =
+                        trans_temp.translation()[0];
+        (*Planner::actual_configuration_ptr_)[1] =
+                        trans_temp.translation()[1];
+        (*Planner::actual_configuration_ptr_)[2] =
+                        trans_temp.translation()[2];
+
+        //Eigen::Matrix3f a(trans_temp.rotation()); // TODO rotations
+        //			Eigen::Quaternionf q(a);
+        //			Eigen::Quaternionf q(fcl::Quaternion3f::toRotation(trans_temp.rotation()));
+        //				std::cout << "mat " << a << std::endl;
+        //				std::cout << "quat " << q.norm() << " " << q.x() << " " << q.y() << " " << q.z() << " " << std::endl;
+        //				(*Planner::actual_configuration_ptr_)[3] = q.norm();
+        //				(*Planner::actual_configuration_ptr_)[4] = q.x();
+        //				(*Planner::actual_configuration_ptr_)[5] = q.y();
+        //				(*Planner::actual_configuration_ptr_)[6] = q.z();
+
+
+        // using solveanddisplay relaunches planner -> anti core dump protection
+        if (nb_launchs<2){
+    //*
+    // méthode 2 (et propre) et identique en résultats
+    //PathValidationPtr_t pV2 = arg_->problem().pathValidation();
+    //hpp::core::ObjectVector_t liste = arg_->problem().collisionObstacles();
+    //cout << "\nméthode 2, liste des éléments ";
+    //int i=0;
+    //for (hpp::core::ObjectVector_t::iterator it = liste.begin(); it != liste.end(); ++it){
+        //i++;
+        //cout << "itération " << i << endl;
+
+    // virtual bool currentConfiguration (ConfigurationIn_t configuration)
+
+
+    //*
+
+    // caler le robot au niveau du curseur
+    robot_mutex_.lock();
+    register hpp::model::Configuration_t sauv = arg_->problem().robot()->currentConfiguration();
+    hpp::model::Configuration_t in = sauv;
+    in[0] = trans_temp.translation()[0];
+    in[1] = trans_temp.translation()[1];
+    in[2] = trans_temp.translation()[2];
+    hpp::model::ConfigurationIn_t in_t(in);
+    arg_->problem().robot()->currentConfiguration(in_t);
+    arg_->problem().robot()->computeForwardKinematics();
+    /*
+    cout << " robot " <<
+            (*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->name() << " tr "
+            << (*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->getTransform().getTranslation()
+            << endl;
+    //*/
+
+    o2 = *(*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->fcl();
+    //*o2ptr = *(*this->problem().robot()->objectIterator(hpp::model::COLLISION))->fcl();
+
+    // set the distance request structure, here we just use the default setting
+    fcl::DistanceRequest request(true, 0, 0, fcl::GST_INDEP);
+    // result will be returned via the collision result structure
+    fcl::DistanceResult result;
+    result.clear();
+    // perform distance test
+    fcl::distance(&o1, &o2, request, result);
+
+    // remettre le robot là où il était, inutile ?
+    //arg_->problem().robot()->currentConfiguration(sauv);
+    //arg_->problem().robot()->computeForwardKinematics();
+    robot_mutex_.unlock();
+    // //////////////////////////////////////////////////////////////////
+
+
+    cout << " dist " << result.min_distance << std::endl;
+
+    // enregistrer les coordonnées des extrémités du segment robot/obstacle
+    graphics::corbaServer::ClientCpp::value_type v_[3] = {
+            (float)result.nearest_points[0][0],
+            (float)result.nearest_points[0][1],
+            (float)result.nearest_points[0][2]};
+    graphics::corbaServer::ClientCpp::value_type w_[3] = {
+            (float)result.nearest_points[1][0],
+            (float)result.nearest_points[1][1],
+            (float)result.nearest_points[1][2]};
+
+    const graphics::corbaServer::ClientCpp::value_type* v = &v_[0];
+    const graphics::corbaServer::ClientCpp::value_type* w = &w_[0];
+
+
+    // afficher des lignes
+    string nom_ligne = "scene_hpp_/ligne";
+    string ind = boost::lexical_cast<std::string>(index_lignes);
+    nom_ligne += ind;
+    if (index_lignes > 0){
+        //cout << "index " << index_lignes << " obj à cacher " << nom_ligne << endl;
+        p.setVisibility(nom_ligne.c_str(), "OFF");
+        string axe = nom_ligne +='a';
+        p.setVisibility(axe.c_str(), "OFF");
+        axe = nom_ligne +='b';
+        p.setVisibility(axe.c_str(), "OFF");
+    }
+    index_lignes++;
+    nom_ligne = "scene_hpp_/ligne";
+    ind = boost::lexical_cast<std::string>(index_lignes);
+    nom_ligne += ind;
+    p.addLine(nom_ligne.c_str(), v, w, &color[0]);
+
+
+    //* algorithme de GRAM-SCHMIDT
+    if (result.min_distance != -1){
+        arg_->exist_obstacle_ = true;
+
+        // distance du centre de l'objet à sa surface
+        if (distance_mutex_.try_lock())
+        {
+            distance_ = sqrt(
+                    pow((float)result.nearest_points[1][0] - trans_temp.translation()[0], 2) +
+                    pow((float)result.nearest_points[1][1] - trans_temp.translation()[1], 2) +
+                    pow((float)result.nearest_points[1][2] - trans_temp.translation()[2], 2));
+            distance_mutex_.unlock();
+            std::cout << "distance centre/surf " << distance_ << std::endl;
+            std::cout << " pt0 " << result.nearest_points[0] <<
+                         " pt1 " << result.nearest_points[1] <<
+                         //" \ntranslation " << trans_temp.translation() <<
+                         std::endl;
+        }
+
+
+        Mat33f A;
+
+        // normale<
+        A.col[0] = Vec3f(w[0]-v[0], w[1]-v[1], w[2]-v[2]);
+
+        // vecteur aléatoire 1
+        double rando1 = rand(), rando2 = rand(), rando3 = rand();
+        rando1 = rando1 / RAND_MAX; rando2 = rando2 / RAND_MAX; rando3 = rando3 / RAND_MAX;
+        A.col[1] = Vec3f((float)rando1,(float)rando2, (float)rando3);
+
+        // vecteur aléatoire 2
+        rando1 = rand(); rando2 = rand(); rando3 = rand();
+        rando1 = rando1 / RAND_MAX; rando2 = rando2 / RAND_MAX; rando3 = rando3 / RAND_MAX;
+        A.col[2] = Vec3f((float)rando1,(float)rando2, (float)rando3);
+
+        //print_mat("A", A);
+
+        // la matrice pendant le mode contact pour rester sur le même plan
+        if (!Planner::mode_contact_)
+            modified_gram_schmidt(MGS, A);
+            //print_mat("MGS", MGS);
+
+        // afficher les deux axes manquants du repère
+        w_[0] = v[0] + MGS.col[1].v[0];
+        w_[1] = v[1] + MGS.col[1].v[1];
+        w_[2] = v[2] + MGS.col[1].v[2];
+        string axe = nom_ligne +='a';
+        p.addLine(axe.c_str(), v, w, &color[0]);
+        w_[0] = v[0] + MGS.col[2].v[0];
+        w_[1] = v[1] + MGS.col[2].v[1];
+        w_[2] = v[2] + MGS.col[2].v[2];
+        axe = nom_ligne +='b';
+        p.addLine(axe.c_str(), v, w, &color[0]);
+
+
+
+        //cout << "d=" << result.min_distance << " \n";//<< std::endl;
+        if (result.min_distance<0.15 && !Planner::mode_contact_){
+        //if (0){
+            cout << "distance inférieure à 0.15" << std::endl;
+            //std::cout << " pt0 " << result.nearest_points[0] <<
+            //             " pt1 " << result.nearest_points[1] << std::endl;
+
+            //org_mutex_.lock();
+
+            // sur l'obstacle
+            org_ = result.nearest_points[0];
+            //org_mutex_.unlock();
+
+            // sur le robot
+            obj_ = result.nearest_points[1];
+
+            Planner::mode_contact_ = true;
+            Planner::iteration_ = 0;
+        }
+
+    }// fin gram schmidt//*/
+
+//}// fin for paires de collision
+
+        } // fin nb launch
+        //*/
+
+        // show modifications on screen
+        p.refresh();
+
+        }// fin if has_moved_
+        }// fin while(1)
+    }
+    // //////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+    /*
+     *
+     */
+    void Planner::oneStep ()
+    {
+        static int i;
+        typedef boost::tuple <NodePtr_t, ConfigurationPtr_t, PathPtr_t>	DelayedEdge_t;
+        typedef std::vector <DelayedEdge_t> DelayedEdges_t;
+
+
+        robot_mutex_.lock();
+
+        DelayedEdges_t delayedEdges;
+        DevicePtr_t robot (problem ().robot ());
+
+        /*
+        cout << i++ << " robot dans one step" <<
+                (*this->problem().robot()->objectIterator(hpp::model::COLLISION))->name() << " tr "
+                << (*this->problem().robot()->objectIterator(hpp::model::COLLISION))->getTransform().getTranslation()
+                << endl;
+        //*/
+
+        PathValidationPtr_t pathValidation (problem ().pathValidation ());
+        Nodes_t newNodes;
+        PathPtr_t validPath, path;
+        // Pick a random node
+        ConfigurationPtr_t q_rand = configurationShooter_->shoot ();
+
+
+        // TODO pour rotation des bornes
+        //*
+        std::cout << "joint bounds " <<
+                     this->problem().robot()->rootJoint()->lowerBound(0) << " " <<
+                     this->problem().robot()->rootJoint()->upperBound(0) << " " <<
+                     this->problem().robot()->rootJoint()->lowerBound(1) << " " <<
+                     this->problem().robot()->rootJoint()->upperBound(1) << " " <<
+                     this->problem().robot()->rootJoint()->lowerBound(2) << " " <<
+                     this->problem().robot()->rootJoint()->upperBound(2) << " " <<
+        std::endl;
+        //*/
+
+
+        //*
         // ////////////////////////////////////////////////////////////////////////////
         // decide whether to keep a random config or choose manual configuration from device
         double rando = rand();
@@ -494,7 +613,9 @@ namespace hpp {
         // keep random config
         if ( (rando < Planner::random_prob_) || (Planner::mode_contact_) ) // todo : ce serait pas un peu casse gueule cette condition ?
         {
+            //if (0){
             if (Planner::mode_contact_){
+                distance_mutex_.try_lock();
                 cout << "mode contact " << Planner::iteration_ << std::endl;
 
                 Matrix3 rot;
@@ -511,8 +632,17 @@ namespace hpp {
                 Vector3 val(0, (float)(*q_rand)[0], (float)(*q_rand)[2]);
                 //cout << "rot " << rot << endl;
                 //cout << "val " << val.transpose() << endl;
-                Vector3 org((float)org_[0],(float)org_[1]-0.2,(float)org_[2]);
-                //cout << "org " << org.transpose() << endl;
+                std::cout << "one step distance centre/surf " << distance_ << std::endl;
+
+                cout << "org " << org_[1] << " obj " << obj_[1]
+                     << " signe org-obj " << signe(org_[1]-obj_[1]) << endl;
+                //org_mutex_.try_lock(); // ce mutex est devenu inutile, à enlever
+                Vector3 org(
+                    (float)org_[0]+signe(obj_[0]-org_[0])*distance_,
+                    (float)org_[1]+signe(obj_[1]-org_[1])*distance_,
+                    (float)org_[2]+signe(obj_[2]-org_[2])*distance_
+                );
+                cout << "org " << org.transpose() << endl;
                 val = rot.transpose()*val + org;
                 cout << "nouveau val " << val.transpose() << endl;
                 (*q_rand)[0] = val[0];
@@ -520,8 +650,11 @@ namespace hpp {
                 (*q_rand)[2] = val[2];
 
                 Planner::iteration_++;
-                if(Planner::iteration_ == 10)
+                if(Planner::iteration_ == 10){
                     Planner::mode_contact_ = false;
+                    distance_mutex_.unlock();
+                    //org_mutex_.unlock();
+                }
             }
             else cout << "pas contact\n";
         }
@@ -531,21 +664,21 @@ namespace hpp {
             //mutex_.unlock();
         }
         // ////////////////////////////////////////////////////////////////////////////
-
+        //*/
 
         //
-		// First extend each connected component toward q_rand
-		//
-		for (ConnectedComponents_t::const_iterator itcc =
-			roadmap ()->connectedComponents ().begin ();
-			itcc != roadmap ()->connectedComponents ().end (); ++itcc) {
-			
-			// Find nearest node in roadmap
+        // First extend ake ins each connected component toward q_rand
+        //
+        for (ConnectedComponents_t::const_iterator itcc =
+            roadmap ()->connectedComponents ().begin ();
+            itcc != roadmap ()->connectedComponents ().end (); ++itcc) {
+
+            // Find nearest node in roadmap
             value_type distance;
 
-			NodePtr_t near = roadmap ()->nearestNode (q_rand, *itcc, distance);
-			path = extend (near, q_rand);
-			if (path) {
+            NodePtr_t near = roadmap ()->nearestNode (q_rand, *itcc, distance);
+            path = extend (near, q_rand);
+            if (path) {
                 //bool pathValid = pathValidation->validate (path, true, validPath);
                 bool pathValid = pathValidation->validate (path, false, validPath); // ancienne version
 
@@ -562,110 +695,107 @@ namespace hpp {
                         delayedEdges.push_back (DelayedEdge_t (near, q_new, validPath));
                     }
                 }
-			}
+            }
         }
-		// Insert delayed edges
-		for (DelayedEdges_t::const_iterator itEdge = delayedEdges.begin ();
-										itEdge != delayedEdges.end (); ++itEdge) {
-			const NodePtr_t& near = itEdge-> get <0> ();
-			const ConfigurationPtr_t& q_new = itEdge-> get <1> ();
-			const PathPtr_t& validPath = itEdge-> get <2> ();
-			NodePtr_t newNode = roadmap ()->addNode (q_new);
-			roadmap ()->addEdge (near, newNode, validPath);
-			interval_t timeRange = validPath->timeRange ();
-			roadmap ()->addEdge (newNode, near, 
-				validPath->extract (interval_t (timeRange.second , timeRange.first)));
-		}
+        // Insert delayed edges
+        for (DelayedEdges_t::const_iterator itEdge = delayedEdges.begin ();
+                                        itEdge != delayedEdges.end (); ++itEdge) {
+            const NodePtr_t& near = itEdge-> get <0> ();
+            const ConfigurationPtr_t& q_new = itEdge-> get <1> ();
+            const PathPtr_t& validPath = itEdge-> get <2> ();
+            NodePtr_t newNode = roadmap ()->addNode (q_new);
+            roadmap ()->addEdge (near, newNode, validPath);
+            interval_t timeRange = validPath->timeRange ();
+            roadmap ()->addEdge (newNode, near,
+                validPath->extract (interval_t (timeRange.second , timeRange.first)));
+        }
 
-		//
-		// Second, try to connect new nodes together
-		//
-		const SteeringMethodPtr_t& sm (problem ().steeringMethod ());
-		for (Nodes_t::const_iterator itn1 = newNodes.begin ();
-				itn1 != newNodes.end (); ++itn1) {
-			for (Nodes_t::const_iterator itn2 = boost::next (itn1);
-					itn2 != newNodes.end (); ++itn2) {
-				ConfigurationPtr_t q1 ((*itn1)->configuration ());
-				ConfigurationPtr_t q2 ((*itn2)->configuration ());
-				assert (*q1 != *q2);
-				path = (*sm) (*q1, *q2);
-				if (path && pathValidation->validate (path, false, validPath)) {
-					roadmap ()->addEdge (*itn1, *itn2, path);
-					interval_t timeRange = path->timeRange ();
-					roadmap ()->addEdge (*itn2, *itn1, 
-						path->extract(interval_t (timeRange.second, timeRange.first)));
-				}
-			}
-		}
+        //
+        // Second, try to connect new nodes together
+        //
+        const SteeringMethodPtr_t& sm (problem ().steeringMethod ());
+        for (Nodes_t::const_iterator itn1 = newNodes.begin ();
+                itn1 != newNodes.end (); ++itn1) {
+            for (Nodes_t::const_iterator itn2 = boost::next (itn1);
+                    itn2 != newNodes.end (); ++itn2) {
+                ConfigurationPtr_t q1 ((*itn1)->configuration ());
+                ConfigurationPtr_t q2 ((*itn2)->configuration ());
+                assert (*q1 != *q2);
+                path = (*sm) (*q1, *q2);
+                if (path && pathValidation->validate (path, false, validPath)) {
+                    roadmap ()->addEdge (*itn1, *itn2, path);
+                    interval_t timeRange = path->timeRange ();
+                    roadmap ()->addEdge (*itn2, *itn1,
+                        path->extract(interval_t (timeRange.second, timeRange.first)));
+                }
+            }
+        }
 
-	}
-
-
-	PlannerPtr_t Planner::create (const Problem& problem)
-	{
-		Planner* ptr = new Planner (problem);
-		return PlannerPtr_t (ptr);
-	}
-
-	Planner::Planner (const Problem& problem):
-		PathPlanner (problem),
-		configurationShooter_ (new BasicConfigurationShooter (problem.robot ())),
-		qProj_ (problem.robot ()->configSize ())
-	{
-	}
+    robot_mutex_.unlock();
+    }
 
 
 
-	void Planner::init (const PlannerWkPtr_t& weak)
-	{
-		PathPlanner::init (weak);
-		weakPtr_ = weak;
-	}
+    Planner::Planner (const Problem& problem):
+        PathPlanner (problem),
+        //configurationShooter_ (new BasicConfigurationShooter (problem.robot ())),
+        configurationShooter_ (BasicConfigurationShooter::create (problem.robot ())),
+        qProj_ (problem.robot ()->configSize ())
+    {
+    }
 
 
 
-	bool belongs (const ConfigurationPtr_t& q, const Nodes_t& nodes)
-	{
-		for (Nodes_t::const_iterator itNode = nodes.begin ();
-				itNode != nodes.end (); ++itNode) {
-			if (*((*itNode)->configuration ()) == *q) return true;
-		}
-		return false;
-	}
-
-	PathPtr_t Planner::extend (const NodePtr_t& near,
-		const ConfigurationPtr_t& target)
-	{
-		const SteeringMethodPtr_t& sm (problem ().steeringMethod ());
-		const ConstraintSetPtr_t& constraints (sm->constraints ());
-		if (constraints) {
-			ConfigProjectorPtr_t configProjector (constraints->configProjector ());
-			if (configProjector) {
-				configProjector->projectOnKernel (
-					*(near->configuration ()), *target,	qProj_);
-			} else {
-				qProj_ = *target;
-			}
-			if (constraints->apply (qProj_)) {
-				return (*sm) (*(near->configuration ()), qProj_);
-			} else {
-				return PathPtr_t ();
-			}
-		}
-		return (*sm) (*(near->configuration ()), *target);
-		//#aorthey owns your code _°°°_ 
-	}
+    void Planner::init (const PlannerWkPtr_t& weak)
+    {
+        PathPlanner::init (weak);
+        weakPtr_ = weak;
+    }
 
 
 
-	void Planner::configurationShooter
-		(const ConfigurationShooterPtr_t& shooter)
-		{
-			configurationShooter_ = shooter;
-		}
+    bool belongs (const ConfigurationPtr_t& q, const Nodes_t& nodes)
+    {
+        for (Nodes_t::const_iterator itNode = nodes.begin ();
+                itNode != nodes.end (); ++itNode) {
+            if (*((*itNode)->configuration ()) == *q) return true;
+        }
+        return false;
+    }
+
+    PathPtr_t Planner::extend (const NodePtr_t& near,
+        const ConfigurationPtr_t& target)
+    {
+        const SteeringMethodPtr_t& sm (problem ().steeringMethod ());
+        const ConstraintSetPtr_t& constraints (sm->constraints ());
+        if (constraints) {
+            ConfigProjectorPtr_t configProjector (constraints->configProjector ());
+            if (configProjector) {
+                configProjector->projectOnKernel (
+                    *(near->configuration ()), *target,	qProj_);
+            } else {
+                qProj_ = *target;
+            }
+            if (constraints->apply (qProj_)) {
+                return (*sm) (*(near->configuration ()), qProj_);
+            } else {
+                return PathPtr_t ();
+            }
+        }
+        return (*sm) (*(near->configuration ()), *target);
+        //#aorthey owns your code _°°°_
+    }
 
 
-	} // namespace interactive
+
+    void Planner::configurationShooter
+        (const ConfigurationShooterPtr_t& shooter)
+        {
+            configurationShooter_ = shooter;
+        }
+
+
+    } // namespace interactive
 } // namespace hpp
 
 
@@ -694,8 +824,6 @@ p.applyConfiguration(nom.c_str(), conf);
 p.refresh();
 //*/
 
-
-
 /*
 // méthode 2 (et propre) et identique en résultats
 PathValidationPtr_t pV2 = arg_->problem().pathValidation();
@@ -714,3 +842,54 @@ for (hpp::core::ObjectVector_t::iterator it = liste.begin(); it != liste.end(); 
     cout << " dist " << res.min_distance << std::endl;
 }
 //*/
+
+
+/*/ méthode 1 et plantoire
+// root joint car robot monodimensionnel
+hpp::model::CollisionObjectPtr_t robot_geom_ptr =
+        *(arg_->problem().robot()->rootJoint()->linkedBody()->innerObjects
+            (hpp::model::COLLISION).begin());
+fcl::CollisionObject o1 = *robot_geom_ptr->fcl();
+
+fcl::CollisionObject o2 = o1;
+
+// const core::ObjectVector_t& lst = arg_->problem().collisionObstacles();
+// begin car un seul obstacle
+hpp::model::CollisionObjectPtr_t obst_geom_ptr =
+        *(arg_->problem().collisionObstacles().begin());
+fcl::CollisionObject o2 = *obst_geom_ptr->fcl();
+
+//*/
+
+//            PathValidationPtr_t pV = (arg_->problem().pathValidation());
+//            core::DiscretizedCollisionChecking* DCC = (core::DiscretizedCollisionChecking*)(&*pV);
+//            core::CollisionValidation* cV = (core::CollisionValidation*)(&*DCC->getConfigValid());
+//            core::CollisionPairs_t cP = cV->getCollisionPairs();
+
+            //
+
+            //int index_paires=-1;
+            //for (core::CollisionPairs_t::const_iterator itCol = cP.begin ();
+            // itCol != cP.end (); ++itCol){
+
+            // pas de boucle car un seul obstacle
+            //{
+                //core::CollisionPair_t paire = *itCol;
+
+                // Given two objects o1 and o2
+                //fcl::CollisionObject* o1 = paire.first->fcl().get();
+                //fcl::CollisionObject* o2 = paire.second->fcl().get();
+                //cout << "obj1 " << o1->getTranslation() << "\t";
+                //cout << "obj2 " << o2->getTranslation() << "\t";
+
+
+                // cout bla bla
+                //std::cout << "test paires collision n°" << ++index_paires << " ";
+                //std::cout << paire.first->name() << " " << paire.second->name() ;
+                //cout << (result.min_distance == -1 ? "\t" : "");
+                //std::cout << " dist=" << result.min_distance << std::endl;
+
+
+
+
+                //double (*rep)[3] = arg_->repere_local_;
