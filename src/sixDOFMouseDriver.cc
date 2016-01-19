@@ -82,7 +82,7 @@ inline se3::SE3::Matrix3 operatorHat(const se3::SE3::Vector3& v){
 	return m;
 }
 
-void SixDOFMouseDriver::MouseInit()
+void SixDOFMouseDriver::MouseInit(double* bounds)
 {
 	struct udev *udev;
 	struct udev_enumerate *enumerate;
@@ -110,7 +110,7 @@ void SixDOFMouseDriver::MouseInit()
 	// TODO
 	/*   Open the Device with non-blocking reads. In real life,
 	 *         don't use a hard coded path; use libudev instead. */
-    fd_ = open("/dev/hidraw0", O_RDONLY);
+    fd_ = open("/dev/hidraw1", O_RDONLY);
 
 	if (fd_ < 0) {
 		perror("Unable to open interactive device");
@@ -125,16 +125,24 @@ void SixDOFMouseDriver::MouseInit()
 
 	transformation_.rotation().setIdentity();
 	// execute thread 
-	void* arg = 0;
+    //void* arg = 0;
 	SixDOFMouseDriver::interactiveDeviceThread_ = 
-		new boost::thread(boost::thread(SixDOFMouseDriver::ReadMouse, arg));
+        new boost::thread(boost::thread(SixDOFMouseDriver::ReadMouse, bounds));
 
 }
 
 // read interactice device thread function
-void SixDOFMouseDriver::ReadMouse(void* arg)
+void SixDOFMouseDriver::ReadMouse(double* bounds_)
 {
 	se3::SE3::Vector3 pos, rot, axei, local, temp;
+    double bounds[6];
+
+    //*
+
+    for (int i=0; i<6; i++)
+        bounds[i] = bounds_[i];
+
+    //*/
 
 	// infinite loop
 	while (1){
@@ -149,10 +157,16 @@ void SixDOFMouseDriver::ReadMouse(void* arg)
 		pos[1] = (float) SixDOFMouseDriver::deviceValuesNormalized_[1]/divideFactor;
 		pos[2] = (float) -SixDOFMouseDriver::deviceValuesNormalized_[2]/divideFactor;
 		
-		// limits for maze problem TODO to remove ----------------
-        //if (pos[2]+transformation_.translation()[2]<0) pos[2] = 0;
-        //if (pos[2]+transformation_.translation()[2]>1) pos[2] = 0;
+        //*
+        // bounds limits ---------------- TODO : provoque un effet de bords avec les rotations
+        if (pos[0]+transformation_.translation()[0]<bounds[0]) pos[0] = 0;
+        if (pos[0]+transformation_.translation()[0]>bounds[1]) pos[0] = 0;
+        if (pos[1]+transformation_.translation()[1]<bounds[2]) pos[1] = 0;
+        if (pos[1]+transformation_.translation()[1]>bounds[3]) pos[1] = 0;
+        if (pos[2]+transformation_.translation()[2]<bounds[4]) pos[2] = 0;
+        if (pos[2]+transformation_.translation()[2]>bounds[5]) pos[2] = 0;
 		// -------------------------------------------------------
+        //*/
 
 		se3::SE3 temp_trans = transformation_;
 		temp_trans.translation(pos + transformation_.translation());
@@ -254,9 +268,9 @@ void SixDOFMouseDriver::getData()
 //	for (int i = 3; i<6; ++i) 
 //		std::cout << SixDOFMouseDriver::deviceValues_[i] << " ";
 //	std::cout << std::endl;
-//	printf("float values\n");
-//	for (int  i = 3; i<6; ++i) 
-//		std::cout << SixDOFMouseDriver::deviceValuesNormalized_[i] << ";";
-//	std::cout << std::endl;
+//    printf("float values\n");
+//    for (int  i = 1; i<6; ++i)
+//        std::cout << SixDOFMouseDriver::deviceValuesNormalized_[i] << ";";
+//    std::cout << std::endl;
 
 }

@@ -28,7 +28,7 @@ class SixDOFMouseDriver{
 	public :
 		SixDOFMouseDriver();
 		// to call for init
-		static void MouseInit();
+        static void MouseInit(double* bounds);
 		// blocking if no data
 		static const se3::SE3& getTransformation();
 		// return false before first data
@@ -40,7 +40,7 @@ class SixDOFMouseDriver{
 	
 	private :
 		static void getData();
-		static void ReadMouse(void* arg);
+        static void ReadMouse(double* bounds);
 		
 		static int fd_; // hid file descriptor
 		static boost::thread* interactiveDeviceThread_;			

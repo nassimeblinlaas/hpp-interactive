@@ -113,6 +113,7 @@ namespace hpp {
     // global variables
     short int nb_launchs = 0; // solve and display relance le planneur qui plante à cause du device
     graphics::corbaServer::ClientCpp p; // deprecated but used to show cursor
+    graphics::corbaServer::Client client(0, NULL);
     fcl::Vec3f org_;    // origine du point de référence pour gram schmidt
     //boost::mutex org_mutex_; // mutex de l'org
     fcl::Vec3f obj_;    // point de l'objete plus proche de l'obstacle
@@ -210,6 +211,15 @@ namespace hpp {
         return ret;
     }
 
+    void euler2Quat(float psi, float theta, float phi, float* quat){
+        psi/=2; theta/=2; phi/=2;
+
+        quat[0] = cos(psi) * cos(theta) * cos(phi) + sin(psi) * sin(theta) * sin(phi);
+        quat[1] = sin(psi) * cos(theta) * cos(phi) - cos(psi) * sin(theta) * sin(phi);
+        quat[2] = cos(psi) * sin(theta) * cos(phi) + sin(psi) * cos(theta) * sin(phi);
+        quat[3] = cos(psi) * cos(theta) * sin(phi) - sin(psi) * sin(theta) * cos(phi);
+    }
+
     short int signe (double x) {
         return ((x < 0) ? -1 : 1);
     }
@@ -254,6 +264,7 @@ namespace hpp {
             (*config)[3] = 1;
             (*config)[4] = 0;
             (*config)[5] = 0;
+
             (*config)[6] = 0;
 
             Planner::actual_configuration_ptr_ = config;
@@ -267,15 +278,24 @@ namespace hpp {
             color[0] = 1;	color[1] = 1;	color[2] = 1;	color[3] = 1.;
 
             p.addBox ("scene_hpp_/curseur", f/10,f/10,f/10, color);
-            p.addLandmark("scene_hpp_/curseur", 1.);
             p.addSceneToWindow ("scene_hpp_", 0);
+            client.connect();
 
-            //this->problem().robot()->name();
+            client.gui()->addLandmark("scene_hpp_/curseur", 1.);
 
 
             //ConfigurationPtr_t q_rand = configurationShooter_->shoot (); // décale le rand initial
-            SixDOFMouseDriver::MouseInit();
-            //int * arg;
+
+
+            double bounds[6] = {
+                this->problem().robot()->rootJoint()->lowerBound(0),
+                this->problem().robot()->rootJoint()->upperBound(0),
+                this->problem().robot()->rootJoint()->lowerBound(1),
+                this->problem().robot()->rootJoint()->upperBound(1),
+                this->problem().robot()->rootJoint()->lowerBound(2),
+                this->problem().robot()->rootJoint()->upperBound(2)
+            };
+            SixDOFMouseDriver::MouseInit(bounds);
 
             boost::thread th(&InteractiveDeviceThread, this);
 
@@ -289,41 +309,80 @@ namespace hpp {
 
         gepetto::corbaserver::Color color, color_rouge;
         color[0] = 1;	color[1] = 1;	color[2] = 1;	color[3] = 1.;
-        color_rouge[0]=1;color_rouge[1]=1;color_rouge[2]=0;color_rouge[3]=0;
+        color_rouge[0]=1;color_rouge[1]=0.2;color_rouge[2]=0;color_rouge[3]=1;
 
         int index_lignes = 0;
 
-        hpp::core::ObjectVector_t liste = arg_->problem().collisionObstacles();
-        hpp::core::ObjectVector_t::iterator it = liste.begin();
-
-
-        // ///////////////////
+        // ///////////////////////////////////////////////////////////////
         // bornes du problème
         // TODO pour rotation des bornes
-        /*
+        //*
         std::cout << "joint bounds " <<
-                     this->problem().robot()->rootJoint()->lowerBound(0) << " " <<
-                     this->problem().robot()->rootJoint()->upperBound(0) << " " <<
-                     this->problem().robot()->rootJoint()->lowerBound(1) << " " <<
-                     this->problem().robot()->rootJoint()->upperBound(1) << " " <<
-                     this->problem().robot()->rootJoint()->lowerBound(2) << " " <<
-                     this->problem().robot()->rootJoint()->upperBound(2) << " " <<
+                     arg_->problem().robot()->rootJoint()->lowerBound(0) << " " <<
+                     arg_->problem().robot()->rootJoint()->upperBound(0) << " " <<
+                     arg_->problem().robot()->rootJoint()->lowerBound(1) << " " <<
+                     arg_->problem().robot()->rootJoint()->upperBound(1) << " " <<
+                     arg_->problem().robot()->rootJoint()->lowerBound(2) << " " <<
+                     arg_->problem().robot()->rootJoint()->upperBound(2) << " " <<
         std::endl;
 
-        p.addLine("borne1", v, w, &color[0]);
+        double mx = arg_->problem().robot()->rootJoint()->lowerBound(0);
+        double my = arg_->problem().robot()->rootJoint()->lowerBound(1);
+        double mz = arg_->problem().robot()->rootJoint()->lowerBound(2);
+        double Mx = arg_->problem().robot()->rootJoint()->upperBound(0);
+        double My = arg_->problem().robot()->rootJoint()->upperBound(1);
+        double Mz = arg_->problem().robot()->rootJoint()->upperBound(2);
+
+        graphics::corbaServer::ClientCpp::value_type A[3] = {(float)mx, (float)my, (float)mz};
+        graphics::corbaServer::ClientCpp::value_type B[3] = {(float)Mx, (float)my, (float)mz};
+        graphics::corbaServer::ClientCpp::value_type C[3] = {(float)Mx, (float)My, (float)mz};
+        graphics::corbaServer::ClientCpp::value_type D[3] = {(float)mx, (float)My, (float)mz};
+        graphics::corbaServer::ClientCpp::value_type E[3] = {(float)mx, (float)my, (float)Mz};
+        graphics::corbaServer::ClientCpp::value_type F[3] = {(float)Mx, (float)my, (float)Mz};
+        graphics::corbaServer::ClientCpp::value_type G[3] = {(float)Mx, (float)My, (float)Mz};
+        graphics::corbaServer::ClientCpp::value_type H[3] = {(float)mx, (float)My, (float)Mz};
+
+        graphics::corbaServer::ClientCpp::value_type *A_ = &A[0];
+        graphics::corbaServer::ClientCpp::value_type *B_ = &B[0];
+        graphics::corbaServer::ClientCpp::value_type *C_ = &C[0];
+        graphics::corbaServer::ClientCpp::value_type *D_ = &D[0];
+        graphics::corbaServer::ClientCpp::value_type *E_ = &E[0];
+        graphics::corbaServer::ClientCpp::value_type *F_ = &F[0];
+        graphics::corbaServer::ClientCpp::value_type *G_ = &G[0];
+        graphics::corbaServer::ClientCpp::value_type *H_ = &H[0];
+
+        string borne = "scene_hpp_/borne";
+        borne +="i";
+        p.addLine(borne.c_str(), A_, B_, &color_rouge[0]);borne +="i";
+        p.addLine(borne.c_str(), B_, C_, &color_rouge[0]);borne +="i";
+        p.addLine(borne.c_str(), C_, D_, &color_rouge[0]);borne +="i";
+        p.addLine(borne.c_str(), D_, A_, &color_rouge[0]);borne +="i";
+        p.addLine(borne.c_str(), E_, F_, &color_rouge[0]);borne +="i";
+        p.addLine(borne.c_str(), F_, G_, &color_rouge[0]);borne +="i";
+        p.addLine(borne.c_str(), G_, H_, &color_rouge[0]);borne +="i";
+        p.addLine(borne.c_str(), H_, E_, &color_rouge[0]);borne +="i";
+        p.addLine(borne.c_str(), A_, E_, &color_rouge[0]);borne +="i";
+        p.addLine(borne.c_str(), B_, F_, &color_rouge[0]);borne +="i";
+        p.addLine(borne.c_str(), C_, G_, &color_rouge[0]);borne +="i";
+        p.addLine(borne.c_str(), D_, H_, &color_rouge[0]);
+
+        p.refresh();
+
         //*/
         // ///////////////////////////////////////////////////////////////
 
 
 
-
-
+        // Le premier obstacle est choisi pour cacluler la distance
+        hpp::core::ObjectVector_t liste = arg_->problem().collisionObstacles();
+        hpp::core::ObjectVector_t::iterator it = liste.begin();
         cout << " obstacle " << (*it)->name();
         fcl::CollisionObject o1 = *(*it)->fcl();
 
+
         cout << " robot " <<
                 (*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->name() << " tr "
-                << (*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->getTransform()
+                //<< (*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->getTransform()
                 << endl;
         fcl::CollisionObject o2 =
                 *(*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->fcl();
@@ -340,28 +399,35 @@ namespace hpp {
         // get transformation from device
         //cout << "get transfo... inter device thread\n";
         se3::SE3 trans_temp = SixDOFMouseDriver::getTransformation();
-        //trans_temp.translation()[0] = 8.18;
-        //trans_temp.translation()[1] = 6.7;
-        //trans_temp.translation()[2] = 0.44;
-        //const fcl::Transform3f tr = (*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->getTransform();
-        //trans_temp.translation()[0] = tr.getTranslation()[0];
-        //trans_temp.translation()[1] = tr.getTranslation()[1];
-        //trans_temp.translation()[2] = tr.getTranslation()[2];
-        // apply transformation to the cursor
-        p.applyConfiguration("scene_hpp_/curseur", trans_temp);
 
-        //cout << "config curseur        " <<
+        // conversion matrice -> rotation
+        Eigen::Matrix3f mat = trans_temp.rotation();
+        Eigen::Quaternionf quat(mat);
+        ::gepetto::corbaserver::Transform tr;
+        tr[0] = trans_temp.translation()[0];
+        tr[1] = trans_temp.translation()[1];
+        tr[2] = trans_temp.translation()[2];
+        // normaliser quaternion
+        double mag = sqrt(pow(quat.w(),2)+pow(quat.x(),2)+pow(quat.y(),2)+pow(quat.z(),2));
+        tr[3] = quat.w()/mag;
+        tr[4] = quat.x()/mag;
+        tr[5] = quat.y()/mag;
+        tr[6] = quat.z()/mag;
+
+        // afficher le robot
+        //client.gui()->applyConfiguration("scene_hpp_/robot_L", tr);
+        client.gui()->applyConfiguration("scene_hpp_/curseur", tr);
+
+
+        cout << "config curseur        " <<
         //    trans_temp << endl;
         //    //	(*actual_configuration_ptr_)[0] =
-        //    trans_temp.translation()[0] << " " <<
+            trans_temp.translation()[0] << " " <<
             //		(*actual_configuration_ptr_)[1] =
-        //    trans_temp.translation()[1] << " " <<
+            trans_temp.translation()[1] << " " <<
             //		(*actual_configuration_ptr_)[2] =
-        //    trans_temp.translation()[2] << endl;
+            trans_temp.translation()[2] << endl;
 
-        //					setActConf(0, trans_temp.translation()[0]);
-        //					setActConf(1, trans_temp.translation()[1]);
-        //					setActConf(2, trans_temp.translation()[2]);
 
         // save current transformation in the planner's memory
         (*Planner::actual_configuration_ptr_)[0] =
@@ -370,38 +436,19 @@ namespace hpp {
                         trans_temp.translation()[1];
         (*Planner::actual_configuration_ptr_)[2] =
                         trans_temp.translation()[2];
-
-        //Eigen::Matrix3f a(trans_temp.rotation()); // TODO rotations
-        //			Eigen::Quaternionf q(a);
-        //			Eigen::Quaternionf q(fcl::Quaternion3f::toRotation(trans_temp.rotation()));
-        //				std::cout << "mat " << a << std::endl;
-        //				std::cout << "quat " << q.norm() << " " << q.x() << " " << q.y() << " " << q.z() << " " << std::endl;
-        //				(*Planner::actual_configuration_ptr_)[3] = q.norm();
-        //				(*Planner::actual_configuration_ptr_)[4] = q.x();
-        //				(*Planner::actual_configuration_ptr_)[5] = q.y();
-        //				(*Planner::actual_configuration_ptr_)[6] = q.z();
+        (*Planner::actual_configuration_ptr_)[3] = tr[3];
+        (*Planner::actual_configuration_ptr_)[4] = tr[4];
+        (*Planner::actual_configuration_ptr_)[5] = tr[5];
+        (*Planner::actual_configuration_ptr_)[6] = tr[6];
 
 
         // using solveanddisplay relaunches planner -> anti core dump protection
         if (nb_launchs<2){
-    //*
-    // méthode 2 (et propre) et identique en résultats
-    //PathValidationPtr_t pV2 = arg_->problem().pathValidation();
-    //hpp::core::ObjectVector_t liste = arg_->problem().collisionObstacles();
-    //cout << "\nméthode 2, liste des éléments ";
-    //int i=0;
-    //for (hpp::core::ObjectVector_t::iterator it = liste.begin(); it != liste.end(); ++it){
-        //i++;
-        //cout << "itération " << i << endl;
-
-    // virtual bool currentConfiguration (ConfigurationIn_t configuration)
-
 
     //*
-
     // caler le robot au niveau du curseur
     robot_mutex_.lock();
-    register hpp::model::Configuration_t sauv = arg_->problem().robot()->currentConfiguration();
+    hpp::model::Configuration_t sauv = arg_->problem().robot()->currentConfiguration();
     hpp::model::Configuration_t in = sauv;
     in[0] = trans_temp.translation()[0];
     in[1] = trans_temp.translation()[1];
@@ -434,7 +481,7 @@ namespace hpp {
     // //////////////////////////////////////////////////////////////////
 
 
-    cout << " dist " << result.min_distance << std::endl;
+    //cout << " dist " << result.min_distance << std::endl;
 
     // enregistrer les coordonnées des extrémités du segment robot/obstacle
     graphics::corbaServer::ClientCpp::value_type v_[3] = {
@@ -454,6 +501,7 @@ namespace hpp {
     string nom_ligne = "scene_hpp_/ligne";
     string ind = boost::lexical_cast<std::string>(index_lignes);
     nom_ligne += ind;
+    //*
     if (index_lignes > 0){
         //cout << "index " << index_lignes << " obj à cacher " << nom_ligne << endl;
         p.setVisibility(nom_ligne.c_str(), "OFF");
@@ -462,6 +510,7 @@ namespace hpp {
         axe = nom_ligne +='b';
         p.setVisibility(axe.c_str(), "OFF");
     }
+    //*/
     index_lignes++;
     nom_ligne = "scene_hpp_/ligne";
     ind = boost::lexical_cast<std::string>(index_lignes);
@@ -481,11 +530,11 @@ namespace hpp {
                     pow((float)result.nearest_points[1][1] - trans_temp.translation()[1], 2) +
                     pow((float)result.nearest_points[1][2] - trans_temp.translation()[2], 2));
             distance_mutex_.unlock();
-            std::cout << "distance centre/surf " << distance_ << std::endl;
-            std::cout << " pt0 " << result.nearest_points[0] <<
-                         " pt1 " << result.nearest_points[1] <<
-                         //" \ntranslation " << trans_temp.translation() <<
-                         std::endl;
+            //std::cout << "distance centre/surf " << distance_ << std::endl;
+            //std::cout << " pt0 " << result.nearest_points[0] <<
+            //             " pt1 " << result.nearest_points[1] <<
+            //              " \ntranslation " << trans_temp.translation() <<
+            //             std::endl;
         }
 
 
@@ -568,10 +617,9 @@ namespace hpp {
      */
     void Planner::oneStep ()
     {
-        static int i;
+        //static int i;
         typedef boost::tuple <NodePtr_t, ConfigurationPtr_t, PathPtr_t>	DelayedEdge_t;
         typedef std::vector <DelayedEdge_t> DelayedEdges_t;
-
 
         robot_mutex_.lock();
 
@@ -593,7 +641,7 @@ namespace hpp {
 
 
         // TODO pour rotation des bornes
-        //*
+        /*
         std::cout << "joint bounds " <<
                      this->problem().robot()->rootJoint()->lowerBound(0) << " " <<
                      this->problem().robot()->rootJoint()->upperBound(0) << " " <<
@@ -634,17 +682,17 @@ namespace hpp {
                 //cout << "val " << val.transpose() << endl;
                 std::cout << "one step distance centre/surf " << distance_ << std::endl;
 
-                cout << "org " << org_[1] << " obj " << obj_[1]
-                     << " signe org-obj " << signe(org_[1]-obj_[1]) << endl;
+                //cout << "org " << org_[1] << " obj " << obj_[1]
+                //     << " signe org-obj " << signe(org_[1]-obj_[1]) << endl;
                 //org_mutex_.try_lock(); // ce mutex est devenu inutile, à enlever
                 Vector3 org(
                     (float)org_[0]+signe(obj_[0]-org_[0])*distance_,
                     (float)org_[1]+signe(obj_[1]-org_[1])*distance_,
                     (float)org_[2]+signe(obj_[2]-org_[2])*distance_
                 );
-                cout << "org " << org.transpose() << endl;
+                //cout << "org " << org.transpose() << endl;
                 val = rot.transpose()*val + org;
-                cout << "nouveau val " << val.transpose() << endl;
+                //cout << "nouveau val " << val.transpose() << endl;
                 (*q_rand)[0] = val[0];
                 (*q_rand)[1] = val[1];
                 (*q_rand)[2] = val[2];
@@ -842,6 +890,18 @@ for (hpp::core::ObjectVector_t::iterator it = liste.begin(); it != liste.end(); 
     cout << " dist " << res.min_distance << std::endl;
 }
 //*/
+
+//*
+// méthode 2 (et propre) et identique en résultats
+//PathValidationPtr_t pV2 = arg_->problem().pathValidation();
+//hpp::core::ObjectVector_t liste = arg_->problem().collisionObstacles();
+//cout << "\nméthode 2, liste des éléments ";
+//int i=0;
+//for (hpp::core::ObjectVector_t::iterator it = liste.begin(); it != liste.end(); ++it){
+    //i++;
+    //cout << "itération " << i << endl;
+
+// virtual bool currentConfiguration (ConfigurationIn_t configuration)
 
 
 /*/ méthode 1 et plantoire
