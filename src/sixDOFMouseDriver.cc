@@ -124,6 +124,9 @@ void SixDOFMouseDriver::MouseInit(double* bounds)
 	SixDOFMouseDriver::angular_speed_ = 20;
 
 	transformation_.rotation().setIdentity();
+    transformation_.translation()[0] = 0;
+    transformation_.translation()[1] = 0;
+    transformation_.translation()[2] = 0;
 	// execute thread 
     //void* arg = 0;
 	SixDOFMouseDriver::interactiveDeviceThread_ = 

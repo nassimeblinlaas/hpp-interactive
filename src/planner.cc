@@ -122,6 +122,12 @@ namespace hpp {
     fcl::CollisionObject* o2ptr;
     boost::mutex robot_mutex_;
 
+    ::Eigen::Vector3f NewMinBounds;
+    ::Eigen::Vector3f NewMaxBounds;
+
+    ::Eigen::Vector3f min;
+    ::Eigen::Vector3f max;
+
 
     // functions
     bool belongs (const ConfigurationPtr_t& q, const Nodes_t& nodes);
@@ -264,7 +270,6 @@ namespace hpp {
             (*config)[3] = 1;
             (*config)[4] = 0;
             (*config)[5] = 0;
-
             (*config)[6] = 0;
 
             Planner::actual_configuration_ptr_ = config;
@@ -315,8 +320,7 @@ namespace hpp {
 
         // ///////////////////////////////////////////////////////////////
         // bornes du problème
-        // TODO pour rotation des bornes
-        //*
+        /*
         std::cout << "joint bounds " <<
                      arg_->problem().robot()->rootJoint()->lowerBound(0) << " " <<
                      arg_->problem().robot()->rootJoint()->upperBound(0) << " " <<
@@ -332,6 +336,9 @@ namespace hpp {
         double Mx = arg_->problem().robot()->rootJoint()->upperBound(0);
         double My = arg_->problem().robot()->rootJoint()->upperBound(1);
         double Mz = arg_->problem().robot()->rootJoint()->upperBound(2);
+
+        min << mx, my, mz;
+        max << Mx, My, Mz;
 
         graphics::corbaServer::ClientCpp::value_type A[3] = {(float)mx, (float)my, (float)mz};
         graphics::corbaServer::ClientCpp::value_type B[3] = {(float)Mx, (float)my, (float)mz};
@@ -572,6 +579,19 @@ namespace hpp {
         axe = nom_ligne +='b';
         p.addLine(axe.c_str(), v, w, &color[0]);
 
+        ::Eigen::Matrix3f MGS_;
+        MGS_ << MGS.col[0].v[0],
+                MGS.col[1].v[0],
+                MGS.col[2].v[0],
+                MGS.col[0].v[1],
+                MGS.col[1].v[1],
+                MGS.col[2].v[1],
+                MGS.col[0].v[2],
+                MGS.col[1].v[2],
+                MGS.col[2].v[2];
+
+        NewMinBounds = MGS_*min;
+        NewMaxBounds = MGS_*max;
 
 
         //cout << "d=" << result.min_distance << " \n";//<< std::endl;
@@ -640,19 +660,6 @@ namespace hpp {
         ConfigurationPtr_t q_rand = configurationShooter_->shoot ();
 
 
-        // TODO pour rotation des bornes
-        /*
-        std::cout << "joint bounds " <<
-                     this->problem().robot()->rootJoint()->lowerBound(0) << " " <<
-                     this->problem().robot()->rootJoint()->upperBound(0) << " " <<
-                     this->problem().robot()->rootJoint()->lowerBound(1) << " " <<
-                     this->problem().robot()->rootJoint()->upperBound(1) << " " <<
-                     this->problem().robot()->rootJoint()->lowerBound(2) << " " <<
-                     this->problem().robot()->rootJoint()->upperBound(2) << " " <<
-        std::endl;
-        //*/
-
-
         //*
         // ////////////////////////////////////////////////////////////////////////////
         // decide whether to keep a random config or choose manual configuration from device
@@ -666,6 +673,16 @@ namespace hpp {
                 distance_mutex_.try_lock();
                 cout << "mode contact " << Planner::iteration_ << std::endl;
 
+                /* // bounds limitations, not working
+                if(Planner::iteration_ == 0){
+                    this->problem().robot()->rootJoint()->lowerBound(0, NewMinBounds[0]);
+                    this->problem().robot()->rootJoint()->upperBound(0, NewMaxBounds[0]);
+                    this->problem().robot()->rootJoint()->lowerBound(1, NewMinBounds[1]);
+                    this->problem().robot()->rootJoint()->upperBound(1, NewMaxBounds[1]);
+                    this->problem().robot()->rootJoint()->lowerBound(2, NewMinBounds[2]);
+                    this->problem().robot()->rootJoint()->upperBound(2, NewMaxBounds[2]);
+                }
+                //*/
                 Matrix3 rot;
                 rot(0,0) = MGS.col[0].v[0];
                 rot(0,1) = MGS.col[0].v[1];
@@ -701,6 +718,16 @@ namespace hpp {
                 if(Planner::iteration_ == 10){
                     Planner::mode_contact_ = false;
                     distance_mutex_.unlock();
+
+                    /* // bounds limitation, not working
+                    this->problem().robot()->rootJoint()->lowerBound(0, min[0]);
+                    this->problem().robot()->rootJoint()->upperBound(0, max[0]);
+                    this->problem().robot()->rootJoint()->lowerBound(1, min[1]);
+                    this->problem().robot()->rootJoint()->upperBound(1, max[1]);
+                    this->problem().robot()->rootJoint()->lowerBound(2, min[2]);
+                    this->problem().robot()->rootJoint()->upperBound(2, max[2]);
+                    //*/
+
                     //org_mutex_.unlock();
                 }
             }
