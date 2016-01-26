@@ -44,6 +44,7 @@
 #include <hpp/core/edge.hh>
 #include <hpp/core/path.hh>
 #include <hpp/core/path-validation.hh>
+#include <hpp/core/path-validation-report.hh>
 #include <hpp/core/problem.hh>
 #include <hpp/core/roadmap.hh>
 #include <hpp/core/steering-method.hh>
@@ -201,18 +202,18 @@ namespace hpp {
     }
 
     // cte fonction semble correcte
-    Matrix3 quat2Mat(float x1, float x2, float x3, float x4){
+    Matrix3 quat2Mat(float x, float y, float z, float w){
         Matrix3 ret;
 
-        ret(0, 0) = 1 - 2*(pow(x3, 2) + pow(x4, 2));
-        ret(0, 1) = 2*x3*x2 - 2*x4*x1;
-        ret(0, 2) = 2*x4*x2 + 2*x3*x1;
-        ret(1, 0) = 2*x3*x2 + 2*x4*x1;
-        ret(1, 1) = 1 - 2*(pow(x2, 2) + pow(x4, 2));
-        ret(1, 2) = 2*x4*x3 - 2*x2*x1;
-        ret(2, 0) = 2*x4*x2 - 2*x3*x1;
-        ret(2, 1) = 2*x4*x3 + 2*x2*x1;
-        ret(2, 2) = 1 - 2*(pow(x2, 2) + 2*pow(x3, 2));
+            ret(0, 0) = 1 - 2*(pow(y, 2) + pow(z, 2));
+                ret(0, 1) = 2*x*y - 2*z*w;
+                    ret(0, 2) = 2*x*z + 2*y*w;
+            ret(1, 0) = 2*x*y + 2*z*w;
+                ret(1, 1) = 1 - 2*(pow(x, 2) + pow(z, 2));
+                    ret(1, 2) = 2*y*z - 2*x*w;
+            ret(2, 0) = 2*x*z - 2*y*w;
+                ret(2, 1) = 2*y*z + 2*x*w;
+                    ret(2, 2) = 1 - 2*(pow(x, 2) + pow(y, 2));
 
         return ret;
     }
@@ -225,6 +226,14 @@ namespace hpp {
         quat[2] = cos(psi) * sin(theta) * cos(phi) + sin(psi) * cos(theta) * sin(phi);
         quat[3] = cos(psi) * cos(theta) * sin(phi) - sin(psi) * sin(theta) * cos(phi);
     }
+
+    // normaliser quaternion
+    void normalizeQuat(float& w, float& x, float& y, float& z){
+        float mag = sqrt(pow(w,2)+pow(x,2)+pow(y,2)+pow(z,2));
+        w = w/mag; x = x/mag; y = y/mag; z = z/mag;
+    }
+
+
 
     short int signe (double x) {
         return ((x < 0) ? -1 : 1);
@@ -287,6 +296,7 @@ namespace hpp {
             client.connect();
 
             client.gui()->addLandmark("scene_hpp_/curseur", 1.);
+            client.gui()->addURDF("scene_hpp_/robot_interactif", "/hpp/src/hpp_tutorial/urdf/robot_L.urdf","");
 
 
             //ConfigurationPtr_t q_rand = configurationShooter_->shoot (); // décale le rand initial
@@ -312,9 +322,9 @@ namespace hpp {
 
         Planner* arg_ = (Planner*) arg;
 
-        gepetto::corbaserver::Color color, color_rouge;
+        gepetto::corbaserver::Color color;
         color[0] = 1;	color[1] = 1;	color[2] = 1;	color[3] = 1.;
-        color_rouge[0]=1;color_rouge[1]=0.2;color_rouge[2]=0;color_rouge[3]=1;
+        //color_rouge[0]=1;color_rouge[1]=0.2;color_rouge[2]=0;color_rouge[3]=1;
 
         int index_lignes = 0;
 
@@ -380,11 +390,8 @@ namespace hpp {
 
 
 
-        // Le premier obstacle est choisi pour cacluler la distance
-        hpp::core::ObjectVector_t liste = arg_->problem().collisionObstacles();
-        hpp::core::ObjectVector_t::iterator it = liste.begin();
-        cout << " obstacle " << (*it)->name();
-        fcl::CollisionObject o1 = *(*it)->fcl();
+
+
 
 
         cout << " robot " <<
@@ -407,7 +414,7 @@ namespace hpp {
         //cout << "get transfo... inter device thread\n";
         se3::SE3 trans_temp = SixDOFMouseDriver::getTransformation();
 
-        // conversion matrice -> rotation
+        // conversion matrice -> quaternion
         Eigen::Matrix3f mat = trans_temp.rotation();
         Eigen::Quaternionf quat(mat);
         ::gepetto::corbaserver::Transform tr;
@@ -416,16 +423,74 @@ namespace hpp {
         tr[2] = trans_temp.translation()[2];
         // normaliser quaternion
         double mag = sqrt(pow(quat.w(),2)+pow(quat.x(),2)+pow(quat.y(),2)+pow(quat.z(),2));
-        tr[3] = quat.w()/mag;
-        tr[4] = quat.x()/mag;
-        tr[5] = quat.y()/mag;
-        tr[6] = quat.z()/mag;
+        tr[3] = (float)quat.w()/(float)mag;
+        tr[4] = (float)quat.x()/(float)mag;
+        tr[5] = (float)quat.y()/(float)mag;
+        tr[6] = (float)quat.z()/(float)mag;
 
         // afficher le robot
         //client.gui()->applyConfiguration("scene_hpp_/robot_L", tr);
+
+        client.gui()->applyConfiguration("scene_hpp_/robot_interactif", tr);
         client.gui()->applyConfiguration("scene_hpp_/curseur", tr);
 
+        unsigned long id = client.gui()->getWindowID("window_hpp_");
 
+
+        gepetto::corbaserver::floatSeq* CamVects;
+        unsigned short int dim = 4;
+        CamVects = new gepetto::corbaserver::floatSeq();
+        CamVects->length(dim);
+        CamVects = client.gui()->getCameraVectors(id, "");
+        CamVects[0] = 0;
+        //float i = CamVects->get_buffer()[0];
+
+        for (int i = 0; i<4; i++) cout << " cm" << i << "=" << CamVects->get_buffer()[i];
+        std::cout << endl;
+
+        Matrix3 camMat = quat2Mat(CamVects->get_buffer()[0],CamVects->get_buffer()[1],
+                CamVects->get_buffer()[2],CamVects->get_buffer()[3]);
+
+
+        /*
+        cout << "matrix:";
+        cout << camMat(0,0)<<" "<< camMat(1,0)<<" "<< camMat(2,0)<<" "<<
+                camMat(0,1)<<" "<< camMat(1,1)<<" "<< camMat(2,1)<<" "<<
+                camMat(0,2)<<" "<< camMat(1,2)<<" "<< camMat(2,2)<<"\n";
+
+
+/*
+Vector3 toNormalize;
+toNormalize = {camMat(0,0), camMat(1,0), camMat(2,0)};
+camMat(0,0)=toNormalize(0);camMat(1,0)=toNormalize(1);camMat(2,0)=toNormalize(2);
+toNormalize = {camMat(0,1), camMat(1,1), camMat(2,1)};
+camMat(0,1)=toNormalize(0);camMat(1,1)=toNormalize(1);camMat(2,1)=toNormalize(2);
+toNormalize = {camMat(0,2), camMat(1,2), camMat(2,2)};
+camMat(0,2)=toNormalize(0);camMat(1,2)=toNormalize(1);camMat(2,2)=toNormalize(2);
+
+        cout << "matrix normalized:";
+        cout << camMat(0,0)<<" "<< camMat(1,0)<<" "<< camMat(2,0)<<" "<<
+                camMat(0,1)<<" "<< camMat(1,1)<<" "<< camMat(2,1)<<" "<<
+                camMat(0,2)<<" "<< camMat(1,2)<<" "<< camMat(2,2)<<"\n";
+        //*/
+
+
+        SixDOFMouseDriver::setCameraVectors(
+
+            camMat(0,0), camMat(0,1), camMat(0,2),
+
+            camMat(1,0), camMat(1,1), camMat(1,2),
+            camMat(2,0), camMat(2,1), camMat(2,2)
+
+
+                    );
+
+        /*normalizeQuat(CamVects->get_buffer()[0],CamVects->get_buffer()[1],
+                CamVects->get_buffer()[2],CamVects->get_buffer()[3]);
+        for (int i = 0; i<4; i++) cout << " ncm" << i << "=" << CamVects->get_buffer()[i];
+        std::cout << endl;*/
+
+        /*
         cout << "config curseur        " <<
         //    trans_temp << endl;
         //    //	(*actual_configuration_ptr_)[0] =
@@ -434,6 +499,7 @@ namespace hpp {
             trans_temp.translation()[1] << " " <<
             //		(*actual_configuration_ptr_)[2] =
             trans_temp.translation()[2] << endl;
+        //*/
 
 
         // save current transformation in the planner's memory
@@ -478,8 +544,33 @@ namespace hpp {
     // result will be returned via the collision result structure
     fcl::DistanceResult result;
     result.clear();
-    // perform distance test
+
+    // Le premier obstacle est choisi pour cacluler la distance
+    hpp::core::ObjectVector_t liste = arg_->problem().collisionObstacles();
+    hpp::core::ObjectVector_t::iterator it = liste.begin();
+
+
+
+
+    fcl::CollisionObject o1 = *(*it)->fcl();
+    hpp::core::ObjectVector_t::iterator it_petit = liste.begin();
+    double min_dist = 999;
+    for (;it!=liste.end();++it){
+        o1 = *(*it)->fcl();
+        fcl::distance(&o1, &o2, request, result);
+        if (result.min_distance<min_dist){
+            it_petit = it;
+            min_dist = result.min_distance;
+        }
+    }
+
+
+    //cout << " obstacle le plus proche" << (*it_petit)->name();
+    o1 = *(*it_petit)->fcl();
     fcl::distance(&o1, &o2, request, result);
+
+
+
 
     // remettre le robot là où il était, inutile ?
     //arg_->problem().robot()->currentConfiguration(sauv);
@@ -653,6 +744,7 @@ namespace hpp {
                 << endl;
         //*/
 
+
         PathValidationPtr_t pathValidation (problem ().pathValidation ());
         Nodes_t newNodes;
         PathPtr_t validPath, path;
@@ -754,8 +846,8 @@ namespace hpp {
             NodePtr_t near = roadmap ()->nearestNode (q_rand, *itcc, distance);
             path = extend (near, q_rand);
             if (path) {
-                //bool pathValid = pathValidation->validate (path, true, validPath);
-                bool pathValid = pathValidation->validate (path, false, validPath); // ancienne version
+                core::PathValidationReportPtr_t report;
+                bool pathValid = pathValidation->validate (path, false, validPath, report);
 
                 // Insert new path to q_near in roadmap
                 value_type t_final = validPath->timeRange ().second;
@@ -797,7 +889,8 @@ namespace hpp {
                 ConfigurationPtr_t q2 ((*itn2)->configuration ());
                 assert (*q1 != *q2);
                 path = (*sm) (*q1, *q2);
-                if (path && pathValidation->validate (path, false, validPath)) {
+                core::PathValidationReportPtr_t report;
+                if (path && pathValidation->validate (path, false, validPath, report)) {
                     roadmap ()->addEdge (*itn1, *itn2, path);
                     interval_t timeRange = path->timeRange ();
                     roadmap ()->addEdge (*itn2, *itn1,

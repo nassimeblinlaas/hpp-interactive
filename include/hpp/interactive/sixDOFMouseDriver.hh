@@ -38,6 +38,10 @@ class SixDOFMouseDriver{
 		static void setAngularSpeed(double sp);
 		static void setRotationThreshold(double th);
 	
+        static void setCameraVectors(float a1, float a2, float a3,
+                                     float b1, float b2, float b3,
+                                     float c1, float c2, float c3);
+
 	private :
 		static void getData();
         static void ReadMouse(double* bounds);
@@ -54,6 +58,8 @@ class SixDOFMouseDriver{
 		static double deviceValuesNormalized_[6]; // normalized data
 		static se3::SE3 transformation_;
 		static bool has_moved_;
+
+        static float cameraVectors_[9];
 };
 
 
