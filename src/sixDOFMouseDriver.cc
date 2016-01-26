@@ -171,13 +171,8 @@ void SixDOFMouseDriver::ReadMouse(double* bounds_)
 		/////////////////////////////////////////////////////////
 		// translation
 		float divideFactor = SixDOFMouseDriver::linear_speed_;// dt
-        /*
-		pos[0] = (float) -SixDOFMouseDriver::deviceValuesNormalized_[0]/divideFactor;
-		pos[1] = (float) SixDOFMouseDriver::deviceValuesNormalized_[1]/divideFactor;
-		pos[2] = (float) -SixDOFMouseDriver::deviceValuesNormalized_[2]/divideFactor;
-        /*/
 
-        //*
+        /*
         cout << "in the driver ";
         for (int i=0; i<9; i++)
             cout << SixDOFMouseDriver::cameraVectors_[i] << " ";
@@ -185,6 +180,7 @@ void SixDOFMouseDriver::ReadMouse(double* bounds_)
         //*/
 
 
+        /*
     pos[0] =
             (float) SixDOFMouseDriver::deviceValuesNormalized_[0]/divideFactor*SixDOFMouseDriver::cameraVectors_[0] -
             (float) SixDOFMouseDriver::deviceValuesNormalized_[1]/divideFactor*SixDOFMouseDriver::cameraVectors_[3] -
@@ -197,18 +193,14 @@ void SixDOFMouseDriver::ReadMouse(double* bounds_)
             (float) SixDOFMouseDriver::deviceValuesNormalized_[0]/divideFactor*SixDOFMouseDriver::cameraVectors_[2] -
             (float) SixDOFMouseDriver::deviceValuesNormalized_[1]/divideFactor*SixDOFMouseDriver::cameraVectors_[5] -
             (float) SixDOFMouseDriver::deviceValuesNormalized_[2]/divideFactor*SixDOFMouseDriver::cameraVectors_[8];
+    //*/
 
-    //pos[0] = (float) SixDOFMouseDriver::deviceValuesNormalized_[0]/divideFactor;
-    //pos[1] = (float) SixDOFMouseDriver::deviceValuesNormalized_[1]/divideFactor;
-    //pos[2] = (float) SixDOFMouseDriver::deviceValuesNormalized_[2]/divideFactor;
-
-
-        /*
+        //*
 
         for (int i=0; i<3; i++){
             pos[i] =
-             (float) SixDOFMouseDriver::deviceValuesNormalized_[0]/divideFactor*SixDOFMouseDriver::cameraVectors_[i] +
-             (float) SixDOFMouseDriver::deviceValuesNormalized_[1]/divideFactor*SixDOFMouseDriver::cameraVectors_[i+3] +
+             (float) SixDOFMouseDriver::deviceValuesNormalized_[0]/divideFactor*SixDOFMouseDriver::cameraVectors_[i] -
+             (float) SixDOFMouseDriver::deviceValuesNormalized_[1]/divideFactor*SixDOFMouseDriver::cameraVectors_[i+3] -
              (float) SixDOFMouseDriver::deviceValuesNormalized_[2]/divideFactor*SixDOFMouseDriver::cameraVectors_[i+6];
         }
         //*/
@@ -228,15 +220,15 @@ void SixDOFMouseDriver::ReadMouse(double* bounds_)
 		temp_trans.translation(pos + transformation_.translation());
 
 		/////////////////////////////////////////////////////////
-		// rotation
-		rot[0] = (float) (SixDOFMouseDriver::deviceValuesNormalized_[3]* M_PI);
+        // rotation
+        rot[0] = (float) (SixDOFMouseDriver::deviceValuesNormalized_[3]* M_PI);
 		rot[1] = (float) (SixDOFMouseDriver::deviceValuesNormalized_[4]* M_PI);
-		rot[2] = (float) (SixDOFMouseDriver::deviceValuesNormalized_[5]* M_PI);
+        rot[2] = (float) (SixDOFMouseDriver::deviceValuesNormalized_[5]* M_PI);
 
 		/////////////////////////////////////////////////////////
 		// integrate rotations
         double threshold = 0.2; // anciennement 0.5
-		divideFactor = SixDOFMouseDriver::angular_speed_;
+        divideFactor = SixDOFMouseDriver::angular_speed_;
 		se3::SE3::Vector3 v_local (0., 0., 0.);
 
         // threshold for rotations

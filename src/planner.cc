@@ -201,7 +201,6 @@ namespace hpp {
         out.col[2] = normalize(out.col[2]);
     }
 
-    // cte fonction semble correcte
     Matrix3 quat2Mat(float x, float y, float z, float w){
         Matrix3 ret;
 
@@ -445,11 +444,11 @@ namespace hpp {
         CamVects[0] = 0;
         //float i = CamVects->get_buffer()[0];
 
-        for (int i = 0; i<4; i++) cout << " cm" << i << "=" << CamVects->get_buffer()[i];
-        std::cout << endl;
+        //for (int i = 0; i<4; i++) cout << " cm" << i << "=" << CamVects->get_buffer()[i]; std::cout << endl;
 
         Matrix3 camMat = quat2Mat(CamVects->get_buffer()[0],CamVects->get_buffer()[1],
                 CamVects->get_buffer()[2],CamVects->get_buffer()[3]);
+
 
 
         /*
@@ -476,13 +475,9 @@ camMat(0,2)=toNormalize(0);camMat(1,2)=toNormalize(1);camMat(2,2)=toNormalize(2)
 
 
         SixDOFMouseDriver::setCameraVectors(
-
             camMat(0,0), camMat(0,1), camMat(0,2),
-
             camMat(1,0), camMat(1,1), camMat(1,2),
             camMat(2,0), camMat(2,1), camMat(2,2)
-
-
                     );
 
         /*normalizeQuat(CamVects->get_buffer()[0],CamVects->get_buffer()[1],
