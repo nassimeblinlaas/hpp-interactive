@@ -109,19 +109,22 @@ namespace hpp {
     short int Planner::iteration_; // unused
     bool Planner::exist_obstacle_;
     double Planner::repere_local_[3][3];
-    bool Planner::mode_contact_;
+    bool Planner::mode_contact_; // let one step know if in contact
+
 
     // global variables
     short int nb_launchs = 0; // solve and display relance le planneur qui plante à cause du device
     graphics::corbaServer::ClientCpp p; // deprecated but used to show cursor
     graphics::corbaServer::Client client(0, NULL);
     fcl::Vec3f org_;    // origine du point de référence pour gram schmidt
-    //boost::mutex org_mutex_; // mutex de l'org
-    fcl::Vec3f obj_;    // point de l'objete plus proche de l'obstacle
+    fcl::Vec3f obj_;    // point de l'objet le plus proche de l'obstacle
     float distance_;    // distance centre du robot -> surface = rac((obj_-org_)2)
     boost::mutex distance_mutex_; // protège par mutex l'accès à distance_
     fcl::CollisionObject* o2ptr;
     boost::mutex robot_mutex_;
+
+    bool contact_activated;
+
 
     ::Eigen::Vector3f NewMinBounds;
     ::Eigen::Vector3f NewMaxBounds;
@@ -247,8 +250,7 @@ namespace hpp {
     {
         cout << "create with roadmap\n";
         Planner* ptr = new Planner (problem, roadmap);
-        Planner::random_prob_ = 0; // 0 all human  1 all machine
-        //Planner::random_prob_ = 0.4; // 0 all human  1 all machine
+
 
         return PlannerPtr_t (ptr);
     }
@@ -267,14 +269,22 @@ namespace hpp {
         configurationShooter_ (BasicConfigurationShooter::create (problem.robot ())),
         qProj_ (problem.robot ()->configSize ())
         {
+
+            // configuration
+            Planner::random_prob_ = 0.00; // 0 all human  1 all machine
+            //Planner::random_prob_ = 0.4; // 0 all human  1 all machine
+
+            //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_cursor.urdf"; contact_activated = false;
+            string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_L.urdf"; contact_activated = true;
+
             nb_launchs++;
             std::cout << "read interactive device thread beginning\n";
 
             std::ofstream myfile;
             ConfigurationPtr_t config (new Configuration_t ((hpp::model::size_type)7));
-            (*config)[0] = 0;
-            (*config)[1] = 0;
-            (*config)[2] = 0;
+            (*config)[0] = 1;
+            (*config)[1] = 1;
+            (*config)[2] = 1;
             (*config)[3] = 1;
             (*config)[4] = 0;
             (*config)[5] = 0;
@@ -295,10 +305,10 @@ namespace hpp {
             client.connect();
 
             client.gui()->addLandmark("scene_hpp_/curseur", 1.);
-            client.gui()->addURDF("scene_hpp_/robot_interactif", "/hpp/src/hpp_tutorial/urdf/robot_L.urdf","");
+            client.gui()->addURDF("scene_hpp_/robot_interactif", robot_name.data() ,"");
 
 
-            //ConfigurationPtr_t q_rand = configurationShooter_->shoot (); // décale le rand initial
+            ConfigurationPtr_t q_rand = configurationShooter_->shoot (); // décale le rand initial
 
 
             double bounds[6] = {
@@ -323,13 +333,15 @@ namespace hpp {
 
         gepetto::corbaserver::Color color;
         color[0] = 1;	color[1] = 1;	color[2] = 1;	color[3] = 1.;
-        //color_rouge[0]=1;color_rouge[1]=0.2;color_rouge[2]=0;color_rouge[3]=1;
+
 
         int index_lignes = 0;
 
         // ///////////////////////////////////////////////////////////////
         // bornes du problème
         /*
+        gepetto::corbaserver::Color color_rouge;
+        color_rouge[0]=1;color_rouge[1]=0.2;color_rouge[2]=0;color_rouge[3]=1;
         std::cout << "joint bounds " <<
                      arg_->problem().robot()->rootJoint()->lowerBound(0) << " " <<
                      arg_->problem().robot()->rootJoint()->upperBound(0) << " " <<
@@ -387,24 +399,15 @@ namespace hpp {
         //*/
         // ///////////////////////////////////////////////////////////////
 
+        //cout << " robot " <<
+        //        (*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->name() << " tr "
+        //        //<< (*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->getTransform()
+        //        << endl;
 
-
-
-
-
-
-        cout << " robot " <<
-                (*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->name() << " tr "
-                //<< (*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->getTransform()
-                << endl;
         fcl::CollisionObject o2 =
                 *(*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->fcl();
-        o2ptr = new fcl::CollisionObject(o2);
+        //o2ptr = new fcl::CollisionObject(o2);
 
-        //hpp::model::BodyPtr_t bptr = arg_->problem().robot()->rootJoint()->linkedBody();
-        //cout << "jai le linked baudie\n";
-        //cout << arg_->problem().robot()->rootJoint()->name() << endl;
-        //cout << bptr->name() << endl;
 
     while(1){
     if (SixDOFMouseDriver::HasMoved()){
@@ -420,6 +423,7 @@ namespace hpp {
         tr[0] = trans_temp.translation()[0];
         tr[1] = trans_temp.translation()[1];
         tr[2] = trans_temp.translation()[2];
+
         // normaliser quaternion
         double mag = sqrt(pow(quat.w(),2)+pow(quat.x(),2)+pow(quat.y(),2)+pow(quat.z(),2));
         tr[3] = (float)quat.w()/(float)mag;
@@ -428,51 +432,19 @@ namespace hpp {
         tr[6] = (float)quat.z()/(float)mag;
 
         // afficher le robot
-        //client.gui()->applyConfiguration("scene_hpp_/robot_L", tr);
-
         client.gui()->applyConfiguration("scene_hpp_/robot_interactif", tr);
         client.gui()->applyConfiguration("scene_hpp_/curseur", tr);
 
+        // get camera vectors to align cursor with viewer
         unsigned long id = client.gui()->getWindowID("window_hpp_");
-
-
         gepetto::corbaserver::floatSeq* CamVects;
         unsigned short int dim = 4;
         CamVects = new gepetto::corbaserver::floatSeq();
         CamVects->length(dim);
         CamVects = client.gui()->getCameraVectors(id, "");
-        CamVects[0] = 0;
-        //float i = CamVects->get_buffer()[0];
-
-        //for (int i = 0; i<4; i++) cout << " cm" << i << "=" << CamVects->get_buffer()[i]; std::cout << endl;
 
         Matrix3 camMat = quat2Mat(CamVects->get_buffer()[0],CamVects->get_buffer()[1],
                 CamVects->get_buffer()[2],CamVects->get_buffer()[3]);
-
-
-
-        /*
-        cout << "matrix:";
-        cout << camMat(0,0)<<" "<< camMat(1,0)<<" "<< camMat(2,0)<<" "<<
-                camMat(0,1)<<" "<< camMat(1,1)<<" "<< camMat(2,1)<<" "<<
-                camMat(0,2)<<" "<< camMat(1,2)<<" "<< camMat(2,2)<<"\n";
-
-
-/*
-Vector3 toNormalize;
-toNormalize = {camMat(0,0), camMat(1,0), camMat(2,0)};
-camMat(0,0)=toNormalize(0);camMat(1,0)=toNormalize(1);camMat(2,0)=toNormalize(2);
-toNormalize = {camMat(0,1), camMat(1,1), camMat(2,1)};
-camMat(0,1)=toNormalize(0);camMat(1,1)=toNormalize(1);camMat(2,1)=toNormalize(2);
-toNormalize = {camMat(0,2), camMat(1,2), camMat(2,2)};
-camMat(0,2)=toNormalize(0);camMat(1,2)=toNormalize(1);camMat(2,2)=toNormalize(2);
-
-        cout << "matrix normalized:";
-        cout << camMat(0,0)<<" "<< camMat(1,0)<<" "<< camMat(2,0)<<" "<<
-                camMat(0,1)<<" "<< camMat(1,1)<<" "<< camMat(2,1)<<" "<<
-                camMat(0,2)<<" "<< camMat(1,2)<<" "<< camMat(2,2)<<"\n";
-        //*/
-
 
         SixDOFMouseDriver::setCameraVectors(
             camMat(0,0), camMat(0,1), camMat(0,2),
@@ -480,12 +452,8 @@ camMat(0,2)=toNormalize(0);camMat(1,2)=toNormalize(1);camMat(2,2)=toNormalize(2)
             camMat(2,0), camMat(2,1), camMat(2,2)
                     );
 
-        /*normalizeQuat(CamVects->get_buffer()[0],CamVects->get_buffer()[1],
-                CamVects->get_buffer()[2],CamVects->get_buffer()[3]);
-        for (int i = 0; i<4; i++) cout << " ncm" << i << "=" << CamVects->get_buffer()[i];
-        std::cout << endl;*/
 
-        /*
+        //*
         cout << "config curseur        " <<
         //    trans_temp << endl;
         //    //	(*actual_configuration_ptr_)[0] =
@@ -497,7 +465,7 @@ camMat(0,2)=toNormalize(0);camMat(1,2)=toNormalize(1);camMat(2,2)=toNormalize(2)
         //*/
 
 
-        // save current transformation in the planner's memory
+        // save current transfo-rmation in the planner's memory
         (*Planner::actual_configuration_ptr_)[0] =
                         trans_temp.translation()[0];
         (*Planner::actual_configuration_ptr_)[1] =
@@ -513,23 +481,29 @@ camMat(0,2)=toNormalize(0);camMat(1,2)=toNormalize(1);camMat(2,2)=toNormalize(2)
         // using solveanddisplay relaunches planner -> anti core dump protection
         if (nb_launchs<2){
 
+        //*
+        // caler le robot au niveau du curseur
+        robot_mutex_.lock();
+        hpp::model::Configuration_t sauv = arg_->problem().robot()->currentConfiguration();
+        hpp::model::Configuration_t in = sauv;
+        in[0] = trans_temp.translation()[0];
+        in[1] = trans_temp.translation()[1];
+        in[2] = trans_temp.translation()[2];
+        in[3] = tr[3];
+        in[4] = tr[4];
+        in[5] = tr[5];
+        in[6] = tr[6];
+        hpp::model::ConfigurationIn_t in_t(in);
+        arg_->problem().robot()->currentConfiguration(in_t);
+        arg_->problem().robot()->computeForwardKinematics();
     //*
-    // caler le robot au niveau du curseur
-    robot_mutex_.lock();
-    hpp::model::Configuration_t sauv = arg_->problem().robot()->currentConfiguration();
-    hpp::model::Configuration_t in = sauv;
-    in[0] = trans_temp.translation()[0];
-    in[1] = trans_temp.translation()[1];
-    in[2] = trans_temp.translation()[2];
-    hpp::model::ConfigurationIn_t in_t(in);
-    arg_->problem().robot()->currentConfiguration(in_t);
-    arg_->problem().robot()->computeForwardKinematics();
-    /*
     cout << " robot " <<
             (*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->name() << " tr "
             << (*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->getTransform().getTranslation()
             << endl;
     //*/
+
+
 
     o2 = *(*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->fcl();
     //*o2ptr = *(*this->problem().robot()->objectIterator(hpp::model::COLLISION))->fcl();
@@ -542,26 +516,57 @@ camMat(0,2)=toNormalize(0);camMat(1,2)=toNormalize(1);camMat(2,2)=toNormalize(2)
 
     // Le premier obstacle est choisi pour cacluler la distance
     hpp::core::ObjectVector_t liste = arg_->problem().collisionObstacles();
-    hpp::core::ObjectVector_t::iterator it = liste.begin();
 
 
+    //hpp::model::ObjectIterator it_rob =arg_->problem().robot()->objectIterator(hpp::model::COLLISION);
 
 
-    fcl::CollisionObject o1 = *(*it)->fcl();
-    hpp::core::ObjectVector_t::iterator it_petit = liste.begin();
+    fcl::CollisionObject o1 = o2;//*(*it_obst)->fcl();
+    fcl::CollisionObject o_proche = o2;
+    fcl::CollisionObject o_collision = o2;
+
+    hpp::core::ObjectVector_t::iterator it_proche_obst = liste.begin();
+    //hpp::model::ObjectIterator it_proche_rob = arg_->problem().robot()->objectIterator(hpp::model::COLLISION);
+    //hpp::model::CollisionObjectPtr_t proche_rob = *(arg_->problem().robot()->objectIterator(hpp::model::COLLISION));
+
     double min_dist = 999;
-    for (;it!=liste.end();++it){
-        o1 = *(*it)->fcl();
-        fcl::distance(&o1, &o2, request, result);
-        if (result.min_distance<min_dist){
-            it_petit = it;
-            min_dist = result.min_distance;
+    bool collision = false;
+
+        for (hpp::core::ObjectVector_t::iterator it_obst = liste.begin();it_obst!=liste.end();++it_obst){
+            o1 = *(*it_obst)->fcl();
+            for (hpp::model::ObjectIterator it_rob = arg_->problem().robot()->objectIterator(hpp::model::COLLISION);
+                 !it_rob.isEnd(); ++it_rob){
+                o2 = *(*it_rob)->fcl();
+
+                result.clear();
+                fcl::distance(&o1, &o2, request, result);
+                cout << (*it_obst)->name() << "/" << (*it_rob)->name() << " " << result.min_distance << endl;
+                if (result.min_distance<min_dist){
+                    if(result.min_distance==-1){
+                        collision = true;
+                        o_collision = o2;
+                    }
+                    o_proche = o2;
+                    it_proche_obst = it_obst;
+                    min_dist = result.min_distance;
+                }
+            }
         }
-    }
 
 
-    //cout << " obstacle le plus proche" << (*it_petit)->name();
-    o1 = *(*it_petit)->fcl();
+
+        // TODO
+        /*
+        bool HighlightCollision(){
+1;
+        }*/
+
+
+
+    //cout << " obstacle le plus proche" << (*it_proche_obst)->name() << endl;
+    //cout << "robot le plus proche " <
+    o1 = *(*it_proche_obst)->fcl();
+    //o2 = *(*it_proche_rob)->fcl();
     fcl::distance(&o1, &o2, request, result);
 
 
@@ -572,9 +577,9 @@ camMat(0,2)=toNormalize(0);camMat(1,2)=toNormalize(1);camMat(2,2)=toNormalize(2)
     //arg_->problem().robot()->computeForwardKinematics();
     robot_mutex_.unlock();
     // //////////////////////////////////////////////////////////////////
+ if (contact_activated && !collision){
 
-
-    //cout << " dist " << result.min_distance << std::endl;
+    cout << " dist " << result.min_distance << std::endl;
 
     // enregistrer les coordonnées des extrémités du segment robot/obstacle
     graphics::corbaServer::ClientCpp::value_type v_[3] = {
@@ -622,12 +627,13 @@ camMat(0,2)=toNormalize(0);camMat(1,2)=toNormalize(1);camMat(2,2)=toNormalize(2)
                     pow((float)result.nearest_points[1][0] - trans_temp.translation()[0], 2) +
                     pow((float)result.nearest_points[1][1] - trans_temp.translation()[1], 2) +
                     pow((float)result.nearest_points[1][2] - trans_temp.translation()[2], 2));
+            //distance_ = 0;
             distance_mutex_.unlock();
-            //std::cout << "distance centre/surf " << distance_ << std::endl;
-            //std::cout << " pt0 " << result.nearest_points[0] <<
-            //             " pt1 " << result.nearest_points[1] <<
-            //              " \ntranslation " << trans_temp.translation() <<
-            //             std::endl;
+            std::cout << "distance centre/surf " << distance_ << std::endl;
+            std::cout << " pt0 " << result.nearest_points[0] <<
+                         " pt1 " << result.nearest_points[1] <<
+                          " \ntranslation " << trans_temp.translation() <<
+                         std::endl;
         }
 
 
@@ -687,7 +693,6 @@ camMat(0,2)=toNormalize(0);camMat(1,2)=toNormalize(1);camMat(2,2)=toNormalize(2)
             //std::cout << " pt0 " << result.nearest_points[0] <<
             //             " pt1 " << result.nearest_points[1] << std::endl;
 
-            //org_mutex_.lock();
 
             // sur l'obstacle
             org_ = result.nearest_points[0];
@@ -703,6 +708,8 @@ camMat(0,2)=toNormalize(0);camMat(1,2)=toNormalize(1);camMat(2,2)=toNormalize(2)
     }// fin gram schmidt//*/
 
 //}// fin for paires de collision
+
+        }// fin activation contact
 
         } // fin nb launch
         //*/
@@ -801,8 +808,19 @@ camMat(0,2)=toNormalize(0);camMat(1,2)=toNormalize(1);camMat(2,2)=toNormalize(2)
                 (*q_rand)[1] = val[1];
                 (*q_rand)[2] = val[2];
 
+                // fixer rotation
+                //TODO : tester la diff de perf
+                if(1)
+                {
+                    (*q_rand)[3] = (*Planner::actual_configuration_ptr_)[3];
+                    (*q_rand)[4] = (*Planner::actual_configuration_ptr_)[4];
+                    (*q_rand)[5] = (*Planner::actual_configuration_ptr_)[5];
+                    (*q_rand)[6] = (*Planner::actual_configuration_ptr_)[6];
+
+                }
+
                 Planner::iteration_++;
-                if(Planner::iteration_ == 10){
+                if(Planner::iteration_ == 5){
                     Planner::mode_contact_ = false;
                     distance_mutex_.unlock();
 
