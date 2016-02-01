@@ -118,7 +118,8 @@ namespace hpp {
     graphics::corbaServer::Client client(0, NULL);
     fcl::Vec3f org_;    // origine du point de référence pour gram schmidt
     fcl::Vec3f obj_;    // point de l'objet le plus proche de l'obstacle
-    float distance_;    // distance centre du robot -> surface = rac((obj_-org_)2)
+    float distance_;    // distance centre du robot
+    float distances_[3];   // distances centre du robot
     boost::mutex distance_mutex_; // protège par mutex l'accès à distance_
     fcl::CollisionObject* o2ptr;
     boost::mutex robot_mutex_;
@@ -540,7 +541,7 @@ namespace hpp {
 
                 result.clear();
                 fcl::distance(&o1, &o2, request, result);
-                cout << (*it_obst)->name() << "/" << (*it_rob)->name() << " " << result.min_distance << endl;
+                //cout << (*it_obst)->name() << "/" << (*it_rob)->name() << " " << result.min_distance << endl;
                 if (result.min_distance<min_dist){
                     if(result.min_distance==-1){
                         collision = true;
@@ -579,13 +580,15 @@ namespace hpp {
     // //////////////////////////////////////////////////////////////////
  if (contact_activated && !collision){
 
-    cout << " dist " << result.min_distance << std::endl;
+    cout << " dist obstacle " << result.min_distance << std::endl;
 
     // enregistrer les coordonnées des extrémités du segment robot/obstacle
+    // point sur le robot
     graphics::corbaServer::ClientCpp::value_type v_[3] = {
             (float)result.nearest_points[0][0],
             (float)result.nearest_points[0][1],
             (float)result.nearest_points[0][2]};
+    // point sur l'obstacle
     graphics::corbaServer::ClientCpp::value_type w_[3] = {
             (float)result.nearest_points[1][0],
             (float)result.nearest_points[1][1],
@@ -620,27 +623,90 @@ namespace hpp {
     if (result.min_distance != -1){
         arg_->exist_obstacle_ = true;
 
+
+        Mat33f A;
+        // normale
+        A.col[0] = Vec3f(w[0]-v[0], w[1]-v[1], w[2]-v[2]);
+
+
+
+
+        //cout << "norm of normale " << norm_of_normal << endl;
+
+        //cout << "normale " << normal(0)<< " " << normal(1) << " "<< normal(2) << endl;
+
+
+
+        //Eigen::Vector3f normal(A.col[0].v[0],A.col[0].v[1],A.col[0].v[2]);
+        //Eigen::Vector3f dist;
+        //d_com_near_point * norm;
+
+
+
+
+        /*float norm_alt = sqrt(
+                    pow(distances_[0], 2) +
+                    pow(distances_[1], 2) +
+                    pow(distances_[2], 2));
+        */
+
+        //distances_[0] = d_com_near_point.AlignedMapType
+
+
         // distance du centre de l'objet à sa surface
-        if (distance_mutex_.try_lock())
+        if (distance_mutex_.try_lock()) // TODO mutex inoptimal
         {
+
+
+            Eigen::Vector3f normal(result.nearest_points[0][0] - result.nearest_points[1][0],
+                    result.nearest_points[0][1] - result.nearest_points[1][1],
+                    result.nearest_points[0][2] - result.nearest_points[1][2]);
+
+            cout << "normale " << normal(0)<< " " << normal(1) << " "<< normal(2) << endl;
+            for (int i=0; i< 3; i++){
+                if (abs(normal(i))<(1e-10)) normal(i) = 0;
+            }
+            cout << "normale " << normal(0)<< " " << normal(1) << " "<< normal(2) << endl;
+
+            float norm_of_normal = sqrt( pow(normal(0), 2) +
+                                         pow(normal(1), 2) +
+                                         pow(normal(2), 2) );
+            cout << "norm of normale " << norm_of_normal << endl;
+            normal(0) = normal(0)/norm_of_normal;
+            normal(1) = normal(1)/norm_of_normal;
+            normal(2) = normal(2)/norm_of_normal;
+            cout << "normale " << normal(0)<< " " << normal(1) << " "<< normal(2) << endl;
+            Eigen::Vector3f d_com_near_point(
+               (float)result.nearest_points[1][0] - trans_temp.translation()[0],
+                (float)result.nearest_points[1][1] - trans_temp.translation()[1],
+                (float)result.nearest_points[1][2] - trans_temp.translation()[2]);
+            cout << "d_com_near_point " << d_com_near_point(0)<< " " << d_com_near_point(1) << " "<< d_com_near_point(2) << endl;
+            distances_[0] = 0.0 + normal(0) * d_com_near_point(0);
+            distances_[1] = 0.0 + normal(1) * d_com_near_point(1);
+            distances_[2] = 0.0 + normal(2) * d_com_near_point(2);
+            cout << "distances_ " << distances_[0]  << " " << distances_[1] << " " <<
+                     distances_[2] << endl;
+
+
             distance_ = sqrt(
                     pow((float)result.nearest_points[1][0] - trans_temp.translation()[0], 2) +
                     pow((float)result.nearest_points[1][1] - trans_temp.translation()[1], 2) +
                     pow((float)result.nearest_points[1][2] - trans_temp.translation()[2], 2));
-            //distance_ = 0;
-            distance_mutex_.unlock();
+            //distance_ = 0.05;
+
             std::cout << "distance centre/surf " << distance_ << std::endl;
-            std::cout << " pt0 " << result.nearest_points[0] <<
+            cout << "alt method " << distances_[0] << " " << distances_[1] << " " <<
+                    distances_[2] <<
+                    //" norm " << norm_alt << endl <<
+                    " pt0 " << result.nearest_points[0] <<
                          " pt1 " << result.nearest_points[1] <<
-                          " \ntranslation " << trans_temp.translation() <<
-                         std::endl;
+                         " \ncurseur " << trans_temp.translation() <<
+                         endl << endl;
+            distance_mutex_.unlock();
         }
 
 
-        Mat33f A;
 
-        // normale<
-        A.col[0] = Vec3f(w[0]-v[0], w[1]-v[1], w[2]-v[2]);
 
         // vecteur aléatoire 1
         double rando1 = rand(), rando2 = rand(), rando3 = rand();
@@ -796,14 +862,23 @@ namespace hpp {
                 //cout << "org " << org_[1] << " obj " << obj_[1]
                 //     << " signe org-obj " << signe(org_[1]-obj_[1]) << endl;
                 //org_mutex_.try_lock(); // ce mutex est devenu inutile, à enlever
+                /*
                 Vector3 org(
                     (float)org_[0]+signe(obj_[0]-org_[0])*distance_,
                     (float)org_[1]+signe(obj_[1]-org_[1])*distance_,
                     (float)org_[2]+signe(obj_[2]-org_[2])*distance_
                 );
+                //*/
+                //*
+                Vector3 org(
+                    (float)org_[0]+signe(obj_[0]-org_[0])*distances_[0],
+                    (float)org_[1]+signe(obj_[1]-org_[1])*distances_[1],
+                    (float)org_[2]+signe(obj_[2]-org_[2])*distances_[2]
+                );
+                //*/
                 //cout << "org " << org.transpose() << endl;
                 val = rot.transpose()*val + org;
-                //cout << "nouveau val " << val.transpose() << endl;
+                cout << "nouveau val " << val.transpose() << endl;
                 (*q_rand)[0] = val[0];
                 (*q_rand)[1] = val[1];
                 (*q_rand)[2] = val[2];
@@ -820,7 +895,7 @@ namespace hpp {
                 }
 
                 Planner::iteration_++;
-                if(Planner::iteration_ == 5){
+                if(Planner::iteration_ == 50){
                     Planner::mode_contact_ = false;
                     distance_mutex_.unlock();
 
@@ -847,7 +922,7 @@ namespace hpp {
         //*/
 
         //
-        // First extend ake ins each connected component toward q_rand
+        // First extend each connected component toward q_rand
         //
         for (ConnectedComponents_t::const_iterator itcc =
             roadmap ()->connectedComponents ().begin ();
