@@ -272,26 +272,30 @@ namespace hpp {
         {
 
             // configuration
-            Planner::random_prob_ = 0.00; // 0 all human  1 all machine
-            //Planner::random_prob_ = 0.4; // 0 all human  1 all machine
+            //Planner::random_prob_ = 1; // 0 all human  1 all machine
+            Planner::random_prob_ = 0.5; // 0 all human  1 all machine
 
-            //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_cursor.urdf"; contact_activated = false;
-            string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_L.urdf"; contact_activated = true;
+            string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_cursor.urdf"; contact_activated = false;
+            //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_L.urdf"; contact_activated = false;
 
             nb_launchs++;
             std::cout << "read interactive device thread beginning\n";
 
             std::ofstream myfile;
             ConfigurationPtr_t config (new Configuration_t ((hpp::model::size_type)7));
-            (*config)[0] = 1;
-            (*config)[1] = 1;
-            (*config)[2] = 1;
+
+            // on vient ici dans un second temps donc la mauvaise init n'est pas là !!!!!!!!!!!
+            (*config)[0] = 0;
+            (*config)[1] = 0;
+            (*config)[2] = 0;
             (*config)[3] = 1;
             (*config)[4] = 0;
             (*config)[5] = 0;
             (*config)[6] = 0;
 
             Planner::actual_configuration_ptr_ = config;
+
+
 
             float f = (float) 0.1;
 
@@ -308,6 +312,17 @@ namespace hpp {
             client.gui()->addLandmark("scene_hpp_/curseur", 1.);
             client.gui()->addURDF("scene_hpp_/robot_interactif", robot_name.data() ,"");
 
+
+
+            /* // problème init curseur pas ici
+            se3::SE3 trans_temp = SixDOFMouseDriver::getTransformation();
+            ::gepetto::corbaserver::Transform tr;
+            tr[0] = trans_temp.translation()[0];
+            tr[1] = trans_temp.translation()[1];
+            tr[2] = trans_temp.translation()[2];
+            client.gui()->applyConfiguration("scene_hpp_/robot_interactif", tr);
+            client.gui()->applyConfiguration("scene_hpp_/curseur", tr);
+            //*/
 
             ConfigurationPtr_t q_rand = configurationShooter_->shoot (); // décale le rand initial
 
@@ -335,79 +350,7 @@ namespace hpp {
         gepetto::corbaserver::Color color;
         color[0] = 1;	color[1] = 1;	color[2] = 1;	color[3] = 1.;
 
-
         int index_lignes = 0;
-
-        // ///////////////////////////////////////////////////////////////
-        // bornes du problème
-        /*
-        gepetto::corbaserver::Color color_rouge;
-        color_rouge[0]=1;color_rouge[1]=0.2;color_rouge[2]=0;color_rouge[3]=1;
-        std::cout << "joint bounds " <<
-                     arg_->problem().robot()->rootJoint()->lowerBound(0) << " " <<
-                     arg_->problem().robot()->rootJoint()->upperBound(0) << " " <<
-                     arg_->problem().robot()->rootJoint()->lowerBound(1) << " " <<
-                     arg_->problem().robot()->rootJoint()->upperBound(1) << " " <<
-                     arg_->problem().robot()->rootJoint()->lowerBound(2) << " " <<
-                     arg_->problem().robot()->rootJoint()->upperBound(2) << " " <<
-        std::endl;
-
-        double mx = arg_->problem().robot()->rootJoint()->lowerBound(0);
-        double my = arg_->problem().robot()->rootJoint()->lowerBound(1);
-        double mz = arg_->problem().robot()->rootJoint()->lowerBound(2);
-        double Mx = arg_->problem().robot()->rootJoint()->upperBound(0);
-        double My = arg_->problem().robot()->rootJoint()->upperBound(1);
-        double Mz = arg_->problem().robot()->rootJoint()->upperBound(2);
-
-        min << mx, my, mz;
-        max << Mx, My, Mz;
-
-        graphics::corbaServer::ClientCpp::value_type A[3] = {(float)mx, (float)my, (float)mz};
-        graphics::corbaServer::ClientCpp::value_type B[3] = {(float)Mx, (float)my, (float)mz};
-        graphics::corbaServer::ClientCpp::value_type C[3] = {(float)Mx, (float)My, (float)mz};
-        graphics::corbaServer::ClientCpp::value_type D[3] = {(float)mx, (float)My, (float)mz};
-        graphics::corbaServer::ClientCpp::value_type E[3] = {(float)mx, (float)my, (float)Mz};
-        graphics::corbaServer::ClientCpp::value_type F[3] = {(float)Mx, (float)my, (float)Mz};
-        graphics::corbaServer::ClientCpp::value_type G[3] = {(float)Mx, (float)My, (float)Mz};
-        graphics::corbaServer::ClientCpp::value_type H[3] = {(float)mx, (float)My, (float)Mz};
-
-        graphics::corbaServer::ClientCpp::value_type *A_ = &A[0];
-        graphics::corbaServer::ClientCpp::value_type *B_ = &B[0];
-        graphics::corbaServer::ClientCpp::value_type *C_ = &C[0];
-        graphics::corbaServer::ClientCpp::value_type *D_ = &D[0];
-        graphics::corbaServer::ClientCpp::value_type *E_ = &E[0];
-        graphics::corbaServer::ClientCpp::value_type *F_ = &F[0];
-        graphics::corbaServer::ClientCpp::value_type *G_ = &G[0];
-        graphics::corbaServer::ClientCpp::value_type *H_ = &H[0];
-
-        string borne = "scene_hpp_/borne";
-        borne +="i";
-        p.addLine(borne.c_str(), A_, B_, &color_rouge[0]);borne +="i";
-        p.addLine(borne.c_str(), B_, C_, &color_rouge[0]);borne +="i";
-        p.addLine(borne.c_str(), C_, D_, &color_rouge[0]);borne +="i";
-        p.addLine(borne.c_str(), D_, A_, &color_rouge[0]);borne +="i";
-        p.addLine(borne.c_str(), E_, F_, &color_rouge[0]);borne +="i";
-        p.addLine(borne.c_str(), F_, G_, &color_rouge[0]);borne +="i";
-        p.addLine(borne.c_str(), G_, H_, &color_rouge[0]);borne +="i";
-        p.addLine(borne.c_str(), H_, E_, &color_rouge[0]);borne +="i";
-        p.addLine(borne.c_str(), A_, E_, &color_rouge[0]);borne +="i";
-        p.addLine(borne.c_str(), B_, F_, &color_rouge[0]);borne +="i";
-        p.addLine(borne.c_str(), C_, G_, &color_rouge[0]);borne +="i";
-        p.addLine(borne.c_str(), D_, H_, &color_rouge[0]);
-
-        p.refresh();
-
-        //*/
-        // ///////////////////////////////////////////////////////////////
-
-        //cout << " robot " <<
-        //        (*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->name() << " tr "
-        //        //<< (*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->getTransform()
-        //        << endl;
-
-        fcl::CollisionObject o2 =
-                *(*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->fcl();
-        //o2ptr = new fcl::CollisionObject(o2);
 
 
     while(1){
@@ -454,7 +397,7 @@ namespace hpp {
                     );
 
 
-        //*
+        /*
         cout << "config curseur        " <<
         //    trans_temp << endl;
         //    //	(*actual_configuration_ptr_)[0] =
@@ -497,7 +440,7 @@ namespace hpp {
         hpp::model::ConfigurationIn_t in_t(in);
         arg_->problem().robot()->currentConfiguration(in_t);
         arg_->problem().robot()->computeForwardKinematics();
-    //*
+    /*
     cout << " robot " <<
             (*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->name() << " tr "
             << (*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->getTransform().getTranslation()
@@ -506,7 +449,9 @@ namespace hpp {
 
 
 
-    o2 = *(*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->fcl();
+    fcl::CollisionObject o2 =
+            *(*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->fcl();
+    //o2 = *(*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->fcl();
     //*o2ptr = *(*this->problem().robot()->objectIterator(hpp::model::COLLISION))->fcl();
 
     // set the distance request structure, here we just use the default setting
@@ -541,6 +486,7 @@ namespace hpp {
 
                 result.clear();
                 fcl::distance(&o1, &o2, request, result);
+
                 //cout << (*it_obst)->name() << "/" << (*it_rob)->name() << " " << result.min_distance << endl;
                 if (result.min_distance<min_dist){
                     if(result.min_distance==-1){
@@ -554,8 +500,6 @@ namespace hpp {
             }
         }
 
-
-
         // TODO
         /*
         bool HighlightCollision(){
@@ -564,13 +508,12 @@ namespace hpp {
 
 
 
+    // choix du bon couple robot obstacle
     //cout << " obstacle le plus proche" << (*it_proche_obst)->name() << endl;
     //cout << "robot le plus proche " <
     o1 = *(*it_proche_obst)->fcl();
     //o2 = *(*it_proche_rob)->fcl();
-    fcl::distance(&o1, &o2, request, result);
-
-
+    fcl::distance(&o1, &o_proche, request, result);
 
 
     // remettre le robot là où il était, inutile ?
@@ -580,7 +523,7 @@ namespace hpp {
     // //////////////////////////////////////////////////////////////////
  if (contact_activated && !collision){
 
-    cout << " dist obstacle " << result.min_distance << std::endl;
+    //cout << " dist obstacle " << result.min_distance << std::endl;
 
     // enregistrer les coordonnées des extrémités du segment robot/obstacle
     // point sur le robot
@@ -626,32 +569,8 @@ namespace hpp {
 
         Mat33f A;
         // normale
-        A.col[0] = Vec3f(w[0]-v[0], w[1]-v[1], w[2]-v[2]);
 
-
-
-
-        //cout << "norm of normale " << norm_of_normal << endl;
-
-        //cout << "normale " << normal(0)<< " " << normal(1) << " "<< normal(2) << endl;
-
-
-
-        //Eigen::Vector3f normal(A.col[0].v[0],A.col[0].v[1],A.col[0].v[2]);
-        //Eigen::Vector3f dist;
-        //d_com_near_point * norm;
-
-
-
-
-        /*float norm_alt = sqrt(
-                    pow(distances_[0], 2) +
-                    pow(distances_[1], 2) +
-                    pow(distances_[2], 2));
-        */
-
-        //distances_[0] = d_com_near_point.AlignedMapType
-
+         A.col[0] = Vec3f(w[0]-v[0], w[1]-v[1], w[2]-v[2]);
 
         // distance du centre de l'objet à sa surface
         if (distance_mutex_.try_lock()) // TODO mutex inoptimal
@@ -662,30 +581,31 @@ namespace hpp {
                     result.nearest_points[0][1] - result.nearest_points[1][1],
                     result.nearest_points[0][2] - result.nearest_points[1][2]);
 
-            cout << "normale " << normal(0)<< " " << normal(1) << " "<< normal(2) << endl;
+            //cout << "normale " << normal(0)<< " " << normal(1) << " "<< normal(2) << endl;
             for (int i=0; i< 3; i++){
                 if (abs(normal(i))<(1e-10)) normal(i) = 0;
             }
-            cout << "normale " << normal(0)<< " " << normal(1) << " "<< normal(2) << endl;
+            //cout << "normale " << normal(0)<< " " << normal(1) << " "<< normal(2) << endl;
 
             float norm_of_normal = sqrt( pow(normal(0), 2) +
                                          pow(normal(1), 2) +
                                          pow(normal(2), 2) );
-            cout << "norm of normale " << norm_of_normal << endl;
+            //cout << "norm of normale " << norm_of_normal << endl;
             normal(0) = normal(0)/norm_of_normal;
             normal(1) = normal(1)/norm_of_normal;
             normal(2) = normal(2)/norm_of_normal;
-            cout << "normale " << normal(0)<< " " << normal(1) << " "<< normal(2) << endl;
+            //cout << "normale " << normal(0)<< " " << normal(1) << " "<< normal(2) << endl;
             Eigen::Vector3f d_com_near_point(
                (float)result.nearest_points[1][0] - trans_temp.translation()[0],
                 (float)result.nearest_points[1][1] - trans_temp.translation()[1],
                 (float)result.nearest_points[1][2] - trans_temp.translation()[2]);
-            cout << "d_com_near_point " << d_com_near_point(0)<< " " << d_com_near_point(1) << " "<< d_com_near_point(2) << endl;
+            //cout << "d_com_near_point " << d_com_near_point(0)<< " " << d_com_near_point(1) << " "<< d_com_near_point(2) << endl;
             distances_[0] = 0.0 + normal(0) * d_com_near_point(0);
             distances_[1] = 0.0 + normal(1) * d_com_near_point(1);
             distances_[2] = 0.0 + normal(2) * d_com_near_point(2);
-            cout << "distances_ " << distances_[0]  << " " << distances_[1] << " " <<
-                     distances_[2] << endl;
+            //cout << "distances_ " << distances_[0]  << " " << distances_[1] << " " <<
+            //         distances_[2] << endl;
+
 
 
             distance_ = sqrt(
@@ -694,14 +614,16 @@ namespace hpp {
                     pow((float)result.nearest_points[1][2] - trans_temp.translation()[2], 2));
             //distance_ = 0.05;
 
+            /*
             std::cout << "distance centre/surf " << distance_ << std::endl;
             cout << "alt method " << distances_[0] << " " << distances_[1] << " " <<
                     distances_[2] <<
-                    //" norm " << norm_alt << endl <<
+                    " norm " << norm_alt << endl <<
                     " pt0 " << result.nearest_points[0] <<
                          " pt1 " << result.nearest_points[1] <<
                          " \ncurseur " << trans_temp.translation() <<
                          endl << endl;
+                    //*/
             distance_mutex_.unlock();
         }
 
@@ -723,7 +645,8 @@ namespace hpp {
         // la matrice pendant le mode contact pour rester sur le même plan
         if (!Planner::mode_contact_)
             modified_gram_schmidt(MGS, A);
-            //print_mat("MGS", MGS);
+
+        //print_mat("MGS", MGS);
 
         // afficher les deux axes manquants du repère
         w_[0] = v[0] + MGS.col[1].v[0];
@@ -861,7 +784,7 @@ namespace hpp {
 
                 //cout << "org " << org_[1] << " obj " << obj_[1]
                 //     << " signe org-obj " << signe(org_[1]-obj_[1]) << endl;
-                //org_mutex_.try_lock(); // ce mutex est devenu inutile, à enlever
+
                 /*
                 Vector3 org(
                     (float)org_[0]+signe(obj_[0]-org_[0])*distance_,
@@ -878,7 +801,38 @@ namespace hpp {
                 //*/
                 //cout << "org " << org.transpose() << endl;
                 val = rot.transpose()*val + org;
-                cout << "nouveau val " << val.transpose() << endl;
+                //cout << "nouveau val " << val.transpose() << endl;
+
+
+                //*
+                // gros hack
+                //bool proche = false;
+                while(1){
+                    double dist;
+                    dist = sqrt(
+                        pow(val[0]-(*Planner::actual_configuration_ptr_)[0], 2)+
+                        pow(val[1]-(*Planner::actual_configuration_ptr_)[1], 2)+
+                        pow(val[2]-(*Planner::actual_configuration_ptr_)[2], 2)
+                        );
+                    if (dist<2){
+                        break;
+                    }
+                    else{
+                        cout << "retente\n";
+                        q_rand = configurationShooter_->shoot ();
+                        val[0] = 0;
+                        val[1] = (float)(*q_rand)[1];
+                        val[2] = (float)(*q_rand)[2];
+                        Vector3 re_org((float)org_[0]+signe(obj_[0]-org_[0])*distances_[0],
+                            (float)org_[1]+signe(obj_[1]-org_[1])*distances_[1],
+                            (float)org_[2]+signe(obj_[2]-org_[2])*distances_[2]
+                        );
+                        val = rot.transpose()*val + re_org;
+                    }
+                }
+                //*/
+
+
                 (*q_rand)[0] = val[0];
                 (*q_rand)[1] = val[1];
                 (*q_rand)[2] = val[2];
@@ -895,7 +849,7 @@ namespace hpp {
                 }
 
                 Planner::iteration_++;
-                if(Planner::iteration_ == 50){
+                if(Planner::iteration_ == 10){
                     Planner::mode_contact_ = false;
                     distance_mutex_.unlock();
 
@@ -1054,7 +1008,67 @@ namespace hpp {
     } // namespace interactive
 } // namespace hpp
 
+// ///////////////////////////////////////////////////////////////
+// bornes du problème
+/*
+gepetto::corbaserver::Color color_rouge;
+color_rouge[0]=1;color_rouge[1]=0.2;color_rouge[2]=0;color_rouge[3]=1;
+std::cout << "joint bounds " <<
+             arg_->problem().robot()->rootJoint()->lowerBound(0) << " " <<
+             arg_->problem().robot()->rootJoint()->upperBound(0) << " " <<
+             arg_->problem().robot()->rootJoint()->lowerBound(1) << " " <<
+             arg_->problem().robot()->rootJoint()->upperBound(1) << " " <<
+             arg_->problem().robot()->rootJoint()->lowerBound(2) << " " <<
+             arg_->problem().robot()->rootJoint()->upperBound(2) << " " <<
+std::endl;
 
+double mx = arg_->problem().robot()->rootJoint()->lowerBound(0);
+double my = arg_->problem().robot()->rootJoint()->lowerBound(1);
+double mz = arg_->problem().robot()->rootJoint()->lowerBound(2);
+double Mx = arg_->problem().robot()->rootJoint()->upperBound(0);
+double My = arg_->problem().robot()->rootJoint()->upperBound(1);
+double Mz = arg_->problem().robot()->rootJoint()->upperBound(2);
+
+min << mx, my, mz;
+max << Mx, My, Mz;
+
+graphics::corbaServer::ClientCpp::value_type A[3] = {(float)mx, (float)my, (float)mz};
+graphics::corbaServer::ClientCpp::value_type B[3] = {(float)Mx, (float)my, (float)mz};
+graphics::corbaServer::ClientCpp::value_type C[3] = {(float)Mx, (float)My, (float)mz};
+graphics::corbaServer::ClientCpp::value_type D[3] = {(float)mx, (float)My, (float)mz};
+graphics::corbaServer::ClientCpp::value_type E[3] = {(float)mx, (float)my, (float)Mz};
+graphics::corbaServer::ClientCpp::value_type F[3] = {(float)Mx, (float)my, (float)Mz};
+graphics::corbaServer::ClientCpp::value_type G[3] = {(float)Mx, (float)My, (float)Mz};
+graphics::corbaServer::ClientCpp::value_type H[3] = {(float)mx, (float)My, (float)Mz};
+
+graphics::corbaServer::ClientCpp::value_type *A_ = &A[0];
+graphics::corbaServer::ClientCpp::value_type *B_ = &B[0];
+graphics::corbaServer::ClientCpp::value_type *C_ = &C[0];
+graphics::corbaServer::ClientCpp::value_type *D_ = &D[0];
+graphics::corbaServer::ClientCpp::value_type *E_ = &E[0];
+graphics::corbaServer::ClientCpp::value_type *F_ = &F[0];
+graphics::corbaServer::ClientCpp::value_type *G_ = &G[0];
+graphics::corbaServer::ClientCpp::value_type *H_ = &H[0];
+
+string borne = "scene_hpp_/borne";
+borne +="i";
+p.addLine(borne.c_str(), A_, B_, &color_rouge[0]);borne +="i";
+p.addLine(borne.c_str(), B_, C_, &color_rouge[0]);borne +="i";
+p.addLine(borne.c_str(), C_, D_, &color_rouge[0]);borne +="i";
+p.addLine(borne.c_str(), D_, A_, &color_rouge[0]);borne +="i";
+p.addLine(borne.c_str(), E_, F_, &color_rouge[0]);borne +="i";
+p.addLine(borne.c_str(), F_, G_, &color_rouge[0]);borne +="i";
+p.addLine(borne.c_str(), G_, H_, &color_rouge[0]);borne +="i";
+p.addLine(borne.c_str(), H_, E_, &color_rouge[0]);borne +="i";
+p.addLine(borne.c_str(), A_, E_, &color_rouge[0]);borne +="i";
+p.addLine(borne.c_str(), B_, F_, &color_rouge[0]);borne +="i";
+p.addLine(borne.c_str(), C_, G_, &color_rouge[0]);borne +="i";
+p.addLine(borne.c_str(), D_, H_, &color_rouge[0]);
+
+p.refresh();
+
+//*/
+// ///////////////////////////////////////////////////////////////
 
 /* // afficher des repères à chaque config -> inutile
 // créer un nom unique

@@ -30,7 +30,7 @@ SixDOFMouseDriver::SixDOFMouseDriver(){
 }
 
 const se3::SE3& SixDOFMouseDriver::getTransformation(){
-	mutex_.lock();
+    mutex_.lock(); // TODO deux fois le mutex dans le code !
 	const se3::SE3& trans = SixDOFMouseDriver::transformation_;
 	mutex_.unlock();
 	return trans;
@@ -111,7 +111,7 @@ void SixDOFMouseDriver::MouseInit(double* bounds)
 	// TODO
 	/*   Open the Device with non-blocking reads. In real life,
 	 *         don't use a hard coded path; use libudev instead. */
-    fd_ = open("/dev/hidraw0", O_RDONLY);
+    fd_ = open("/dev/hidraw2", O_RDONLY);
 	if (fd_ < 0) {
 		perror("Unable to open interactive device");
 		abort();
@@ -125,9 +125,9 @@ void SixDOFMouseDriver::MouseInit(double* bounds)
 
     // init position
     transformation_.rotation().setIdentity();
-    transformation_.translation()[0] = 0;
-    transformation_.translation()[1] = 0;
-    transformation_.translation()[2] = 0;
+    /*transformation_.translation()[0] = 5;
+    transformation_.translation()[1] = 5;
+    transformation_.translation()[2] = 5;*/
 
     // init speed
 	SixDOFMouseDriver::linear_speed_ = 10;
@@ -219,26 +219,118 @@ void SixDOFMouseDriver::ReadMouse(double* bounds_)
 		temp_trans.translation(pos + transformation_.translation());
 
 		/////////////////////////////////////////////////////////
+
+
+
+
+        /*
+        for (int i=0; i<3; i++){
+            rot[i] =
+             (float) SixDOFMouseDriver::deviceValuesNormalized_[3]*M_PI
+                    *SixDOFMouseDriver::cameraVectors_[i] -
+             (float) SixDOFMouseDriver::deviceValuesNormalized_[4]*M_PI
+                    *SixDOFMouseDriver::cameraVectors_[i+3] -
+             (float) SixDOFMouseDriver::deviceValuesNormalized_[5]*M_PI
+                    *SixDOFMouseDriver::cameraVectors_[i+6];
+        }
+        //cout << "rotation " << rot[0] << " " << rot[1] << " " << rot[2] << endl;
+
+        double norme = sqrt(pow(rot[0], 2)+ pow(rot[1], 2)+pow(rot[2], 2));
+        //cout << "norme " << norme << endl;
+        rot[0] = rot[0]/norme;
+        rot[1] = rot[1]/norme;
+        rot[2] = rot[2]/norme;
+        /*/
+
+        /* // réorienter selon caméra
+        Eigen::Vector3f res;
+        res << SixDOFMouseDriver::deviceValuesNormalized_[3] ,
+                SixDOFMouseDriver::deviceValuesNormalized_[4] ,
+                SixDOFMouseDriver::deviceValuesNormalized_[5];
+
+        cout << matrot << endl;
+        res = matrot.inverse() * res;
+
+        // res 0 tangage res1 roulis
+        //cout << "rotation " << rot[0] << " " << rot[1] << " " << rot[2] << endl;
         // rotation
+        //*/
+
+        //* // sans modif, version initiale
         rot[0] = (float) (SixDOFMouseDriver::deviceValuesNormalized_[3]* M_PI);
-		rot[1] = (float) (SixDOFMouseDriver::deviceValuesNormalized_[4]* M_PI);
+        rot[1] = (float) (SixDOFMouseDriver::deviceValuesNormalized_[4]* M_PI);
         rot[2] = (float) (SixDOFMouseDriver::deviceValuesNormalized_[5]* M_PI);
+        //cout << "ancienne meth "<< rot[0] << " " << rot[1] << " " << rot[2] << endl ;
+        //*/
+
+        /*
+        // réorienter selon précédente position
+        Eigen::Matrix3f matrot;
+        matrot = transformation_.rotation();
+        Eigen::Vector3f res;
+        res << SixDOFMouseDriver::deviceValuesNormalized_[3]* M_PI ,
+                SixDOFMouseDriver::deviceValuesNormalized_[4]* M_PI ,
+                SixDOFMouseDriver::deviceValuesNormalized_[5]* M_PI;
+        res = matrot * res;
+        rot[0] = res(0);
+        rot[1] = -res(1);
+        rot[2] = -res(2);
+        cout << "rotation " << rot[0] << " " << rot[1] << " " << rot[2] << endl << endl;
+        //*/
 
 		/////////////////////////////////////////////////////////
 		// integrate rotations
-        double threshold = 0.2; // anciennement 0.5
+        double threshold = 0.5; // anciennement 0.5 0.2
         divideFactor = SixDOFMouseDriver::angular_speed_;
+        // rotation variations
 		se3::SE3::Vector3 v_local (0., 0., 0.);
 
+
         // threshold for rotations
-		if (std::abs(rot[0]) > threshold)	v_local[0] = rot[0]/(float)divideFactor;
-		if (std::abs(rot[1]) > threshold)	v_local[1] = rot[1]/(float)divideFactor;
-        if (std::abs(rot[2]) > threshold)	v_local[2] = rot[2]/(float)divideFactor;
+        if (std::abs(rot[0]) > threshold)	v_local[0] = (rot[0]-threshold)/(float)divideFactor;
+        if (std::abs(rot[1]) > threshold)	v_local[1] = -(rot[1]-threshold)/(float)divideFactor;
+        if (std::abs(rot[2]) > threshold)	v_local[2] = (rot[2]-threshold)/(float)divideFactor;
+
+        Eigen::Matrix3f matrot;
+
+        //*
+        matrot <<
+
+                (abs(SixDOFMouseDriver::cameraVectors_[3]) < 1e-7 ? 0 : SixDOFMouseDriver::cameraVectors_[3]) ,
+                (abs(SixDOFMouseDriver::cameraVectors_[4]) < 1e-7 ? 0 : SixDOFMouseDriver::cameraVectors_[4]) ,
+                (abs(SixDOFMouseDriver::cameraVectors_[5]) < 1e-7 ? 0 : SixDOFMouseDriver::cameraVectors_[5]) ,
+                (abs(SixDOFMouseDriver::cameraVectors_[6]) < 1e-7 ? 0 : SixDOFMouseDriver::cameraVectors_[6]) ,
+                (abs(SixDOFMouseDriver::cameraVectors_[7]) < 1e-7 ? 0 : SixDOFMouseDriver::cameraVectors_[7]) ,
+                (abs(SixDOFMouseDriver::cameraVectors_[8]) < 1e-7 ? 0 : SixDOFMouseDriver::cameraVectors_[8]) ,
+                (abs(SixDOFMouseDriver::cameraVectors_[0]) < 1e-7 ? 0 : SixDOFMouseDriver::cameraVectors_[0]) ,
+                (abs(SixDOFMouseDriver::cameraVectors_[1]) < 1e-7 ? 0 : SixDOFMouseDriver::cameraVectors_[1]) ,
+                (abs(SixDOFMouseDriver::cameraVectors_[2]) < 1e-7 ? 0 : SixDOFMouseDriver::cameraVectors_[2]) ;
+        //*/
+
+        /*
+        matrot << SixDOFMouseDriver::cameraVectors_[0] ,
+                SixDOFMouseDriver::cameraVectors_[1] ,
+                SixDOFMouseDriver::cameraVectors_[2] ,
+                SixDOFMouseDriver::cameraVectors_[3] ,
+                SixDOFMouseDriver::cameraVectors_[4] ,
+                SixDOFMouseDriver::cameraVectors_[5] ,
+                SixDOFMouseDriver::cameraVectors_[6] ,
+                SixDOFMouseDriver::cameraVectors_[7] ,
+                SixDOFMouseDriver::cameraVectors_[8];
+        //*/
+
+        cout << "matrot " << matrot.transpose() << endl;
+
+        v_local = transformation_.rotation().transpose() * v_local; // ça marcheoie biengue
+        //v_local = matrot.transpose() * v_local;
 
 		se3::SE3::Matrix3 dR;
 		// threshold
 		if (v_local.norm () < 1e-8) dR.setIdentity();
 		else expMap(v_local, dR);
+
+        //cout << dR << endl << endl;
+
 
 		se3::SE3::Matrix3 R_new (temp_trans.rotation () * dR);
 		temp_trans.rotation(R_new);
