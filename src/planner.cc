@@ -273,10 +273,10 @@ namespace hpp {
 
             // configuration
             //Planner::random_prob_ = 1; // 0 all human  1 all machine
-            Planner::random_prob_ = 0.5; // 0 all human  1 all machine
+            Planner::random_prob_ = 0; // 0 all human  1 all machine
 
-            string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_cursor.urdf"; contact_activated = false;
-            //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_L.urdf"; contact_activated = false;
+            //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_cursor.urdf"; contact_activated = false;
+            string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_L.urdf"; contact_activated = false;
 
             nb_launchs++;
             std::cout << "read interactive device thread beginning\n";
