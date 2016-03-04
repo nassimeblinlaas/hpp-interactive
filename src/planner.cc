@@ -271,12 +271,13 @@ namespace hpp {
         qProj_ (problem.robot ()->configSize ())
         {
 
-            // configuration
+            // configuratio
             //Planner::random_prob_ = 1; // 0 all human  1 all machine
-            Planner::random_prob_ = 0; // 0 all human  1 all machine
+            Planner::random_prob_ = 0.5; // 0 all human  1 all machine
 
             //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_cursor.urdf"; contact_activated = false;
-            string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_L.urdf"; contact_activated = false;
+            string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_3angles.urdf";
+            contact_activated = false;
 
             nb_launchs++;
             std::cout << "read interactive device thread beginning\n";
@@ -285,13 +286,21 @@ namespace hpp {
             ConfigurationPtr_t config (new Configuration_t ((hpp::model::size_type)7));
 
             // on vient ici dans un second temps donc la mauvaise init n'est pas là !!!!!!!!!!!
-            (*config)[0] = 0;
-            (*config)[1] = 0;
-            (*config)[2] = 0;
+            //*
+            (*config)[0] = 1.5;
+            (*config)[1] = 0.5;
+            (*config)[2] = -3.2;
             (*config)[3] = 1;
             (*config)[4] = 0;
             (*config)[5] = 0;
             (*config)[6] = 0;
+            //*/
+            //config = this->problem().initConfig();
+
+
+            cout << "init config[0]=" << endl;
+            //cout << this->problem().initConfig().get()[0] << endl;
+
 
             Planner::actual_configuration_ptr_ = config;
 
@@ -427,7 +436,7 @@ namespace hpp {
 
         //*
         // caler le robot au niveau du curseur
-        robot_mutex_.lock();
+        robot_mutex_.lock();                // TODO mutex inoptimal !
         hpp::model::Configuration_t sauv = arg_->problem().robot()->currentConfiguration();
         hpp::model::Configuration_t in = sauv;
         in[0] = trans_temp.translation()[0];
@@ -513,13 +522,16 @@ namespace hpp {
     //cout << "robot le plus proche " <
     o1 = *(*it_proche_obst)->fcl();
     //o2 = *(*it_proche_rob)->fcl();
+
+        robot_mutex_.unlock();
+
     fcl::distance(&o1, &o_proche, request, result);
 
 
     // remettre le robot là où il était, inutile ?
     //arg_->problem().robot()->currentConfiguration(sauv);
     //arg_->problem().robot()->computeForwardKinematics();
-    robot_mutex_.unlock();
+
     // //////////////////////////////////////////////////////////////////
  if (contact_activated && !collision){
 
@@ -719,7 +731,7 @@ namespace hpp {
      */
     void Planner::oneStep ()
     {
-        //static int i;
+        static int i;
         typedef boost::tuple <NodePtr_t, ConfigurationPtr_t, PathPtr_t>	DelayedEdge_t;
         typedef std::vector <DelayedEdge_t> DelayedEdges_t;
 
@@ -727,6 +739,8 @@ namespace hpp {
 
         DelayedEdges_t delayedEdges;
         DevicePtr_t robot (problem ().robot ());
+
+        robot_mutex_.unlock();
 
         /*
         cout << i++ << " robot dans one step" <<
@@ -753,8 +767,9 @@ namespace hpp {
         {
             //if (0){
             if (Planner::mode_contact_){
-                distance_mutex_.try_lock();
-                cout << "mode contact " << Planner::iteration_ << std::endl;
+
+
+                cout << "mode contact " << ++i << Planner::iteration_ << std::endl;
 
                 /* // bounds limitations, not working
                 if(Planner::iteration_ == 0){
@@ -793,6 +808,9 @@ namespace hpp {
                 );
                 //*/
                 //*
+
+                distance_mutex_.try_lock();
+
                 Vector3 org(
                     (float)org_[0]+signe(obj_[0]-org_[0])*distances_[0],
                     (float)org_[1]+signe(obj_[1]-org_[1])*distances_[1],
@@ -832,6 +850,8 @@ namespace hpp {
                 }
                 //*/
 
+                distance_mutex_.unlock();
+
 
                 (*q_rand)[0] = val[0];
                 (*q_rand)[1] = val[1];
@@ -851,7 +871,8 @@ namespace hpp {
                 Planner::iteration_++;
                 if(Planner::iteration_ == 10){
                     Planner::mode_contact_ = false;
-                    distance_mutex_.unlock();
+
+                    // ancien emplacement de distance_mutex_.unlock();
 
                     /* // bounds limitation, not working
                     this->problem().robot()->rootJoint()->lowerBound(0, min[0]);
@@ -865,7 +886,7 @@ namespace hpp {
                     //org_mutex_.unlock();
                 }
             }
-            else cout << "pas contact\n";
+            //else cout << "pas contact\n";
         }
         else{
             //mutex_.lock();
@@ -941,7 +962,8 @@ namespace hpp {
             }
         }
 
-    robot_mutex_.unlock();
+
+    // ancien emplacement de robot_mutex_.unlock
     }
 
 

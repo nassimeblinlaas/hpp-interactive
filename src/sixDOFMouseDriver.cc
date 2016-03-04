@@ -130,7 +130,7 @@ void SixDOFMouseDriver::MouseInit(double* bounds)
     transformation_.translation()[2] = 5;*/
 
     // init speed
-	SixDOFMouseDriver::linear_speed_ = 10;
+    SixDOFMouseDriver::linear_speed_ = 20;
     SixDOFMouseDriver::angular_speed_ = 40;
 
     // init axes
@@ -319,9 +319,9 @@ void SixDOFMouseDriver::ReadMouse(double* bounds_)
                 SixDOFMouseDriver::cameraVectors_[8];
         //*/
 
-        cout << "matrot " << matrot.transpose() << endl;
+        //cout << "matrot " << matrot.transpose() << endl;
 
-        v_local = transformation_.rotation().transpose() * v_local; // ça marcheoie biengue
+        //v_local = transformation_.rotation().transpose() * v_local; // ça marcheoie biengue
         //v_local = matrot.transpose() * v_local;
 
 		se3::SE3::Matrix3 dR;
