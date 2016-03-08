@@ -242,6 +242,55 @@ namespace hpp {
         return ((x < 0) ? -1 : 1);
     }
 
+    // returns an fcl distance request structure
+    fcl::DistanceResult FindNearestObstacle(Planner* arg_){
+
+        fcl::DistanceRequest request(true, 0, 0, fcl::GST_INDEP);
+        fcl::DistanceResult result;
+        result.clear();
+
+        fcl::CollisionObject* robot_proche;
+        fcl::CollisionObject* obstacle_proche;
+        fcl::CollisionObject* obst_temp;
+        fcl::CollisionObject* robot_temp;
+
+        hpp::core::ObjectVector_t liste = arg_->problem().collisionObstacles();
+
+
+        double min_dist = 999;
+        bool collision = false;
+
+            for (hpp::core::ObjectVector_t::iterator it_obst = liste.begin();it_obst!=liste.end();++it_obst){
+
+                obst_temp = &*(*it_obst)->fcl();
+                for (hpp::model::ObjectIterator it_rob = arg_->problem().robot()->objectIterator(hpp::model::COLLISION);
+                  !it_rob.isEnd(); ++it_rob){
+
+                    robot_temp = &*(*it_rob)->fcl();
+
+                    result.clear();
+
+                    fcl::distance(obst_temp, robot_temp, request, result);
+
+                    cout << (*it_obst)->name() << "/" << (*it_rob)->name() << " " << result.min_distance << endl;
+                    if (result.min_distance<min_dist){
+                        if(result.min_distance==-1){
+                            collision = true;
+                        }
+
+                        robot_proche = robot_temp;
+                        obstacle_proche = obst_temp;
+                        min_dist = result.min_distance;
+                    }
+                }
+            }
+
+            fcl::distance(obstacle_proche, robot_proche, request, result);
+
+
+            return result;
+    }
+
 
     // //////////////////////////////////////////////////////////////////////////////////////////
 
@@ -347,7 +396,7 @@ namespace hpp {
             SixDOFMouseDriver::MouseInit(bounds);
 
             // ///////////////////////////////////////////////////////////////
-            // bornes du problème
+            // afficher bornes du problème
             //*
             gepetto::corbaserver::Color color_rouge;
             color_rouge[0]=(float)1;color_rouge[1]=(float)0.2;
@@ -413,54 +462,6 @@ namespace hpp {
         }
 
 
-    // returns true if in collision returns false otherwise
-    fcl::DistanceResult FindNearestObstacle(Planner* arg_){
-
-        fcl::DistanceRequest request(true, 0, 0, fcl::GST_INDEP);
-        fcl::DistanceResult result;
-        result.clear();
-
-        fcl::CollisionObject* robot_proche;
-        fcl::CollisionObject* obstacle_proche;
-        fcl::CollisionObject* obst_temp;
-        fcl::CollisionObject* robot_temp;
-
-        hpp::core::ObjectVector_t liste = arg_->problem().collisionObstacles();
-
-
-        double min_dist = 999;
-        bool collision = false;
-
-            for (hpp::core::ObjectVector_t::iterator it_obst = liste.begin();it_obst!=liste.end();++it_obst){
-
-                obst_temp = &*(*it_obst)->fcl();
-                for (hpp::model::ObjectIterator it_rob = arg_->problem().robot()->objectIterator(hpp::model::COLLISION);
-                  !it_rob.isEnd(); ++it_rob){
-
-                    robot_temp = &*(*it_rob)->fcl();
-
-                    result.clear();
-
-                    fcl::distance(obst_temp, robot_temp, request, result);
-
-                    cout << (*it_obst)->name() << "/" << (*it_rob)->name() << " " << result.min_distance << endl;
-                    if (result.min_distance<min_dist){
-                        if(result.min_distance==-1){
-                            collision = true;
-                        }
-
-                        robot_proche = robot_temp;
-                        obstacle_proche = obst_temp;
-                        min_dist = result.min_distance;
-                    }
-                }
-            }
-
-            fcl::distance(obstacle_proche, robot_proche, request, result);
-
-
-            return result;
-    }
 
 
     // //////////////////////////////////////////////////////////////////////////////////////////
@@ -570,7 +571,7 @@ namespace hpp {
 
 
 
-    // méthode de recherche du plus proche obst par intération
+    // méthode de recherche du plus proche obst par itération
 
     fcl::DistanceResult result;
     bool collision = false;
@@ -607,25 +608,7 @@ namespace hpp {
     const graphics::corbaServer::ClientCpp::value_type* w = &w_[0];
 
 
-    // afficher des lignes
-    string nom_ligne = "scene_hpp_/ligne";
-    string ind = boost::lexical_cast<std::string>(index_lignes);
-    nom_ligne += ind;
-    //*
-    if (index_lignes > 0){
-        //cout << "index " << index_lignes << " obj à cacher " << nom_ligne << endl;
-        p.setVisibility(nom_ligne.c_str(), "OFF");
-        string axe = nom_ligne +='a';
-        p.setVisibility(axe.c_str(), "OFF");
-        axe = nom_ligne +='b';
-        p.setVisibility(axe.c_str(), "OFF");
-    }
-    //*/
-    index_lignes++;
-    nom_ligne = "scene_hpp_/ligne";
-    ind = boost::lexical_cast<std::string>(index_lignes);
-    nom_ligne += ind;
-    p.addLine(nom_ligne.c_str(), v, w, &color[0]);
+
 
 
     //* algorithme de GRAM-SCHMIDT
@@ -708,11 +691,33 @@ namespace hpp {
 
         //print_mat("A", A);
 
-        // la matrice pendant le mode contact pour rester sur le même plan
+        // calcule la matrice de rotation MGS si on n'est pas déjà en mode contact
         if (!Planner::mode_contact_)
             modified_gram_schmidt(MGS, A);
 
         //print_mat("MGS", MGS);
+
+
+
+        // afficher le repère local // //////////////////////////////////////////
+        string nom_ligne = "scene_hpp_/ligne";
+        string ind = boost::lexical_cast<std::string>(index_lignes);
+        nom_ligne += ind;
+        //*
+        if (index_lignes > 0){
+            //cout << "index " << index_lignes << " obj à cacher " << nom_ligne << endl;
+            p.setVisibility(nom_ligne.c_str(), "OFF");
+            string axe = nom_ligne +='a';
+            p.setVisibility(axe.c_str(), "OFF");
+            axe = nom_ligne +='b';
+            p.setVisibility(axe.c_str(), "OFF");
+        }
+        //*/
+        index_lignes++;
+        nom_ligne = "scene_hpp_/ligne";
+        ind = boost::lexical_cast<std::string>(index_lignes);
+        nom_ligne += ind;
+        p.addLine(nom_ligne.c_str(), v, w, &color[0]);
 
         // afficher les deux axes manquants du repère
         w_[0] = v[0] + MGS.col[1].v[0];
@@ -725,6 +730,10 @@ namespace hpp {
         w_[2] = v[2] + MGS.col[2].v[2];
         axe = nom_ligne +='b';
         p.addLine(axe.c_str(), v, w, &color[0]);
+        // //////////////////////////////////////////////////////////////
+
+
+
 
         ::Eigen::Matrix3f MGS_;
         MGS_ << MGS.col[0].v[0],
@@ -742,7 +751,7 @@ namespace hpp {
 
 
         //cout << "d=" << result.min_distance << " \n";//<< std::endl;
-        if (result.min_distance<1 && !Planner::mode_contact_){
+        if (result.min_distance<0.15 && !Planner::mode_contact_){
         //if (0){
             cout << "distance inférieure à 0.15" << std::endl;
             //std::cout << " pt0 " << result.nearest_points[0] <<
@@ -792,16 +801,9 @@ namespace hpp {
         robot_mutex_.lock();
 
         DelayedEdges_t delayedEdges;
-        DevicePtr_t robot (problem ().robot ());
+        //DevicePtr_t robot (problem ().robot ());
 
         //robot_mutex_.unlock();
-
-        /*
-        cout << i++ << " robot dans one step" <<
-                (*this->problem().robot()->objectIterator(hpp::model::COLLISION))->name() << " tr "
-                << (*this->problem().robot()->objectIterator(hpp::model::COLLISION))->getTransform().getTranslation()
-                << endl;
-        //*/
 
 
         PathValidationPtr_t pathValidation (problem ().pathValidation ());
@@ -817,12 +819,9 @@ namespace hpp {
         double rando = rand();
         rando = rando / RAND_MAX;
         // keep random config
-        if ( (rando < Planner::random_prob_) || (Planner::mode_contact_) ) // todo : ce serait pas un peu casse gueule cette condition ?
+        if ( (rando < Planner::random_prob_) || (Planner::mode_contact_) ) // todo : réorganiser condition
         {
-            //if (0){
             if (Planner::mode_contact_){
-
-
                 cout << "mode contact " << ++i << Planner::iteration_ << std::endl;
 
                 /* // bounds limitations, not working
@@ -834,6 +833,14 @@ namespace hpp {
                     this->problem().robot()->rootJoint()->lowerBound(2, NewMinBounds[2]);
                     this->problem().robot()->rootJoint()->upperBound(2, NewMaxBounds[2]);
                 }
+                //*/
+                /* // bounds limitation, not working
+                this->problem().robot()->rootJoint()->lowerBound(0, min[0]);
+                this->problem().robot()->rootJoint()->upperBound(0, max[0]);
+                this->problem().robot()->rootJoint()->lowerBound(1, min[1]);
+                this->problem().robot()->rootJoint()->upperBound(1, max[1]);
+                this->problem().robot()->rootJoint()->lowerBound(2, min[2]);
+                this->problem().robot()->rootJoint()->upperBound(2, max[2]);
                 //*/
                 Matrix3 rot;
                 rot(0,0) = MGS.col[0].v[0];
@@ -854,14 +861,6 @@ namespace hpp {
                 //cout << "org " << org_[1] << " obj " << obj_[1]
                 //     << " signe org-obj " << signe(org_[1]-obj_[1]) << endl;
 
-                /*
-                Vector3 org(
-                    (float)org_[0]+signe(obj_[0]-org_[0])*distance_,
-                    (float)org_[1]+signe(obj_[1]-org_[1])*distance_,
-                    (float)org_[2]+signe(obj_[2]-org_[2])*distance_
-                );
-                //*/
-                //*
 
                 distance_mutex_.try_lock();
 
@@ -870,7 +869,6 @@ namespace hpp {
                     (float)org_[1]+signe(obj_[1]-org_[1])*distances_[1],
                     (float)org_[2]+signe(obj_[2]-org_[2])*distances_[2]
                 );
-                //*/
                 //cout << "org " << org.transpose() << endl;
                 val = rot.transpose()*val + org;
                 //cout << "nouveau val " << val.transpose() << endl;
@@ -903,41 +901,24 @@ namespace hpp {
                     }
                 }
                 //*/
-
                 distance_mutex_.unlock();
 
 
                 (*q_rand)[0] = val[0];
                 (*q_rand)[1] = val[1];
                 (*q_rand)[2] = val[2];
-
                 // fixer rotation
-                //TODO : tester la diff de perf
-                if(1)
-                {
-                    (*q_rand)[3] = (*Planner::actual_configuration_ptr_)[3];
-                    (*q_rand)[4] = (*Planner::actual_configuration_ptr_)[4];
-                    (*q_rand)[5] = (*Planner::actual_configuration_ptr_)[5];
-                    (*q_rand)[6] = (*Planner::actual_configuration_ptr_)[6];
+                (*q_rand)[3] = (*Planner::actual_configuration_ptr_)[3];
+                (*q_rand)[4] = (*Planner::actual_configuration_ptr_)[4];
+                (*q_rand)[5] = (*Planner::actual_configuration_ptr_)[5];
+                (*q_rand)[6] = (*Planner::actual_configuration_ptr_)[6];
 
-                }
 
                 Planner::iteration_++;
                 if(Planner::iteration_ == 5){
                     Planner::mode_contact_ = false;
-
                     // ancien emplacement de distance_mutex_.unlock();
 
-                    /* // bounds limitation, not working
-                    this->problem().robot()->rootJoint()->lowerBound(0, min[0]);
-                    this->problem().robot()->rootJoint()->upperBound(0, max[0]);
-                    this->problem().robot()->rootJoint()->lowerBound(1, min[1]);
-                    this->problem().robot()->rootJoint()->upperBound(1, max[1]);
-                    this->problem().robot()->rootJoint()->lowerBound(2, min[2]);
-                    this->problem().robot()->rootJoint()->upperBound(2, max[2]);
-                    //*/
-
-                    //org_mutex_.unlock();
                 }
             }
             //else cout << "pas contact\n";
@@ -947,6 +928,8 @@ namespace hpp {
             *q_rand = *Planner::actual_configuration_ptr_;
             //mutex_.unlock();
         }
+
+
         // ////////////////////////////////////////////////////////////////////////////
         //*/
 
