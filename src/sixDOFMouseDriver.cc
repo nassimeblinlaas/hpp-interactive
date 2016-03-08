@@ -124,10 +124,15 @@ void SixDOFMouseDriver::MouseInit(double* bounds)
     SixDOFMouseDriver::has_moved_ = false;
 
     // init position
+
+    //*
+    transformation_.translation()[0] = 1.5;
+    transformation_.translation()[1] = 0.5;
+    transformation_.translation()[2] = -3.2;
+    //*/
+
+    // init rotation
     transformation_.rotation().setIdentity();
-    /*transformation_.translation()[0] = 5;
-    transformation_.translation()[1] = 5;
-    transformation_.translation()[2] = 5;*/
 
     // init speed
     SixDOFMouseDriver::linear_speed_ = 20;

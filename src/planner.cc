@@ -275,9 +275,9 @@ namespace hpp {
             //Planner::random_prob_ = 1; // 0 all human  1 all machine
             Planner::random_prob_ = 0.5; // 0 all human  1 all machine
 
-            //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_cursor.urdf"; contact_activated = false;
-            string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_3angles.urdf";
-            contact_activated = false;
+            //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_L.urdf"; contact_activated = true;
+            string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_3angles.urdf"; contact_activated = true;
+
 
             nb_launchs++;
             std::cout << "read interactive device thread beginning\n";
@@ -346,9 +346,121 @@ namespace hpp {
             };
             SixDOFMouseDriver::MouseInit(bounds);
 
+            // ///////////////////////////////////////////////////////////////
+            // bornes du problème
+            //*
+            gepetto::corbaserver::Color color_rouge;
+            color_rouge[0]=(float)1;color_rouge[1]=(float)0.2;
+            color_rouge[2]=(float)0;color_rouge[3]=(float)1;
+            std::cout << "joint bounds " <<
+                         this->problem().robot()->rootJoint()->lowerBound(0) << " " <<
+                         this->problem().robot()->rootJoint()->upperBound(0) << " " <<
+                         this->problem().robot()->rootJoint()->lowerBound(1) << " " <<
+                         this->problem().robot()->rootJoint()->upperBound(1) << " " <<
+                         this->problem().robot()->rootJoint()->lowerBound(2) << " " <<
+                         this->problem().robot()->rootJoint()->upperBound(2) << " " <<
+            std::endl;
+
+            float mx = (float)this->problem().robot()->rootJoint()->lowerBound(0);
+            float my = (float)this->problem().robot()->rootJoint()->lowerBound(1);
+            float mz = (float)this->problem().robot()->rootJoint()->lowerBound(2);
+            float Mx = (float)this->problem().robot()->rootJoint()->upperBound(0);
+            float My = (float)this->problem().robot()->rootJoint()->upperBound(1);
+            float Mz = (float)this->problem().robot()->rootJoint()->upperBound(2);
+
+            min << mx, my, mz;
+            max << Mx, My, Mz;
+
+            graphics::corbaServer::ClientCpp::value_type A[3] = {(float)mx, (float)my, (float)mz};
+            graphics::corbaServer::ClientCpp::value_type B[3] = {(float)Mx, (float)my, (float)mz};
+            graphics::corbaServer::ClientCpp::value_type C[3] = {(float)Mx, (float)My, (float)mz};
+            graphics::corbaServer::ClientCpp::value_type D[3] = {(float)mx, (float)My, (float)mz};
+            graphics::corbaServer::ClientCpp::value_type E[3] = {(float)mx, (float)my, (float)Mz};
+            graphics::corbaServer::ClientCpp::value_type F[3] = {(float)Mx, (float)my, (float)Mz};
+            graphics::corbaServer::ClientCpp::value_type G[3] = {(float)Mx, (float)My, (float)Mz};
+            graphics::corbaServer::ClientCpp::value_type H[3] = {(float)mx, (float)My, (float)Mz};
+
+            graphics::corbaServer::ClientCpp::value_type *A_ = &A[0];
+            graphics::corbaServer::ClientCpp::value_type *B_ = &B[0];
+            graphics::corbaServer::ClientCpp::value_type *C_ = &C[0];
+            graphics::corbaServer::ClientCpp::value_type *D_ = &D[0];
+            graphics::corbaServer::ClientCpp::value_type *E_ = &E[0];
+            graphics::corbaServer::ClientCpp::value_type *F_ = &F[0];
+            graphics::corbaServer::ClientCpp::value_type *G_ = &G[0];
+            graphics::corbaServer::ClientCpp::value_type *H_ = &H[0];
+
+            string borne = "scene_hpp_/borne";
+            borne +="i";
+            p.addLine(borne.c_str(), A_, B_, &color_rouge[0]);borne +="i";
+            p.addLine(borne.c_str(), B_, C_, &color_rouge[0]);borne +="i";
+            p.addLine(borne.c_str(), C_, D_, &color_rouge[0]);borne +="i";
+            p.addLine(borne.c_str(), D_, A_, &color_rouge[0]);borne +="i";
+            p.addLine(borne.c_str(), E_, F_, &color_rouge[0]);borne +="i";
+            p.addLine(borne.c_str(), F_, G_, &color_rouge[0]);borne +="i";
+            p.addLine(borne.c_str(), G_, H_, &color_rouge[0]);borne +="i";
+            p.addLine(borne.c_str(), H_, E_, &color_rouge[0]);borne +="i";
+            p.addLine(borne.c_str(), A_, E_, &color_rouge[0]);borne +="i";
+            p.addLine(borne.c_str(), B_, F_, &color_rouge[0]);borne +="i";
+            p.addLine(borne.c_str(), C_, G_, &color_rouge[0]);borne +="i";
+            p.addLine(borne.c_str(), D_, H_, &color_rouge[0]);
+
+            p.refresh();
+
+            //*/
+
             boost::thread th(&InteractiveDeviceThread, this);
 
         }
+
+
+    // returns true if in collision returns false otherwise
+    fcl::DistanceResult FindNearestObstacle(Planner* arg_){
+
+        fcl::DistanceRequest request(true, 0, 0, fcl::GST_INDEP);
+        fcl::DistanceResult result;
+        result.clear();
+
+        fcl::CollisionObject* robot_proche;
+        fcl::CollisionObject* obstacle_proche;
+        fcl::CollisionObject* obst_temp;
+        fcl::CollisionObject* robot_temp;
+
+        hpp::core::ObjectVector_t liste = arg_->problem().collisionObstacles();
+
+
+        double min_dist = 999;
+        bool collision = false;
+
+            for (hpp::core::ObjectVector_t::iterator it_obst = liste.begin();it_obst!=liste.end();++it_obst){
+
+                obst_temp = &*(*it_obst)->fcl();
+                for (hpp::model::ObjectIterator it_rob = arg_->problem().robot()->objectIterator(hpp::model::COLLISION);
+                  !it_rob.isEnd(); ++it_rob){
+
+                    robot_temp = &*(*it_rob)->fcl();
+
+                    result.clear();
+
+                    fcl::distance(obst_temp, robot_temp, request, result);
+
+                    cout << (*it_obst)->name() << "/" << (*it_rob)->name() << " " << result.min_distance << endl;
+                    if (result.min_distance<min_dist){
+                        if(result.min_distance==-1){
+                            collision = true;
+                        }
+
+                        robot_proche = robot_temp;
+                        obstacle_proche = obst_temp;
+                        min_dist = result.min_distance;
+                    }
+                }
+            }
+
+            fcl::distance(obstacle_proche, robot_proche, request, result);
+
+
+            return result;
+    }
 
 
     // //////////////////////////////////////////////////////////////////////////////////////////
@@ -394,7 +506,7 @@ namespace hpp {
         unsigned short int dim = 4;
         CamVects = new gepetto::corbaserver::floatSeq();
         CamVects->length(dim);
-        CamVects = client.gui()->getCameraVectors(id, "");
+        CamVects = client.gui()->getCameraVectors((float)id, "");
 
         Matrix3 camMat = quat2Mat(CamVects->get_buffer()[0],CamVects->get_buffer()[1],
                 CamVects->get_buffer()[2],CamVects->get_buffer()[3]);
@@ -458,74 +570,16 @@ namespace hpp {
 
 
 
-    fcl::CollisionObject o2 =
-            *(*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->fcl();
-    //o2 = *(*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->fcl();
-    //*o2ptr = *(*this->problem().robot()->objectIterator(hpp::model::COLLISION))->fcl();
+    // méthode de recherche du plus proche obst par intération
 
-    // set the distance request structure, here we just use the default setting
-    fcl::DistanceRequest request(true, 0, 0, fcl::GST_INDEP);
-    // result will be returned via the collision result structure
     fcl::DistanceResult result;
-    result.clear();
-
-    // Le premier obstacle est choisi pour cacluler la distance
-    hpp::core::ObjectVector_t liste = arg_->problem().collisionObstacles();
-
-
-    //hpp::model::ObjectIterator it_rob =arg_->problem().robot()->objectIterator(hpp::model::COLLISION);
-
-
-    fcl::CollisionObject o1 = o2;//*(*it_obst)->fcl();
-    fcl::CollisionObject o_proche = o2;
-    fcl::CollisionObject o_collision = o2;
-
-    hpp::core::ObjectVector_t::iterator it_proche_obst = liste.begin();
-    //hpp::model::ObjectIterator it_proche_rob = arg_->problem().robot()->objectIterator(hpp::model::COLLISION);
-    //hpp::model::CollisionObjectPtr_t proche_rob = *(arg_->problem().robot()->objectIterator(hpp::model::COLLISION));
-
-    double min_dist = 999;
     bool collision = false;
-
-        for (hpp::core::ObjectVector_t::iterator it_obst = liste.begin();it_obst!=liste.end();++it_obst){
-            o1 = *(*it_obst)->fcl();
-            for (hpp::model::ObjectIterator it_rob = arg_->problem().robot()->objectIterator(hpp::model::COLLISION);
-                 !it_rob.isEnd(); ++it_rob){
-                o2 = *(*it_rob)->fcl();
-
-                result.clear();
-                fcl::distance(&o1, &o2, request, result);
-
-                //cout << (*it_obst)->name() << "/" << (*it_rob)->name() << " " << result.min_distance << endl;
-                if (result.min_distance<min_dist){
-                    if(result.min_distance==-1){
-                        collision = true;
-                        o_collision = o2;
-                    }
-                    o_proche = o2;
-                    it_proche_obst = it_obst;
-                    min_dist = result.min_distance;
-                }
-            }
-        }
-
-        // TODO
-        /*
-        bool HighlightCollision(){
-1;
-        }*/
+    result = FindNearestObstacle(arg_);
+    collision = result.min_distance == -1 ? true : false;
 
 
+    robot_mutex_.unlock();
 
-    // choix du bon couple robot obstacle
-    //cout << " obstacle le plus proche" << (*it_proche_obst)->name() << endl;
-    //cout << "robot le plus proche " <
-    o1 = *(*it_proche_obst)->fcl();
-    //o2 = *(*it_proche_rob)->fcl();
-
-        robot_mutex_.unlock();
-
-    fcl::distance(&o1, &o_proche, request, result);
 
 
     // remettre le robot là où il était, inutile ?
@@ -535,7 +589,7 @@ namespace hpp {
     // //////////////////////////////////////////////////////////////////
  if (contact_activated && !collision){
 
-    //cout << " dist obstacle " << result.min_distance << std::endl;
+    cout << " dist obstacle " << result.min_distance << std::endl;
 
     // enregistrer les coordonnées des extrémités du segment robot/obstacle
     // point sur le robot
@@ -688,7 +742,7 @@ namespace hpp {
 
 
         //cout << "d=" << result.min_distance << " \n";//<< std::endl;
-        if (result.min_distance<0.15 && !Planner::mode_contact_){
+        if (result.min_distance<1 && !Planner::mode_contact_){
         //if (0){
             cout << "distance inférieure à 0.15" << std::endl;
             //std::cout << " pt0 " << result.nearest_points[0] <<
@@ -740,7 +794,7 @@ namespace hpp {
         DelayedEdges_t delayedEdges;
         DevicePtr_t robot (problem ().robot ());
 
-        robot_mutex_.unlock();
+        //robot_mutex_.unlock();
 
         /*
         cout << i++ << " robot dans one step" <<
@@ -869,7 +923,7 @@ namespace hpp {
                 }
 
                 Planner::iteration_++;
-                if(Planner::iteration_ == 10){
+                if(Planner::iteration_ == 5){
                     Planner::mode_contact_ = false;
 
                     // ancien emplacement de distance_mutex_.unlock();
@@ -963,7 +1017,8 @@ namespace hpp {
         }
 
 
-    // ancien emplacement de robot_mutex_.unlock
+    // ancien emplacement de
+        robot_mutex_.unlock();
     }
 
 
