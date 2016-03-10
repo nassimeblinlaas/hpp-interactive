@@ -24,19 +24,18 @@
 
 #include <boost/lexical_cast.hpp>
 
-
 #include <hpp/model/joint.hh>
 #include <hpp/model/object-factory.hh>
 #include <hpp/model/distance-result.hh>
 #include <hpp/model/fwd.hh>
 
-# include <hpp/fcl/collision_object.h>
-# include <hpp/fcl/collision.h>
+#include <hpp/fcl/collision_object.h>
+#include <hpp/fcl/collision.h>
 #include <hpp/fcl/distance.h>
 
-# include <hpp/util/pointer.hh>
-# include <hpp/model/config.hh>
-# include <hpp/model/fwd.hh>
+#include <hpp/util/pointer.hh>
+#include <hpp/model/config.hh>
+#include <hpp/model/fwd.hh>
 
 #include <hpp/core/config-projector.hh>
 #include <hpp/interactive/planner.hh>
@@ -54,7 +53,6 @@
 #include <hpp/model/collision-object.hh>
 #include <hpp/corbaserver/client.hh>
 #include <gepetto/viewer/group-node.h>
-#include <gepetto/viewer/window-manager.h>
 #include <gepetto/viewer/window-manager.h>
 #include <gepetto/viewer/roadmap-viewer.h>
 #include <boost/thread/mutex.hpp>
@@ -181,7 +179,7 @@ namespace hpp {
     }
 
     // returns an fcl distance request structure
-    fcl::DistanceResult FindNearestObstacle(Planner* arg_){
+    fcl::DistanceResult Planner::FindNearestObstacle(){
 
         fcl::DistanceRequest request(true, 0, 0, fcl::GST_INDEP);
         fcl::DistanceResult result;
@@ -192,7 +190,7 @@ namespace hpp {
         fcl::CollisionObject* obst_temp;
         fcl::CollisionObject* robot_temp;
 
-        hpp::core::ObjectVector_t liste = arg_->problem().collisionObstacles();
+        hpp::core::ObjectVector_t liste = this->problem().collisionObstacles();
 
 
         double min_dist = 999;
@@ -201,7 +199,7 @@ namespace hpp {
             for (hpp::core::ObjectVector_t::iterator it_obst = liste.begin();it_obst!=liste.end();++it_obst){
 
                 obst_temp = &*(*it_obst)->fcl();
-                for (hpp::model::ObjectIterator it_rob = arg_->problem().robot()->objectIterator(hpp::model::COLLISION);
+                for (hpp::model::ObjectIterator it_rob = this->problem().robot()->objectIterator(hpp::model::COLLISION);
                   !it_rob.isEnd(); ++it_rob){
 
                     robot_temp = &*(*it_rob)->fcl();
@@ -229,6 +227,65 @@ namespace hpp {
             return result;
     }
 
+    // afficher bornes du problème
+    void Planner::ShowBounds(){
+        gepetto::corbaserver::Color color_rouge;
+        color_rouge[0]=(float)1;color_rouge[1]=(float)0.2;
+        color_rouge[2]=(float)0;color_rouge[3]=(float)1;
+        std::cout << "joint bounds " <<
+                     this->problem().robot()->rootJoint()->lowerBound(0) << " " <<
+                     this->problem().robot()->rootJoint()->upperBound(0) << " " <<
+                     this->problem().robot()->rootJoint()->lowerBound(1) << " " <<
+                     this->problem().robot()->rootJoint()->upperBound(1) << " " <<
+                     this->problem().robot()->rootJoint()->lowerBound(2) << " " <<
+                     this->problem().robot()->rootJoint()->upperBound(2) << " " <<
+        std::endl;
+
+        float mx = (float)this->problem().robot()->rootJoint()->lowerBound(0);
+        float my = (float)this->problem().robot()->rootJoint()->lowerBound(1);
+        float mz = (float)this->problem().robot()->rootJoint()->lowerBound(2);
+        float Mx = (float)this->problem().robot()->rootJoint()->upperBound(0);
+        float My = (float)this->problem().robot()->rootJoint()->upperBound(1);
+        float Mz = (float)this->problem().robot()->rootJoint()->upperBound(2);
+
+        min << mx, my, mz;
+        max << Mx, My, Mz;
+
+        graphics::corbaServer::ClientCpp::value_type A[3] = {(float)mx, (float)my, (float)mz};
+        graphics::corbaServer::ClientCpp::value_type B[3] = {(float)Mx, (float)my, (float)mz};
+        graphics::corbaServer::ClientCpp::value_type C[3] = {(float)Mx, (float)My, (float)mz};
+        graphics::corbaServer::ClientCpp::value_type D[3] = {(float)mx, (float)My, (float)mz};
+        graphics::corbaServer::ClientCpp::value_type E[3] = {(float)mx, (float)my, (float)Mz};
+        graphics::corbaServer::ClientCpp::value_type F[3] = {(float)Mx, (float)my, (float)Mz};
+        graphics::corbaServer::ClientCpp::value_type G[3] = {(float)Mx, (float)My, (float)Mz};
+        graphics::corbaServer::ClientCpp::value_type H[3] = {(float)mx, (float)My, (float)Mz};
+
+        graphics::corbaServer::ClientCpp::value_type *A_ = &A[0];
+        graphics::corbaServer::ClientCpp::value_type *B_ = &B[0];
+        graphics::corbaServer::ClientCpp::value_type *C_ = &C[0];
+        graphics::corbaServer::ClientCpp::value_type *D_ = &D[0];
+        graphics::corbaServer::ClientCpp::value_type *E_ = &E[0];
+        graphics::corbaServer::ClientCpp::value_type *F_ = &F[0];
+        graphics::corbaServer::ClientCpp::value_type *G_ = &G[0];
+        graphics::corbaServer::ClientCpp::value_type *H_ = &H[0];
+
+        string borne = "scene_hpp_/borne";
+        borne +="i";
+        p.addLine(borne.c_str(), A_, B_, &color_rouge[0]);borne +="i";
+        p.addLine(borne.c_str(), B_, C_, &color_rouge[0]);borne +="i";
+        p.addLine(borne.c_str(), C_, D_, &color_rouge[0]);borne +="i";
+        p.addLine(borne.c_str(), D_, A_, &color_rouge[0]);borne +="i";
+        p.addLine(borne.c_str(), E_, F_, &color_rouge[0]);borne +="i";
+        p.addLine(borne.c_str(), F_, G_, &color_rouge[0]);borne +="i";
+        p.addLine(borne.c_str(), G_, H_, &color_rouge[0]);borne +="i";
+        p.addLine(borne.c_str(), H_, E_, &color_rouge[0]);borne +="i";
+        p.addLine(borne.c_str(), A_, E_, &color_rouge[0]);borne +="i";
+        p.addLine(borne.c_str(), B_, F_, &color_rouge[0]);borne +="i";
+        p.addLine(borne.c_str(), C_, G_, &color_rouge[0]);borne +="i";
+        p.addLine(borne.c_str(), D_, H_, &color_rouge[0]);
+
+        p.refresh();
+    }
 
     // //////////////////////////////////////////////////////////////////////////////////////////
 
@@ -333,67 +390,9 @@ namespace hpp {
             };
             SixDOFMouseDriver::MouseInit(bounds);
 
-            // ///////////////////////////////////////////////////////////////
-            // afficher bornes du problème
-            //*
-            gepetto::corbaserver::Color color_rouge;
-            color_rouge[0]=(float)1;color_rouge[1]=(float)0.2;
-            color_rouge[2]=(float)0;color_rouge[3]=(float)1;
-            std::cout << "joint bounds " <<
-                         this->problem().robot()->rootJoint()->lowerBound(0) << " " <<
-                         this->problem().robot()->rootJoint()->upperBound(0) << " " <<
-                         this->problem().robot()->rootJoint()->lowerBound(1) << " " <<
-                         this->problem().robot()->rootJoint()->upperBound(1) << " " <<
-                         this->problem().robot()->rootJoint()->lowerBound(2) << " " <<
-                         this->problem().robot()->rootJoint()->upperBound(2) << " " <<
-            std::endl;
+            ShowBounds();
 
-            float mx = (float)this->problem().robot()->rootJoint()->lowerBound(0);
-            float my = (float)this->problem().robot()->rootJoint()->lowerBound(1);
-            float mz = (float)this->problem().robot()->rootJoint()->lowerBound(2);
-            float Mx = (float)this->problem().robot()->rootJoint()->upperBound(0);
-            float My = (float)this->problem().robot()->rootJoint()->upperBound(1);
-            float Mz = (float)this->problem().robot()->rootJoint()->upperBound(2);
 
-            min << mx, my, mz;
-            max << Mx, My, Mz;
-
-            graphics::corbaServer::ClientCpp::value_type A[3] = {(float)mx, (float)my, (float)mz};
-            graphics::corbaServer::ClientCpp::value_type B[3] = {(float)Mx, (float)my, (float)mz};
-            graphics::corbaServer::ClientCpp::value_type C[3] = {(float)Mx, (float)My, (float)mz};
-            graphics::corbaServer::ClientCpp::value_type D[3] = {(float)mx, (float)My, (float)mz};
-            graphics::corbaServer::ClientCpp::value_type E[3] = {(float)mx, (float)my, (float)Mz};
-            graphics::corbaServer::ClientCpp::value_type F[3] = {(float)Mx, (float)my, (float)Mz};
-            graphics::corbaServer::ClientCpp::value_type G[3] = {(float)Mx, (float)My, (float)Mz};
-            graphics::corbaServer::ClientCpp::value_type H[3] = {(float)mx, (float)My, (float)Mz};
-
-            graphics::corbaServer::ClientCpp::value_type *A_ = &A[0];
-            graphics::corbaServer::ClientCpp::value_type *B_ = &B[0];
-            graphics::corbaServer::ClientCpp::value_type *C_ = &C[0];
-            graphics::corbaServer::ClientCpp::value_type *D_ = &D[0];
-            graphics::corbaServer::ClientCpp::value_type *E_ = &E[0];
-            graphics::corbaServer::ClientCpp::value_type *F_ = &F[0];
-            graphics::corbaServer::ClientCpp::value_type *G_ = &G[0];
-            graphics::corbaServer::ClientCpp::value_type *H_ = &H[0];
-
-            string borne = "scene_hpp_/borne";
-            borne +="i";
-            p.addLine(borne.c_str(), A_, B_, &color_rouge[0]);borne +="i";
-            p.addLine(borne.c_str(), B_, C_, &color_rouge[0]);borne +="i";
-            p.addLine(borne.c_str(), C_, D_, &color_rouge[0]);borne +="i";
-            p.addLine(borne.c_str(), D_, A_, &color_rouge[0]);borne +="i";
-            p.addLine(borne.c_str(), E_, F_, &color_rouge[0]);borne +="i";
-            p.addLine(borne.c_str(), F_, G_, &color_rouge[0]);borne +="i";
-            p.addLine(borne.c_str(), G_, H_, &color_rouge[0]);borne +="i";
-            p.addLine(borne.c_str(), H_, E_, &color_rouge[0]);borne +="i";
-            p.addLine(borne.c_str(), A_, E_, &color_rouge[0]);borne +="i";
-            p.addLine(borne.c_str(), B_, F_, &color_rouge[0]);borne +="i";
-            p.addLine(borne.c_str(), C_, G_, &color_rouge[0]);borne +="i";
-            p.addLine(borne.c_str(), D_, H_, &color_rouge[0]);
-
-            p.refresh();
-
-            //*/
 
             boost::thread th(&InteractiveDeviceThread, this);
 
@@ -513,7 +512,7 @@ namespace hpp {
 
     fcl::DistanceResult result;
     bool collision = false;
-    result = FindNearestObstacle(arg_);
+    result = arg_->FindNearestObstacle();
     collision = result.min_distance == -1 ? true : false;
 
 

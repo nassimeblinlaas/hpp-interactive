@@ -29,6 +29,7 @@
 #include <fstream>
 
 #include <gepetto/viewer/corba/client.hh>
+#include <hpp/fcl/distance.h>
 
 namespace hpp {
   namespace interactive {
@@ -65,6 +66,8 @@ namespace hpp {
             return actual_configuration_;
         }
 
+        fcl::DistanceResult FindNearestObstacle();
+
         protected:
         /// Constructor
         Planner (const Problem& problem, const RoadmapPtr_t& roadmap);
@@ -84,6 +87,9 @@ namespace hpp {
 
 
         private:
+
+        void ShowBounds();
+
 
 
         // void InteractiveDeviceThread(void* arg);
