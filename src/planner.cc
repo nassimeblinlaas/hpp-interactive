@@ -194,7 +194,6 @@ namespace hpp {
 
 
         double min_dist = 999;
-        bool collision = false;
 
             for (hpp::core::ObjectVector_t::iterator it_obst = liste.begin();it_obst!=liste.end();++it_obst){
 
@@ -208,10 +207,10 @@ namespace hpp {
 
                     fcl::distance(obst_temp, robot_temp, request, result);
 
-                    cout << (*it_obst)->name() << "/" << (*it_rob)->name() << " " << result.min_distance << endl;
+                    //cout << (*it_obst)->name() << "/" << (*it_rob)->name() << " " << result.min_distance << endl;
                     if (result.min_distance<min_dist){
                         if(result.min_distance==-1){
-                            collision = true;
+                            1;//collision = true; TODO vérifier que tout va bien
                         }
 
                         robot_proche = robot_temp;
@@ -319,34 +318,22 @@ namespace hpp {
             //Planner::random_prob_ = 1; // 0 all human  1 all machine
             Planner::random_prob_ = 0.5; // 0 all human  1 all machine
 
-            //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_L.urdf"; contact_activated = true;
-            string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_3angles.urdf"; contact_activated = true;
+            string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_L.urdf"; contact_activated = true;
+            //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_3angles.urdf"; contact_activated = true;
 
 
             nb_launchs++;
             std::cout << "read interactive device thread beginning\n";
 
             std::ofstream myfile;
-            ConfigurationPtr_t config (new Configuration_t ((hpp::model::size_type)7));
 
-            // on vient ici dans un second temps donc la mauvaise init n'est pas là !!!!!!!!!!!
-            //*
-            (*config)[0] = 1.5;
-            (*config)[1] = 0.5;
-            (*config)[2] = -3.2;
-            (*config)[3] = 1;
-            (*config)[4] = 0;
-            (*config)[5] = 0;
-            (*config)[6] = 0;
-            //*/
-            //config = this->problem().initConfig();
 
 
             cout << "init config[0]=" << endl;
             //cout << this->problem().initConfig().get()[0] << endl;
 
 
-            Planner::actual_configuration_ptr_ = config;
+
 
 
 
@@ -388,9 +375,26 @@ namespace hpp {
                 this->problem().robot()->rootJoint()->lowerBound(2),
                 this->problem().robot()->rootJoint()->upperBound(2)
             };
+
+
             SixDOFMouseDriver::MouseInit(bounds);
 
             ShowBounds();
+
+            ConfigurationPtr_t config (new Configuration_t ((hpp::model::size_type)7));
+
+            // on vient ici dans un second temps donc la mauvaise init n'est pas là !!!!!!!!!!!
+            //*
+            (*config)[0] = 0;
+            (*config)[1] = 0;
+            (*config)[2] = 0;
+            (*config)[3] = 1;
+            (*config)[4] = 0;
+            (*config)[5] = 0;
+            (*config)[6] = 0;
+            Planner::actual_configuration_ptr_ = config;
+            //*/
+            //config = this->problem().initConfig();
 
 
 
@@ -412,8 +416,27 @@ namespace hpp {
         int index_lignes = 0;
 
 
+
+        bool init = false;
     while(1){
+
+
+
+
     if (SixDOFMouseDriver::HasMoved()){
+
+        if (!init){
+            const ConfigurationPtr_t initConfig_ = arg_->problem().initConfig();
+            double translations[3] = {
+                (*initConfig_)[0],
+                (*initConfig_)[1],
+                (*initConfig_)[2]
+            };
+            SixDOFMouseDriver::InitPosition(translations);
+            init = true;
+        }
+
+
 
         // get transformation from device
         //cout << "get transfo... inter device thread\n";
@@ -422,17 +445,31 @@ namespace hpp {
         // conversion matrice -> quaternion
         Eigen::Matrix3f mat = trans_temp.rotation();
         Eigen::Quaternionf quat(mat);
+        // normaliser quaternion
+        double mag = sqrt(pow(quat.w(),2)+pow(quat.x(),2)+pow(quat.y(),2)+pow(quat.z(),2));
         ::gepetto::corbaserver::Transform tr;
+
         tr[0] = trans_temp.translation()[0];
         tr[1] = trans_temp.translation()[1];
         tr[2] = trans_temp.translation()[2];
-
-        // normaliser quaternion
-        double mag = sqrt(pow(quat.w(),2)+pow(quat.x(),2)+pow(quat.y(),2)+pow(quat.z(),2));
         tr[3] = (float)quat.w()/(float)mag;
         tr[4] = (float)quat.x()/(float)mag;
         tr[5] = (float)quat.y()/(float)mag;
         tr[6] = (float)quat.z()/(float)mag;
+
+
+        // save current transfo-rmation in the planner's memory
+        (*Planner::actual_configuration_ptr_)[0] =
+                        trans_temp.translation()[0];
+        (*Planner::actual_configuration_ptr_)[1] =
+                        trans_temp.translation()[1];
+        (*Planner::actual_configuration_ptr_)[2] =
+                        trans_temp.translation()[2];
+        (*Planner::actual_configuration_ptr_)[3] = tr[3];
+        (*Planner::actual_configuration_ptr_)[4] = tr[4];
+        (*Planner::actual_configuration_ptr_)[5] = tr[5];
+        (*Planner::actual_configuration_ptr_)[6] = tr[6];
+
 
         // afficher le robot
         client.gui()->applyConfiguration("scene_hpp_/robot_interactif", tr);
@@ -468,21 +505,12 @@ namespace hpp {
         //*/
 
 
-        // save current transfo-rmation in the planner's memory
-        (*Planner::actual_configuration_ptr_)[0] =
-                        trans_temp.translation()[0];
-        (*Planner::actual_configuration_ptr_)[1] =
-                        trans_temp.translation()[1];
-        (*Planner::actual_configuration_ptr_)[2] =
-                        trans_temp.translation()[2];
-        (*Planner::actual_configuration_ptr_)[3] = tr[3];
-        (*Planner::actual_configuration_ptr_)[4] = tr[4];
-        (*Planner::actual_configuration_ptr_)[5] = tr[5];
-        (*Planner::actual_configuration_ptr_)[6] = tr[6];
+
 
 
         // using solveanddisplay relaunches planner -> anti core dump protection
         if (nb_launchs<2){
+
 
         //*
         // caler le robot au niveau du curseur
@@ -499,7 +527,8 @@ namespace hpp {
         hpp::model::ConfigurationIn_t in_t(in);
         arg_->problem().robot()->currentConfiguration(in_t);
         arg_->problem().robot()->computeForwardKinematics();
-    /*
+
+        /*
     cout << " robot " <<
             (*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->name() << " tr "
             << (*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->getTransform().getTranslation()
@@ -509,7 +538,6 @@ namespace hpp {
 
 
     // méthode de recherche du plus proche obst par itération
-
     fcl::DistanceResult result;
     bool collision = false;
     result = arg_->FindNearestObstacle();
@@ -527,7 +555,7 @@ namespace hpp {
     // //////////////////////////////////////////////////////////////////
  if (contact_activated && !collision){
 
-    cout << " dist obstacle " << result.min_distance << std::endl;
+    //cout << " dist obstacle " << result.min_distance << std::endl;
 
     // enregistrer les coordonnées des extrémités du segment robot/obstacle
     // point sur le robot
@@ -563,9 +591,11 @@ namespace hpp {
         {
 
 
-            Eigen::Vector3f normal(result.nearest_points[0][0] - result.nearest_points[1][0],
-                    result.nearest_points[0][1] - result.nearest_points[1][1],
-                    result.nearest_points[0][2] - result.nearest_points[1][2]);
+            Eigen::Vector3f normal(
+                    (float)(result.nearest_points[0][0] - result.nearest_points[1][0]),
+                    (float)(result.nearest_points[0][1] - result.nearest_points[1][1]),
+                    (float)(result.nearest_points[0][2] - result.nearest_points[1][2])
+                    );
 
             //cout << "normale " << normal(0)<< " " << normal(1) << " "<< normal(2) << endl;
             for (int i=0; i< 3; i++){
@@ -586,9 +616,9 @@ namespace hpp {
                 (float)result.nearest_points[1][1] - trans_temp.translation()[1],
                 (float)result.nearest_points[1][2] - trans_temp.translation()[2]);
             //cout << "d_com_near_point " << d_com_near_point(0)<< " " << d_com_near_point(1) << " "<< d_com_near_point(2) << endl;
-            distances_[0] = 0.0 + normal(0) * d_com_near_point(0);
-            distances_[1] = 0.0 + normal(1) * d_com_near_point(1);
-            distances_[2] = 0.0 + normal(2) * d_com_near_point(2);
+            distances_[0] = (float) (0.0 + normal(0) * d_com_near_point(0));
+            distances_[1] = (float) (0.0 + normal(1) * d_com_near_point(1));
+            distances_[2] = (float) (0.0 + normal(2) * d_com_near_point(2));
             //cout << "distances_ " << distances_[0]  << " " << distances_[1] << " " <<
             //         distances_[2] << endl;
 
@@ -626,7 +656,6 @@ namespace hpp {
         rando1 = rando1 / RAND_MAX; rando2 = rando2 / RAND_MAX; rando3 = rando3 / RAND_MAX;
         A.col[2] = Vec3f((float)rando1,(float)rando2, (float)rando3);
 
-        //print_mat("A", A);
 
         // calcule la matrice de rotation MGS si on n'est pas déjà en mode contact
         if (!Planner::mode_contact_)
@@ -671,7 +700,6 @@ namespace hpp {
 
 
 
-
         ::Eigen::Matrix3f MGS_;
         MGS_ << MGS.col[0].v[0],
                 MGS.col[1].v[0],
@@ -690,7 +718,7 @@ namespace hpp {
         //cout << "d=" << result.min_distance << " \n";//<< std::endl;
         if (result.min_distance<0.15 && !Planner::mode_contact_){
         //if (0){
-            cout << "distance inférieure à 0.15" << std::endl;
+            //cout << "distance inférieure à 0.15" << std::endl;
             //std::cout << " pt0 " << result.nearest_points[0] <<
             //             " pt1 " << result.nearest_points[1] << std::endl;
 
@@ -739,16 +767,13 @@ namespace hpp {
 
         DelayedEdges_t delayedEdges;
         //DevicePtr_t robot (problem ().robot ());
-
         //robot_mutex_.unlock();
-
 
         PathValidationPtr_t pathValidation (problem ().pathValidation ());
         Nodes_t newNodes;
         PathPtr_t validPath, path;
         // Pick a random node
         ConfigurationPtr_t q_rand = configurationShooter_->shoot ();
-
 
         //*
         // ////////////////////////////////////////////////////////////////////////////
@@ -759,8 +784,7 @@ namespace hpp {
         if ( (rando < Planner::random_prob_) || (Planner::mode_contact_) ) // todo : réorganiser condition
         {
             if (Planner::mode_contact_){
-                cout << "mode contact " << ++i << Planner::iteration_ << std::endl;
-
+                //cout << "mode contact " << ++i << Planner::iteration_ << std::endl;
                 /* // bounds limitations, not working
                 if(Planner::iteration_ == 0){
                     this->problem().robot()->rootJoint()->lowerBound(0, NewMinBounds[0]);
@@ -770,8 +794,7 @@ namespace hpp {
                     this->problem().robot()->rootJoint()->lowerBound(2, NewMinBounds[2]);
                     this->problem().robot()->rootJoint()->upperBound(2, NewMaxBounds[2]);
                 }
-                //*/
-                /* // bounds limitation, not working
+                // bounds limitation, not working
                 this->problem().robot()->rootJoint()->lowerBound(0, min[0]);
                 this->problem().robot()->rootJoint()->upperBound(0, max[0]);
                 this->problem().robot()->rootJoint()->lowerBound(1, min[1]);
@@ -779,6 +802,7 @@ namespace hpp {
                 this->problem().robot()->rootJoint()->lowerBound(2, min[2]);
                 this->problem().robot()->rootJoint()->upperBound(2, max[2]);
                 //*/
+
                 Matrix3 rot;
                 rot(0,0) = MGS.col[0].v[0];
                 rot(0,1) = MGS.col[0].v[1];
@@ -793,14 +817,11 @@ namespace hpp {
                 Vector3 val(0, (float)(*q_rand)[0], (float)(*q_rand)[2]);
                 //cout << "rot " << rot << endl;
                 //cout << "val " << val.transpose() << endl;
-                std::cout << "one step distance centre/surf " << distance_ << std::endl;
-
+                //std::cout << "one step distance centre/surf " << distance_ << std::endl;
                 //cout << "org " << org_[1] << " obj " << obj_[1]
                 //     << " signe org-obj " << signe(org_[1]-obj_[1]) << endl;
 
-
                 distance_mutex_.try_lock();
-
                 Vector3 org(
                     (float)org_[0]+signe(obj_[0]-org_[0])*distances_[0],
                     (float)org_[1]+signe(obj_[1]-org_[1])*distances_[1],
@@ -810,9 +831,7 @@ namespace hpp {
                 val = rot.transpose()*val + org;
                 //cout << "nouveau val " << val.transpose() << endl;
 
-
-                //*
-                // gros hack
+                //* gros hack
                 //bool proche = false;
                 while(1){
                     double dist;
@@ -825,7 +844,7 @@ namespace hpp {
                         break;
                     }
                     else{
-                        cout << "retente\n";
+                        //cout << "retente\n";
                         q_rand = configurationShooter_->shoot ();
                         val[0] = 0;
                         val[1] = (float)(*q_rand)[1];
@@ -850,12 +869,10 @@ namespace hpp {
                 (*q_rand)[5] = (*Planner::actual_configuration_ptr_)[5];
                 (*q_rand)[6] = (*Planner::actual_configuration_ptr_)[6];
 
-
                 Planner::iteration_++;
                 if(Planner::iteration_ == 5){
                     Planner::mode_contact_ = false;
                     // ancien emplacement de distance_mutex_.unlock();
-
                 }
             }
             //else cout << "pas contact\n";

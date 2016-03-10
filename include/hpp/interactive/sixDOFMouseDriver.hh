@@ -3,7 +3,7 @@
  * 
  * usage :
  * 1) plug mouse, /dev/hidraw0~3 will appear
- * 2) find the right device using cat or ohter (usually hidraw2)
+ * 2) find the right device using cat or other (usually hidraw2)
  * 3) sudo chmod 664 /dev/hidraw2
  * 4) write correct name of device in sixDOFMouseDriver.cc::88
  *
@@ -29,6 +29,7 @@ class SixDOFMouseDriver{
 		SixDOFMouseDriver();
 		// to call for init
         static void MouseInit(double* bounds);
+        static void InitPosition(double* translation);
 		// blocking if no data
 		static const se3::SE3& getTransformation();
 		// return false before first data
@@ -44,7 +45,7 @@ class SixDOFMouseDriver{
 
 	private :
 		static void getData();
-        static void ReadMouse(double* bounds);
+       		static void ReadMouse(double* bounds);
 		
 		static int fd_; // hid file descriptor
 		static boost::thread* interactiveDeviceThread_;			
