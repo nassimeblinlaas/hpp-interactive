@@ -209,7 +209,7 @@ namespace hpp {
 
                     fcl::distance(obst_temp, robot_temp, request, result);
 
-                    cout << (*it_obst)->name() << "/" << (*it_rob)->name() << " " << result.min_distance << endl;
+                    //cout << (*it_obst)->name() << "/" << (*it_rob)->name() << " " << result.min_distance << endl;
                     if (result.min_distance<min_dist){
                         if(result.min_distance==-1){
                             1;//collision = true; TODO vérifier que tout va bien
@@ -539,7 +539,6 @@ namespace hpp {
 
 
     // méthode de recherche du plus proche obst par itération
-
     fcl::DistanceResult result;
     bool collision = false;
     result = FindNearestObstacle(arg_);
@@ -557,7 +556,7 @@ namespace hpp {
     // //////////////////////////////////////////////////////////////////
  if (contact_activated && !collision){
 
-    cout << " dist obstacle " << result.min_distance << std::endl;
+    //cout << " dist obstacle " << result.min_distance << std::endl;
 
     // enregistrer les coordonnées des extrémités du segment robot/obstacle
     // point sur le robot
@@ -702,7 +701,6 @@ namespace hpp {
 
 
 
-
         ::Eigen::Matrix3f MGS_;
         MGS_ << MGS.col[0].v[0],
                 MGS.col[1].v[0],
@@ -721,7 +719,7 @@ namespace hpp {
         //cout << "d=" << result.min_distance << " \n";//<< std::endl;
         if (result.min_distance<0.15 && !Planner::mode_contact_){
         //if (0){
-            cout << "distance inférieure à 0.15" << std::endl;
+            //cout << "distance inférieure à 0.15" << std::endl;
             //std::cout << " pt0 " << result.nearest_points[0] <<
             //             " pt1 " << result.nearest_points[1] << std::endl;
 
@@ -787,7 +785,7 @@ namespace hpp {
         if ( (rando < Planner::random_prob_) || (Planner::mode_contact_) ) // todo : réorganiser condition
         {
             if (Planner::mode_contact_){
-                cout << "mode contact " << ++i << Planner::iteration_ << std::endl;
+                //cout << "mode contact " << ++i << Planner::iteration_ << std::endl;
                 /* // bounds limitations, not working
                 if(Planner::iteration_ == 0){
                     this->problem().robot()->rootJoint()->lowerBound(0, NewMinBounds[0]);
@@ -820,7 +818,7 @@ namespace hpp {
                 Vector3 val(0, (float)(*q_rand)[0], (float)(*q_rand)[2]);
                 //cout << "rot " << rot << endl;
                 //cout << "val " << val.transpose() << endl;
-                std::cout << "one step distance centre/surf " << distance_ << std::endl;
+                //std::cout << "one step distance centre/surf " << distance_ << std::endl;
                 //cout << "org " << org_[1] << " obj " << obj_[1]
                 //     << " signe org-obj " << signe(org_[1]-obj_[1]) << endl;
 
@@ -847,7 +845,7 @@ namespace hpp {
                         break;
                     }
                     else{
-                        cout << "retente\n";
+                        //cout << "retente\n";
                         q_rand = configurationShooter_->shoot ();
                         val[0] = 0;
                         val[1] = (float)(*q_rand)[1];
