@@ -104,6 +104,15 @@ inline se3::SE3::Matrix3 operatorHat(const se3::SE3::Vector3& v){
 	return m;
 }
 
+void SixDOFMouseDriver::InitPosition(double* translation)
+{
+
+    transformation_.translation()[0] = translation[0];
+    transformation_.translation()[1] = translation[1];
+    transformation_.translation()[2] = translation[2];
+}
+
+
 void SixDOFMouseDriver::MouseInit(double* bounds)
 {
 
@@ -111,7 +120,7 @@ void SixDOFMouseDriver::MouseInit(double* bounds)
 	// TODO
 	/*   Open the Device with non-blocking reads. In real life,
 	 *         don't use a hard coded path; use libudev instead. */
-    fd_ = open("/dev/hidraw4", O_RDONLY);
+    fd_ = open("/dev/hidraw0", O_RDONLY);
 	if (fd_ < 0) {
 		perror("Unable to open interactive device");
 		abort();
@@ -126,9 +135,9 @@ void SixDOFMouseDriver::MouseInit(double* bounds)
     // init position
 
     //*
-    transformation_.translation()[0] = 1.5;
-    transformation_.translation()[1] = 0.5;
-    transformation_.translation()[2] = -3.2;
+    transformation_.translation()[0] = 0;
+    transformation_.translation()[1] = 0;
+    transformation_.translation()[2] = 0;
     //*/
 
     // init rotation
