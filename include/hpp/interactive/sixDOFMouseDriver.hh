@@ -19,7 +19,7 @@
 #include <iostream>
 #include <math.h>
 
-#include <gepetto/viewer/corba/client.hh> // se3 dependancy
+#include <gepetto/viewer/corba/se3.hh> // se3 dependancy
 
 #ifndef SIXDOFMOUSEDRIVER
 #define SIXDOFMOUSEDRIVER
@@ -31,7 +31,7 @@ class SixDOFMouseDriver{
         static void MouseInit(double* bounds);
         static void InitPosition(double* translation);
 		// blocking if no data
-		static const se3::SE3& getTransformation();
+        static const se3::SE3& getTransformation();
 		// return false before first data
 		static bool HasMoved(){return has_moved_;};
 
@@ -57,7 +57,7 @@ class SixDOFMouseDriver{
 		static char data_[14]; // raw data
 		static short int deviceValues_[6]; // formatted data
 		static double deviceValuesNormalized_[6]; // normalized data
-		static se3::SE3 transformation_;
+        static se3::SE3 transformation_;
 		static bool has_moved_;
 
         static float cameraVectors_[9];

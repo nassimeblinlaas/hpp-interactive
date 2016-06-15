@@ -79,6 +79,9 @@
 
 
 #include <gepetto/viewer/corba/client.hh>
+#include <gepetto/viewer/corba/se3.hh>
+
+
 #include <hpp/core/problem.hh>
 
 #include <hpp/interactive/sixDOFMouseDriver.hh>
@@ -111,7 +114,10 @@ namespace hpp {
 
     // global variables
     short int nb_launchs = 0; // solve and display relance le planneur qui plante à cause du device
-    graphics::corbaServer::ClientCpp p; // deprecated but used to show cursor
+
+
+    //graphics::corbaServer::ClientCpp p; // deprecated but used to show cursor
+
     graphics::corbaServer::Client client(0, NULL);
     fcl::Vec3f org_;    // origine du point de référence pour gram schmidt
     fcl::Vec3f obj_;    // point de l'objet le plus proche de l'obstacle
@@ -141,8 +147,8 @@ namespace hpp {
     ///
 
 
-    Matrix3 quat2Mat(float x, float y, float z, float w){
-        Matrix3 ret;
+    ::Eigen::Matrix3f quat2Mat(float x, float y, float z, float w){
+        ::Eigen::Matrix3f ret;
 
             ret(0, 0) = 1 - 2*(pow(y, 2) + pow(z, 2));
                 ret(0, 1) = 2*x*y - 2*z*w;
@@ -250,40 +256,44 @@ namespace hpp {
         min << mx, my, mz;
         max << Mx, My, Mz;
 
-        graphics::corbaServer::ClientCpp::value_type A[3] = {(float)mx, (float)my, (float)mz};
-        graphics::corbaServer::ClientCpp::value_type B[3] = {(float)Mx, (float)my, (float)mz};
-        graphics::corbaServer::ClientCpp::value_type C[3] = {(float)Mx, (float)My, (float)mz};
-        graphics::corbaServer::ClientCpp::value_type D[3] = {(float)mx, (float)My, (float)mz};
-        graphics::corbaServer::ClientCpp::value_type E[3] = {(float)mx, (float)my, (float)Mz};
-        graphics::corbaServer::ClientCpp::value_type F[3] = {(float)Mx, (float)my, (float)Mz};
-        graphics::corbaServer::ClientCpp::value_type G[3] = {(float)Mx, (float)My, (float)Mz};
-        graphics::corbaServer::ClientCpp::value_type H[3] = {(float)mx, (float)My, (float)Mz};
 
-        graphics::corbaServer::ClientCpp::value_type *A_ = &A[0];
-        graphics::corbaServer::ClientCpp::value_type *B_ = &B[0];
-        graphics::corbaServer::ClientCpp::value_type *C_ = &C[0];
-        graphics::corbaServer::ClientCpp::value_type *D_ = &D[0];
-        graphics::corbaServer::ClientCpp::value_type *E_ = &E[0];
-        graphics::corbaServer::ClientCpp::value_type *F_ = &F[0];
-        graphics::corbaServer::ClientCpp::value_type *G_ = &G[0];
-        graphics::corbaServer::ClientCpp::value_type *H_ = &H[0];
 
-        string borne = "scene_hpp_/borne";
+        //client.gui()->addLine();
+
+        const gepetto::corbaserver::Position A = {(float)mx, (float)my, (float)mz};
+        const gepetto::corbaserver::Position B = {(float)Mx, (float)my, (float)mz};
+        const gepetto::corbaserver::Position C = {(float)Mx, (float)My, (float)mz};
+        const gepetto::corbaserver::Position D = {(float)mx, (float)My, (float)mz};
+        const gepetto::corbaserver::Position E = {(float)mx, (float)my, (float)Mz};
+        const gepetto::corbaserver::Position F = {(float)Mx, (float)my, (float)Mz};
+        const gepetto::corbaserver::Position G = {(float)Mx, (float)My, (float)Mz};
+        const gepetto::corbaserver::Position H = {(float)mx, (float)My, (float)Mz};
+
+        //const gepetto::corbaserver::Position *A_ = &A[0];
+        //const gepetto::corbaserver::Position *B_ = &B[0];
+        //const gepetto::corbaserver::Position *C_ = &C[0];
+        //const gepetto::corbaserver::Position *D_ = &D[0];
+        //const gepetto::corbaserver::Position *E_ = &E[0];
+        //const gepetto::corbaserver::Position *F_ = &F[0];
+        //const gepetto::corbaserver::Position *G_ = &G[0];
+        //const gepetto::corbaserver::Position *H_ = &H[0];
+
+        string borne = "0_scene_hpp_/borne";
         borne +="i";
-        p.addLine(borne.c_str(), A_, B_, &color_rouge[0]);borne +="i";
-        p.addLine(borne.c_str(), B_, C_, &color_rouge[0]);borne +="i";
-        p.addLine(borne.c_str(), C_, D_, &color_rouge[0]);borne +="i";
-        p.addLine(borne.c_str(), D_, A_, &color_rouge[0]);borne +="i";
-        p.addLine(borne.c_str(), E_, F_, &color_rouge[0]);borne +="i";
-        p.addLine(borne.c_str(), F_, G_, &color_rouge[0]);borne +="i";
-        p.addLine(borne.c_str(), G_, H_, &color_rouge[0]);borne +="i";
-        p.addLine(borne.c_str(), H_, E_, &color_rouge[0]);borne +="i";
-        p.addLine(borne.c_str(), A_, E_, &color_rouge[0]);borne +="i";
-        p.addLine(borne.c_str(), B_, F_, &color_rouge[0]);borne +="i";
-        p.addLine(borne.c_str(), C_, G_, &color_rouge[0]);borne +="i";
-        p.addLine(borne.c_str(), D_, H_, &color_rouge[0]);
+        client.gui()->addLine(borne.c_str(), A, B, &color_rouge[0]);borne +="i";
+        client.gui()->addLine(borne.c_str(), B, C, &color_rouge[0]);borne +="i";
+        client.gui()->addLine(borne.c_str(), C, D, &color_rouge[0]);borne +="i";
+        client.gui()->addLine(borne.c_str(), D, A, &color_rouge[0]);borne +="i";
+        client.gui()->addLine(borne.c_str(), E, F, &color_rouge[0]);borne +="i";
+        client.gui()->addLine(borne.c_str(), F, G, &color_rouge[0]);borne +="i";
+        client.gui()->addLine(borne.c_str(), G, H, &color_rouge[0]);borne +="i";
+        client.gui()->addLine(borne.c_str(), H, E, &color_rouge[0]);borne +="i";
+        client.gui()->addLine(borne.c_str(), A, E, &color_rouge[0]);borne +="i";
+        client.gui()->addLine(borne.c_str(), B, F, &color_rouge[0]);borne +="i";
+        client.gui()->addLine(borne.c_str(), C, G, &color_rouge[0]);borne +="i";
+        client.gui()->addLine(borne.c_str(), D, H, &color_rouge[0]);
 
-        p.refresh();
+        client.gui()->refresh();
     }
 
     // //////////////////////////////////////////////////////////////////////////////////////////
@@ -339,18 +349,28 @@ namespace hpp {
 
             float f = (float) 0.1;
 
-            // add landmark to viewer
             cout << "adding landmark to viewer\n";
-            p.createGroup ("scene_hpp_");
-            gepetto::corbaserver::Color color;
-            color[0] = 1;	color[1] = 1;	color[2] = 1;	color[3] = 1.;
-
-            p.addBox ("scene_hpp_/curseur", f/10,f/10,f/10, color);
-            p.addSceneToWindow ("scene_hpp_", 0);
             client.connect();
 
-            client.gui()->addLandmark("scene_hpp_/curseur", 1.);
-            client.gui()->addURDF("scene_hpp_/robot_interactif", robot_name.data() ,"");
+            // add landmark to viewer
+
+            //client.gui()->createGroup ("0_scene_hpp_");
+
+            gepetto::corbaserver::Color color;
+            color[0] = 1;	color[1] = 1;	color[2] = 1;	color[3] = 1.;
+            cout << client.gui()->getSceneList()->get_buffer() << endl;
+            cout << "adding landmark to viewer2\n";
+
+
+            client.gui()->addBox ("0_scene_hpp_/curseur", f/10,f/10,f/10, color);
+            cout << "adding landmark to viewer3\n";
+            client.gui()->addSceneToWindow ("0_scene_hpp_", 0);
+            cout << "adding landmark to viewer4\n";
+
+            client.gui()->addLandmark("0_scene_hpp_/curseur", 1.);
+            cout << "adding landmark to viewer5\n";
+            client.gui()->addURDF("0_scene_hpp_/robot_interactif", robot_name.data() ,"");
+            cout << "adding landmark to viewer6\n";
 
 
 
@@ -472,8 +492,8 @@ namespace hpp {
 
 
         // afficher le robot
-        client.gui()->applyConfiguration("scene_hpp_/robot_interactif", tr);
-        client.gui()->applyConfiguration("scene_hpp_/curseur", tr);
+        client.gui()->applyConfiguration("0_scene_hpp_/robot_interactif", tr);
+        client.gui()->applyConfiguration("0_scene_hpp_/curseur", tr);
 
         // get camera vectors to align cursor with viewer
         unsigned long id = client.gui()->getWindowID("window_hpp_");
@@ -559,18 +579,18 @@ namespace hpp {
 
     // enregistrer les coordonnées des extrémités du segment robot/obstacle
     // point sur le robot
-    graphics::corbaServer::ClientCpp::value_type v_[3] = {
+    gepetto::corbaserver::Position v = {
             (float)result.nearest_points[0][0],
             (float)result.nearest_points[0][1],
             (float)result.nearest_points[0][2]};
     // point sur l'obstacle
-    graphics::corbaServer::ClientCpp::value_type w_[3] = {
+    gepetto::corbaserver::Position w = {
             (float)result.nearest_points[1][0],
             (float)result.nearest_points[1][1],
             (float)result.nearest_points[1][2]};
 
-    const graphics::corbaServer::ClientCpp::value_type* v = &v_[0];
-    const graphics::corbaServer::ClientCpp::value_type* w = &w_[0];
+    //const gepetto::corbaserver::Position* v = &v_;
+    //const gepetto::corbaserver::Position* w = &w_;
 
 
 
@@ -672,30 +692,30 @@ namespace hpp {
         //*
         if (index_lignes > 0){
             //cout << "index " << index_lignes << " obj à cacher " << nom_ligne << endl;
-            p.setVisibility(nom_ligne.c_str(), "OFF");
+            client.gui()->setVisibility(nom_ligne.c_str(), "OFF");
             string axe = nom_ligne +='a';
-            p.setVisibility(axe.c_str(), "OFF");
+            client.gui()->setVisibility(axe.c_str(), "OFF");
             axe = nom_ligne +='b';
-            p.setVisibility(axe.c_str(), "OFF");
+            client.gui()->setVisibility(axe.c_str(), "OFF");
         }
         //*/
         index_lignes++;
         nom_ligne = "scene_hpp_/ligne";
         ind = boost::lexical_cast<std::string>(index_lignes);
         nom_ligne += ind;
-        p.addLine(nom_ligne.c_str(), v, w, &color[0]);
+        client.gui()->addLine(nom_ligne.c_str(), v, w, &color[0]);
 
         // afficher les deux axes manquants du repère
-        w_[0] = v[0] + MGS.col[1].v[0];
-        w_[1] = v[1] + MGS.col[1].v[1];
-        w_[2] = v[2] + MGS.col[1].v[2];
+        w[0] = v[0] + MGS.col[1].v[0];
+        w[1] = v[1] + MGS.col[1].v[1];
+        w[2] = v[2] + MGS.col[1].v[2];
         string axe = nom_ligne +='a';
-        p.addLine(axe.c_str(), v, w, &color[0]);
-        w_[0] = v[0] + MGS.col[2].v[0];
-        w_[1] = v[1] + MGS.col[2].v[1];
-        w_[2] = v[2] + MGS.col[2].v[2];
+        client.gui()->addLine(axe.c_str(), v, w, &color[0]);
+        w[0] = v[0] + MGS.col[2].v[0];
+        w[1] = v[1] + MGS.col[2].v[1];
+        w[2] = v[2] + MGS.col[2].v[2];
         axe = nom_ligne +='b';
-        p.addLine(axe.c_str(), v, w, &color[0]);
+        client.gui()->addLine(axe.c_str(), v, w, &color[0]);
         // //////////////////////////////////////////////////////////////
 
 
@@ -744,7 +764,7 @@ namespace hpp {
         //*/
 
         // show modifications on screen
-        p.refresh();
+        client.gui()->refresh();
 
         }// fin if has_moved_
         }// fin while(1)

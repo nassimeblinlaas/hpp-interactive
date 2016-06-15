@@ -31,7 +31,7 @@ SixDOFMouseDriver::SixDOFMouseDriver(){
 
 const se3::SE3& SixDOFMouseDriver::getTransformation(){
     mutex_.lock(); // TODO deux fois le mutex dans le code !
-	const se3::SE3& trans = SixDOFMouseDriver::transformation_;
+    const se3::SE3& trans = SixDOFMouseDriver::transformation_;
 	mutex_.unlock();
 	return trans;
 }
@@ -72,7 +72,7 @@ void SixDOFMouseDriver::setRotationThreshold(double th){
 
 inline void expMap (const se3::SE3::Vector3 & omega, se3::SE3::Matrix3 & R){
 	double theta = omega.norm ();
-	se3::SE3::Vector3 u ((omega / (float)theta));
+    se3::SE3::Vector3 u ((omega / (float)theta));
 
 	double s0, c0;
 	s0 = sin(theta);
@@ -95,9 +95,9 @@ inline void expMap (const se3::SE3::Vector3 & omega, se3::SE3::Matrix3 & R){
 
 
 inline se3::SE3::Matrix3 operatorHat(const se3::SE3::Vector3& v){
-	se3::SE3::Matrix3 m;
+    se3::SE3::Matrix3 m;
 
-	m << 	0		, -v[2], 	v[1],
+    m << 	0		, -v[2], 	v[1],
 			v[2]	, 		0, -v[0],
 			-v[1]	,  v[0], 		0	;
 
@@ -120,7 +120,7 @@ void SixDOFMouseDriver::MouseInit(double* bounds)
 	// TODO
 	/*   Open the Device with non-blocking reads. In real life,
 	 *         don't use a hard coded path; use libudev instead. */
-    fd_ = open("/dev/hidraw0", O_RDONLY);
+    fd_ = open("/dev/hidraw1", O_RDONLY);
 	if (fd_ < 0) {
 		perror("Unable to open interactive device");
 		abort();
@@ -168,7 +168,7 @@ void SixDOFMouseDriver::MouseInit(double* bounds)
 // read interactice device thread function
 void SixDOFMouseDriver::ReadMouse(double* bounds_)
 {
-	se3::SE3::Vector3 pos, rot, axei, local, temp;
+    se3::SE3::Vector3 pos, rot, axei, local, temp;
     double bounds[6];
 
     //*
