@@ -44,4 +44,32 @@ int main (int argc, const char* argv[])
   server.processRequest (true);
   cout << "wait corba req\n";
 }
+/*
+char** pt = new char*[argc];
 
+  for (int i=0; i< argc; i++){
+    pt[i] = new char[256];
+    int j=0;
+    cout << "copie de argv[" << i << "]=";
+    while(argv[i][j] != '\0'){
+      pt[i][j] = argv[i][j];
+      j++;
+    }   
+    cout << pt[i] << endl;
+  }
+
+  // pour changer le premier argument
+  
+  // pour changer la dernière lettre du premeir argument
+  int i = 0;
+  cout << "cherche fin argv[0]\n";
+  while(argv[0][i] != '\0'){
+    i++;
+  }
+  cout << endl;
+  pt[0][i] = 'u';
+  pt[0][i+1] = '\0';
+
+  const char * strs[] = {pt[0]};
+  const char **p = strs;
+  cout << p[0] << endl;*/

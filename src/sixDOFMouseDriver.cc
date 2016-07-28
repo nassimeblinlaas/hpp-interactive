@@ -107,9 +107,9 @@ inline se3::SE3::Matrix3 operatorHat(const se3::SE3::Vector3& v){
 void SixDOFMouseDriver::InitPosition(double* translation)
 {
 
-    transformation_.translation()[0] = translation[0];
-    transformation_.translation()[1] = translation[1];
-    transformation_.translation()[2] = translation[2];
+    transformation_.translation()[0] = (float)translation[0];
+    transformation_.translation()[1] = (float)translation[1];
+    transformation_.translation()[2] = (float)translation[2];
 }
 
 
@@ -120,7 +120,7 @@ void SixDOFMouseDriver::MouseInit(double* bounds)
 	// TODO
 	/*   Open the Device with non-blocking reads. In real life,
 	 *         don't use a hard coded path; use libudev instead. */
-    fd_ = open("/dev/hidraw0", O_RDONLY);
+    fd_ = open("/dev/hidraw2", O_RDONLY);
 	if (fd_ < 0) {
 		perror("Unable to open interactive device");
 		abort();
@@ -184,7 +184,7 @@ void SixDOFMouseDriver::ReadMouse(double* bounds_)
 
 		/////////////////////////////////////////////////////////
 		// translation
-		float divideFactor = SixDOFMouseDriver::linear_speed_;// dt
+		float divideFactor = (float)SixDOFMouseDriver::linear_speed_;// dt
 
         /*
         cout << "in the driver ";
@@ -295,15 +295,15 @@ void SixDOFMouseDriver::ReadMouse(double* bounds_)
 		/////////////////////////////////////////////////////////
 		// integrate rotations
         double threshold = 0.5; // anciennement 0.5 0.2
-        divideFactor = SixDOFMouseDriver::angular_speed_;
+        divideFactor = (float)SixDOFMouseDriver::angular_speed_;
         // rotation variations
 		se3::SE3::Vector3 v_local (0., 0., 0.);
 
 
         // threshold for rotations
-        if (std::abs(rot[0]) > threshold)	v_local[0] = (rot[0]-threshold)/(float)divideFactor;
-        if (std::abs(rot[1]) > threshold)	v_local[1] = -(rot[1]-threshold)/(float)divideFactor;
-        if (std::abs(rot[2]) > threshold)	v_local[2] = (rot[2]-threshold)/(float)divideFactor;
+        if (std::abs(rot[0]) > threshold)	v_local[0] = (float)(rot[0]-threshold)/(float)divideFactor;
+        if (std::abs(rot[1]) > threshold)	v_local[1] = -(float)(rot[1]-threshold)/(float)divideFactor;
+        if (std::abs(rot[2]) > threshold)	v_local[2] = (float)(rot[2]-threshold)/(float)divideFactor;
 
         Eigen::Matrix3f matrot;
 

@@ -31,105 +31,62 @@
 #include <gepetto/viewer/corba/client.hh>
 #include <hpp/fcl/distance.h>
 
+# include <hpp/core/path-planner.hh>
+
 namespace hpp {
   namespace interactive {
-    //using core::PathPlanner;
+    /// \addtogroup path_planning
+    /// \{
+
     /// Generic implementation of RRT algorithm
     class HPP_INTERACTIVE_DLLAPI Planner : public core::PathPlanner
     {
-        public:
+    public:
+      /// Return shared pointer to new object.
+      static PlannerPtr_t createWithRoadmap
+	(const Problem& problem, const RoadmapPtr_t& roadmap);
+      /// Return shared pointer to new object.
+      static PlannerPtr_t create (const Problem& problem);
+      /// One step of extension.
+      virtual void oneStep ();
+      /// Set configuration shooter.
+      void configurationShooter (const ConfigurationShooterPtr_t& shooter);
 
-        /// Return shared pointer to new object.
-        static PlannerPtr_t createWithRoadmap
-        (const Problem& problem,  const RoadmapPtr_t& roadmap);
-        /// Return shared pointer to new object.
-        static PlannerPtr_t create ( const Problem& problem);
-        /// One step of extension.
-        virtual void oneStep ();
-        /// Set configuration shooter.
-        void configurationShooter (const ConfigurationShooterPtr_t& shooter);
-
-        void InteractiveDeviceInit();
-        static void ReadInteractiveDevice(void* arg);
-        static void getData();
-
-        //void setActConf(int n, double val){actual_configuration_[n]=val;};
-
-        // TODO geters/setters etmettre en private
-        static ConfigurationPtr_t actual_configuration_ptr_;
-        // true if an obstacle exist between robot and goal -> contact mode
-        static bool exist_obstacle_;
-        // repère local au plan tangeant au point le plus proche de l'obstacle
-        static double repere_local_[3][3];
-
-        Configuration_t GetActualConfiguration() const {
-            return actual_configuration_;
-        }
-
-        fcl::DistanceResult FindNearestObstacle();
-
-        protected:
-        /// Constructor
-        Planner (const Problem& problem, const RoadmapPtr_t& roadmap);
-        /// Constructor with roadmap
-        Planner (const Problem& problem);
-        /// Store weak pointer to itself
-        void init (const PlannerWkPtr_t& weak);
-        /// Extend a node in the direction of a configuration
-        /// \param near node in the roadmap,
-        ///
-        /// \param target target configuration
-        virtual PathPtr_t extend (const NodePtr_t& near,
-        const ConfigurationPtr_t& target);
+      void InteractiveDeviceThread();
+      fcl::DistanceResult FindNearestObstacle();
 
 
+    protected:
+      /// Constructor
+      Planner (const Problem& problem, const RoadmapPtr_t& roadmap);
+      /// Constructor with roadmap
+      Planner (const Problem& problem);
+      /// Store weak pointer to itself
+      void init (const PlannerWkPtr_t& weak);
+      /// Extend a node in the direction of a configuration
+      /// \param near node in the roadmap,
+      /// \param target target configuration
+      virtual PathPtr_t extend (const NodePtr_t& near,
+				const ConfigurationPtr_t& target);
+    private:
+      ConfigurationShooterPtr_t configurationShooter_;
+      mutable Configuration_t qProj_;
+      PlannerWkPtr_t weakPtr_;
 
+      ConfigurationPtr_t actual_configuration_ptr_;
+      bool random_prob_;
+      graphics::corbaServer::Client client_;
+      static short int nb_lauchs; // static because value kept
 
-
-        private:
-
-        void ShowBounds();
-
-
-
-        // void InteractiveDeviceThread(void* arg);
-
-        ConfigurationShooterPtr_t configurationShooter_;
-        mutable Configuration_t qProj_;
-        PlannerWkPtr_t weakPtr_;
-
-
-        // memory buffer for interactive device
-        static char data_[14];
-        // thread for reading interactive device
-        static boost::thread* interactiveDeviceThread_;
-        // converted position and orientation values table
-        static short int deviceValues_[6];
-        // values between 0 and 1
-        static float deviceValuesNormalized_[6];
-
-        //static RoadmapPtr_t roadmap_i;
-        //static const Problem* problem_i;
-        static Configuration_t actual_configuration_;
-
-        // machine probability to shoot (= 1 - human probability)
-        static double random_prob_;
-
-    public :    // todo mettre le thread dans la classe pour enlever le public du mode
-        //contact mode
-        static bool mode_contact_;
-
-        // unused
-        static short int iteration_;
-        static boost::mutex mutex_;
-        // file descriptor for interactive device
-        static int fd_;
+      boost::mutex robot_mutex_;
+      bool exist_obstacle_;
+      bool contact_activated_;  // enabling contact algorithm
+      bool mode_contact_; // entering contact mode
+      double quat_[4]; 
 
     };
-
-
-
-  } // namespace interactive
+    /// \}
+  } // namespace interactive 
 } // namespace hpp
 #endif // HPP_INTERACTIVE_PLANNER_HH
 
