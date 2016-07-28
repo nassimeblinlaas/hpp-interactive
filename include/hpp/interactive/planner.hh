@@ -84,6 +84,19 @@ namespace hpp {
       bool mode_contact_; // entering contact mode
       double quat_[4]; 
 
+      fcl::Vec3f org_;    // orig pt référence pour gram schmidt
+      fcl::Vec3f obj_;    // point de l'objet le plus proche de l'obstacle
+      float distance_;    // distance centre du robot
+      float distances_[3];   // distances centre du robot
+      boost::mutex distance_mutex_; // protège l'accès à distance_
+      fcl::CollisionObject* o2ptr;
+      double repere_local_[3][3];
+      ::Eigen::Vector3f NewMinBounds;
+      ::Eigen::Vector3f NewMaxBounds;
+      ::Eigen::Vector3f min;
+      ::Eigen::Vector3f max;
+      short int iteration_;
+
     };
     /// \}
   } // namespace interactive 

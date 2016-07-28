@@ -36,6 +36,10 @@
 #include <hpp/interactive/sixDOFMouseDriver.hh>
 #include <hpp/model/collision-object.hh>
 
+#include <hpp/interactive/gram-schmidt.hh>
+
+typedef se3::SE3::Vector3 Vector3;
+typedef se3::SE3::Matrix3 Matrix3;
 
 ::Eigen::Matrix3f quat2Mat(float x, float y, float z, float w){
   ::Eigen::Matrix3f ret;
@@ -150,8 +154,8 @@ namespace hpp {
       // adding interactive robot and positionning it
       client_.connect();
       cout << "adding landmark to viewer\n";
-      //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_mesh.urdf"; contact_activated_ = true;
-      string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_3angles.urdf"; contact_activated_ = true;
+      string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_mesh.urdf"; contact_activated_ = true;
+      //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_3angles.urdf"; contact_activated_ = true;
       float f = (float) 0.1;
       gepetto::corbaserver::Color color;
       color[0] = 1; color[1] = 1; color[2] = 1; color[3] = 1.;
@@ -160,7 +164,7 @@ namespace hpp {
       client_.gui()->addLandmark("0_scene_hpp_/curseur", 1.);
       client_.gui()->addURDF("0_scene_hpp_/robot_interactif", robot_name.data() ,"/hpp/install/share");
       ::gepetto::corbaserver::Transform tr;
-      tr[0] = 10; tr[1] = 2; tr[2] = 1;
+      tr[0] = 1; tr[1] = 1; tr[2] = 1;
       client_.gui()->applyConfiguration("0_scene_hpp_/curseur", tr);
       client_.gui()->applyConfiguration("0_scene_hpp_/robot_interactif", tr);
       this->problem().robot()->computeForwardKinematics();
@@ -177,9 +181,9 @@ namespace hpp {
       };
       SixDOFMouseDriver::MouseInit(bounds);
       ConfigurationPtr_t config (new Configuration_t ((hpp::model::size_type)7));
-      (*config)[0] = 0;
-      (*config)[1] = 0;
-      (*config)[2] = 0;
+      (*config)[0] = 1;
+      (*config)[1] = 1;
+      (*config)[2] = 1;
       (*config)[3] = 1;
       (*config)[4] = 0;
       (*config)[5] = 0;
@@ -194,14 +198,13 @@ namespace hpp {
     void Planner::InteractiveDeviceThread(){
       gepetto::corbaserver::Color color;
       color[0] = 1; color[1] = 1; color[2] = 1; color[3] = 1.;
+      int index_lignes = 0;
 
       bool init = false;
       while(1){
         if (SixDOFMouseDriver::HasMoved() && nb_launchs<2){
           if (!init){
             const ConfigurationPtr_t initConfig_ = this->problem().initConfig();
-
-  
             double translations[3] = {
               (*initConfig_)[0],
               (*initConfig_)[1],
@@ -244,7 +247,7 @@ namespace hpp {
           //(*Planner::actual_configuration_ptr_)[4] = quat_[1];
           //(*Planner::actual_configuration_ptr_)[5] = quat_[2];
           //(*Planner::actual_configuration_ptr_)[6] = quat_[3];
-          //*
+          /*
              cout << "config curseur        " <<
           //    trans_temp << endl;
           //    //  (*actual_configuration_ptr_)[0] =
@@ -267,7 +270,7 @@ namespace hpp {
           CamVects->length(dim);
           CamVects = client_.gui()->getCameraVectors((float)id, "");
           ::Eigen::Matrix3f camMat = quat2Mat(CamVects->get_buffer()[0],CamVects->get_buffer()[1],
-          CamVects->get_buffer()[2],CamVects->get_buffer()[3]);
+              CamVects->get_buffer()[2],CamVects->get_buffer()[3]);
           SixDOFMouseDriver::setCameraVectors(
               camMat(0,0), camMat(0,1), camMat(0,2),
               camMat(1,0), camMat(1,1), camMat(1,2),
@@ -301,8 +304,6 @@ namespace hpp {
                << endl;
             //*/
 
-
-
             // méthode de recherche du plus proche obst par itération
             fcl::DistanceResult result;
             bool collision = false;
@@ -312,13 +313,7 @@ namespace hpp {
             mode_contact_ = false;
             robot_mutex_.unlock();
 
-
-
-            // remettre le robot là où il était, inutile ?
-            //arg_->problem().robot()->currentConfiguration(sauv);
-            //arg_->problem().robot()->computeForwardKinematics();
-
-            /*
+            //*
             // //////////////////////////////////////////////////////////////////
             if (contact_activated_ && !collision){
 
@@ -338,10 +333,6 @@ namespace hpp {
 
               //const gepetto::corbaserver::Position* v = &v_;
               //const gepetto::corbaserver::Position* w = &w_;
-
-
-
-
 
               // algorithme de GRAM-SCHMIDT
               if (result.min_distance != -1){
@@ -397,16 +388,7 @@ namespace hpp {
                       pow((float)result.nearest_points[1][2] - trans_temp.translation()[2], 2));
                   //distance_ = 0.05;
 
-                  
-                     std::cout << "distance centre/surf " << distance_ << std::endl;
-                     cout << "alt method " << distances_[0] << " " << distances_[1] << " " <<
-                     distances_[2] <<
-                     " norm " << norm_alt << endl <<
-                     " pt0 " << result.nearest_points[0] <<
-                     " pt1 " << result.nearest_points[1] <<
-                     " \ncurseur " << trans_temp.translation() <<
-                     endl << endl;
-                  
+
                   distance_mutex_.unlock();
                 }
 
@@ -433,36 +415,36 @@ namespace hpp {
 
 
                 // afficher le repère local // //////////////////////////////////////////
-                string nom_ligne = "scene_hpp_/ligne";
+                string nom_ligne = "0_scene_hpp_/ligne";
                 string ind = boost::lexical_cast<std::string>(index_lignes);
                 nom_ligne += ind;
-                
+
                 if (index_lignes > 0){
                   //cout << "index " << index_lignes << " obj à cacher " << nom_ligne << endl;
-                  client.gui()->setVisibility(nom_ligne.c_str(), "OFF");
+                  client_.gui()->setVisibility(nom_ligne.c_str(), "OFF");
                   string axe = nom_ligne +='a';
-                  client.gui()->setVisibility(axe.c_str(), "OFF");
+                  client_.gui()->setVisibility(axe.c_str(), "OFF");
                   axe = nom_ligne +='b';
-                  client.gui()->setVisibility(axe.c_str(), "OFF");
+                  client_.gui()->setVisibility(axe.c_str(), "OFF");
                 }
-                
+
                 index_lignes++;
-                nom_ligne = "scene_hpp_/ligne";
+                nom_ligne = "0_scene_hpp_/ligne";
                 ind = boost::lexical_cast<std::string>(index_lignes);
                 nom_ligne += ind;
-                client.gui()->addLine(nom_ligne.c_str(), v, w, &color[0]);
+                client_.gui()->addLine(nom_ligne.c_str(), v, w, &color[0]);
 
                 // afficher les deux axes manquants du repère
                 w[0] = v[0] + MGS.col[1].v[0];
                 w[1] = v[1] + MGS.col[1].v[1];
                 w[2] = v[2] + MGS.col[1].v[2];
                 string axe = nom_ligne +='a';
-                client.gui()->addLine(axe.c_str(), v, w, &color[0]);
+                client_.gui()->addLine(axe.c_str(), v, w, &color[0]);
                 w[0] = v[0] + MGS.col[2].v[0];
                 w[1] = v[1] + MGS.col[2].v[1];
                 w[2] = v[2] + MGS.col[2].v[2];
                 axe = nom_ligne +='b';
-                client.gui()->addLine(axe.c_str(), v, w, &color[0]);
+                client_.gui()->addLine(axe.c_str(), v, w, &color[0]);
                 // //////////////////////////////////////////////////////////////
 
 
@@ -498,7 +480,6 @@ namespace hpp {
                   obj_ = result.nearest_points[1];
 
                   Planner::mode_contact_ = true;
-                  Planner::iteration_ = 0;
                 }
 
                 }// fin gram schmidt
@@ -603,6 +584,77 @@ namespace hpp {
       {
         if (Planner::mode_contact_){
           cout << rando << " contact q \n";
+          Matrix3 rot;
+          rot(0,0) = MGS.col[0].v[0];
+          rot(0,1) = MGS.col[0].v[1];
+          rot(0,2) = MGS.col[0].v[2];
+          rot(1,0) = MGS.col[1].v[0];
+          rot(1,1) = MGS.col[1].v[1];
+          rot(1,2) = MGS.col[1].v[2];
+          rot(2,0) = MGS.col[2].v[0];
+          rot(2,1) = MGS.col[2].v[1];
+          rot(2,2) = MGS.col[2].v[2];
+          // garder z à zéro
+          Vector3 val(0, (float)(*q_rand)[0], (float)(*q_rand)[2]);
+          //cout << "rot " << rot << endl;
+          //cout << "val " << val.transpose() << endl;
+          //std::cout << "one step distance centre/surf " << distance_ << std::endl;
+          //cout << "org " << org_[1] << " obj " << obj_[1]
+          //     << " signe org-obj " << signe(org_[1]-obj_[1]) << endl;
+
+          distance_mutex_.try_lock();
+          Vector3 org(
+              (float)org_[0]+signe(obj_[0]-org_[0])*distances_[0],
+              (float)org_[1]+signe(obj_[1]-org_[1])*distances_[1],
+              (float)org_[2]+signe(obj_[2]-org_[2])*distances_[2]
+              );
+          //cout << "org " << org.transpose() << endl;
+          val = rot.transpose()*val + org;
+          //cout << "nouveau val " << val.transpose() << endl;
+
+          // gros hack
+          //bool proche = false;
+          while(1){
+            double dist;
+            dist = sqrt(
+                pow(val[0]-(*Planner::actual_configuration_ptr_)[0], 2)+
+                pow(val[1]-(*Planner::actual_configuration_ptr_)[1], 2)+
+                pow(val[2]-(*Planner::actual_configuration_ptr_)[2], 2)
+                );
+            if (dist<2){
+              break;
+            }
+            else{
+              //cout << "retente\n";
+              q_rand = configurationShooter_->shoot ();
+              val[0] = 0;
+              val[1] = (float)(*q_rand)[1];
+              val[2] = (float)(*q_rand)[2];
+              Vector3 re_org((float)org_[0]+signe(obj_[0]-org_[0])*distances_[0],
+                  (float)org_[1]+signe(obj_[1]-org_[1])*distances_[1],
+                  (float)org_[2]+signe(obj_[2]-org_[2])*distances_[2]
+                  );
+              val = rot.transpose()*val + re_org;
+            }
+          }
+          distance_mutex_.unlock();
+
+          (*q_rand)[0] = val[0];
+          (*q_rand)[1] = val[1];
+          (*q_rand)[2] = val[2];
+          // fixer rotation
+          (*q_rand)[3] = (*Planner::actual_configuration_ptr_)[3];
+          (*q_rand)[4] = (*Planner::actual_configuration_ptr_)[4];
+          (*q_rand)[5] = (*Planner::actual_configuration_ptr_)[5];
+          (*q_rand)[6] = (*Planner::actual_configuration_ptr_)[6];
+
+          Planner::iteration_++;
+          if(Planner::iteration_ == 5){
+            Planner::mode_contact_ = false;
+            // ancien emplacement de distance_mutex_.unlock();
+          }
+
+  
         }
         else{
           *q_rand = *actual_configuration_ptr_; 
