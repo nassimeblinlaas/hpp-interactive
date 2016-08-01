@@ -154,8 +154,9 @@ namespace hpp {
       // adding interactive robot and positionning it
       client_.connect();
       cout << "adding landmark to viewer\n";
-      //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_mesh.urdf"; contact_activated_ = true;
-      string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_chaise.urdf"; contact_activated_ = true;
+      string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_mesh.urdf"; contact_activated_ = true;
+      //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_L.urdf"; contact_activated_ = true;
+      //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_chaise.urdf"; contact_activated_ = true;
       float f = (float) 0.1;
       gepetto::corbaserver::Color color;
       color[0] = 1; color[1] = 1; color[2] = 1; color[3] = 1.;
