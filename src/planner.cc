@@ -37,6 +37,8 @@
 #include <hpp/model/collision-object.hh>
 
 #include <hpp/interactive/gram-schmidt.hh>
+#include <hpp/interactive/dhdc.h>
+#include <stdio.h>
 
 typedef se3::SE3::Vector3 Vector3;
 typedef se3::SE3::Matrix3 Matrix3;
@@ -179,7 +181,6 @@ namespace hpp {
         this->problem().robot()->rootJoint()->lowerBound(2),
         this->problem().robot()->rootJoint()->upperBound(2)
       };
-      SixDOFMouseDriver::MouseInit(bounds);
       ConfigurationPtr_t config (new Configuration_t ((hpp::model::size_type)7));
       (*config)[0] = 1;
       (*config)[1] = 1;
@@ -191,10 +192,111 @@ namespace hpp {
       actual_configuration_ptr_ = config;
       // launch interactive thread 
       
+      //SixDOFMouseDriver::MouseInit(bounds);
       if (nb_launchs<2)
         boost::thread th(boost::bind( &Planner::InteractiveDeviceThread,this));
     }
 
+    void Planner::InteractiveDeviceThread(){
+      // message
+      int major, minor, release, revision;
+      dhdGetSDKVersion (&major, &minor, &release, &revision);
+      cout << "\n";
+      printf ("Force Dimension - Torques Example %d.%d.%d.%d\n", major, minor, release, revision);
+      printf ("(C) 2001-2015 Force Dimension\n");
+      printf ("All Rights Reserved.\n\n");
+
+      // open the first available device
+      if (dhdOpen () < 0) {
+        printf ("error: cannot open device (%s)\n", dhdErrorGetLastStr());
+        dhdSleep (2.0);
+      }else{
+
+      // identify device
+      printf ("%s device detected\n\n", dhdGetSystemName());
+
+
+      // object stiffness
+double Stiffness   = 2012;
+double TorqueGain  =    1.0;
+      // adjust stiffness for some devices
+      switch (dhdGetSystemType ()) {
+        case DHD_DEVICE_SIGMA331:
+        case DHD_DEVICE_SIGMA331_LEFT:
+        case DHD_DEVICE_SIGMA331S:
+        case DHD_DEVICE_SIGMA331S_LEFT:
+        case DHD_DEVICE_SIGMA33P:
+        case DHD_DEVICE_SIGMA33P_LEFT:
+          Stiffness    = 6000;
+          TorqueGain  =     1.0;
+          break;
+      }
+
+
+
+
+      double   posX, posY, posZ;
+      Eigen::Vector3d deviceForce;
+      Eigen::Vector3d deviceTorque;
+      Eigen::Vector3d devicePos;
+      double   r[3][3];
+      Eigen::Matrix3d deviceRot;
+      bool     force;
+      bool     btnDown;
+
+      // start haptic simulation
+      force              = false;
+      btnDown            = false;
+
+      // enable force
+      dhdEnableForce (DHD_ON);
+
+
+      while (1) {
+
+        // init variables
+        posX = posY = posZ = 0.0;
+
+        // read position of haptic device
+        dhdGetPosition (&posX, &posY, &posZ);
+        devicePos << posX,  posY,  posZ;
+
+        // read orientation of haptic device
+        dhdGetOrientationFrame (r);
+        deviceRot << r[0][0], r[0][1], r[0][2],
+                  r[1][0], r[1][1], r[1][2],
+                  r[2][0], r[2][1], r[2][2];
+
+        // compute forces and torques
+        deviceForce.setZero ();
+        deviceTorque.setZero ();
+  /*      ComputeInteractions (devicePos, deviceRot, deviceForce, deviceTorque);
+
+        // only enable forces once the device if in free space
+        if (!HapticsON) {
+          if (deviceForce.norm() == 0) {
+            HapticsON = true;
+          }
+          else {
+            deviceForce.setZero();
+            deviceTorque.setZero();
+          }
+        }
+
+        // disable torques if required
+        if (!TorquesON) deviceTorque.setZero();
+*/
+        // send forces to device
+        dhdSetForceAndTorqueAndGripperForce (deviceForce(0),  deviceForce(1),  deviceForce(2),
+            deviceTorque(0), deviceTorque(1), deviceTorque(2),
+            0.0);
+      }
+
+
+}
+
+    }
+/*
     void Planner::InteractiveDeviceThread(){
       gepetto::corbaserver::Color color;
       color[0] = 1; color[1] = 1; color[2] = 1; color[3] = 1.;
@@ -247,16 +349,6 @@ namespace hpp {
           //(*Planner::actual_configuration_ptr_)[4] = quat_[1];
           //(*Planner::actual_configuration_ptr_)[5] = quat_[2];
           //(*Planner::actual_configuration_ptr_)[6] = quat_[3];
-          /*
-             cout << "config curseur        " <<
-          //    trans_temp << endl;
-          //    //  (*actual_configuration_ptr_)[0] =
-          trans_temp.translation()[0] << " " <<
-          //    (*actual_configuration_ptr_)[1] =
-          trans_temp.translation()[1] << " " <<
-          //    (*actual_configuration_ptr_)[2] =
-          trans_temp.translation()[2] << endl;
-          //*/
 
           // afficher le robot
           client_.gui()->applyConfiguration("0_scene_hpp_/robot_interactif", tr);
@@ -281,7 +373,7 @@ namespace hpp {
 
           // using solveanddisplay relaunches planner -> anti core dump protection
           if (nb_launchs<2){
-            //*
+            *
             // caler le robot au niveau du curseur
             robot_mutex_.lock();                // TODO mutex inoptimal !
             hpp::model::Configuration_t sauv = problem().robot()->currentConfiguration();
@@ -297,12 +389,12 @@ namespace hpp {
             problem().robot()->currentConfiguration(in_t);
             problem().robot()->computeForwardKinematics();
 
-            /*
+            *
                cout << " robot " <<
                (*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->name() << " tr "
                << (*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->getTransform().getTranslation()
                << endl;
-            //*/
+            *
 
             // méthode de recherche du plus proche obst par itération
             fcl::DistanceResult result;
@@ -313,7 +405,7 @@ namespace hpp {
             mode_contact_ = false;
             robot_mutex_.unlock();
 
-            //*
+            *
             // //////////////////////////////////////////////////////////////////
             if (contact_activated_ && !collision){
 
@@ -487,9 +579,9 @@ namespace hpp {
                 //}// fin for paires de collision
 
             }// fin activation contact
-            //*/
+            *
           } // fin nb launch
-          //*/
+          *
 
           // show modifications on screen
           client_.gui()->refresh();
@@ -498,6 +590,8 @@ namespace hpp {
       }// fin while(1) 
 
     }
+
+//*/
 
     void Planner::init (const PlannerWkPtr_t& weak)
     {

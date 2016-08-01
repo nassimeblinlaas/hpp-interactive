@@ -14,6 +14,7 @@
 # hpp-constraints. If not, see <http://www.gnu.org/licenses/>.
 MESSAGE(STATUS ${PROJECT_NAME})
 SET(LIBRARY_NAME ${PROJECT_NAME})
+SET(SIGMA7_LIB "-L/home/nblin/sdk-3.6.0/lib/release/lin-x86_64-gcc -ldhd -ldrd -lusb-1.0")
 ADD_LIBRARY(${LIBRARY_NAME}
   SHARED
 	planner.cc
@@ -29,7 +30,7 @@ ADD_EXECUTABLE (interactive-server
 	  server.cc
 		)
 
-TARGET_LINK_LIBRARIES(interactive-server ${LIBRARY_NAME})
+TARGET_LINK_LIBRARIES(interactive-server ${LIBRARY_NAME} ${SIGMA7_LIB})
 TARGET_LINK_LIBRARIES(interactive-server gepetto-viewer-corba)
 
 INSTALL(TARGETS ${LIBRARY_NAME} DESTINATION lib)
