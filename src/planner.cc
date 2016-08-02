@@ -38,6 +38,7 @@
 
 #include <hpp/interactive/gram-schmidt.hh>
 #include <hpp/interactive/dhdc.h>
+#include <hpp/interactive/drdc.h>
 #include <stdio.h>
 
 typedef se3::SE3::Vector3 Vector3;
@@ -199,8 +200,9 @@ namespace hpp {
     }
 
     void Planner::InteractiveDeviceThread(){
-      // message
-      int major, minor, release, revision;
+        /*// version 1
+        // message
+        int major, minor, release, revision;
       dhdGetSDKVersion (&major, &minor, &release, &revision);
       cout << "\n";
       printf ("Force Dimension - Torques Example %d.%d.%d.%d\n", major, minor, release, revision);
@@ -236,6 +238,82 @@ namespace hpp {
 
 
 
+
+        // enable force
+        dhdEnableForce (DHD_ON);
+
+        //*/
+     
+      int    done = 0;
+      double f, fx, fy, fz;
+      double ofx = 0.0, ofy = 0.0, ofz = 0.0;
+      double sx, sy, sz;
+      double Pgain;
+      double PgainStep;
+      bool   oldButton = false;
+
+      // message
+      int major, minor, release, revision;
+      dhdGetSDKVersion (&major, &minor, &release, &revision);
+      printf ("Force Dimension - Force Sensor Emulation %d.%d.%d.%d\n", major, minor, release, revision);
+      printf ("(C) 2001-2015 Force Dimension\n");
+      printf ("All Rights Reserved.\n\n");
+
+      // open the first available device
+      if (drdOpen () < 0) {
+        printf ("error: cannot open device (%s)\n", dhdErrorGetLastStr ());
+        dhdSleep (2.0);
+      }else{
+
+        // print out device identifier
+        if (!drdIsSupported()) {
+          printf ("unsupported device\n");
+          printf ("exiting...\n");
+          dhdSleep (2.0);
+          drdClose (); 
+        }
+        printf ("%s haptic device detected\n\n", dhdGetSystemName());
+
+        // display instructions
+        printf ("press BUTTON to move sensor point\n");
+        printf ("press ' ' to calibrate sensor\n");
+        printf ("press ',' to decrease Pgain (stiffness)\n");
+        printf ("      '.' to increase Pgain (stiffness)\n");
+        printf ("      'q' to quit demo\n\n");
+
+        // initialize if necessary
+        if (!drdIsInitialized() && (drdAutoInit() < 0)) {
+          printf ("error: initialization failed (%s)\n", dhdErrorGetLastStr ());
+          dhdSleep (2.0);
+        }
+
+        // start robot control loop
+        if (drdStart() < 0) {
+          printf ("error: control loop failed to start properly (%s)\n", dhdErrorGetLastStr ());
+          dhdSleep (2.0);
+        }
+
+        // goto workspace center
+        if (drdMoveToPos (0.0, 0.0, 0.0, false) < 0) {
+          printf ("error: failed to move to central position (%s)\n", dhdErrorGetLastStr ());
+          dhdSleep (2.0);
+        }
+
+        // retrieve current regulation gain (joint-space spring stiffness)
+        Pgain = drdGetEncPGain ();
+        PgainStep = 0.01*Pgain;
+
+
+        // retrieve current regulation gain (joint-space spring stiffness)
+        Pgain = drdGetEncPGain ();
+
+        // display output format
+        printf (" Pgain  |   force [N]  |      fx       fy       fz  [N]\n");
+        printf ("--------|--------------|-------------------------------\n");
+        //*/
+
+
+        //var version 1////////////////////////////////
         double   posX, posY, posZ;
         Eigen::Vector3d deviceForce;
         Eigen::Vector3d deviceTorque;
@@ -249,22 +327,55 @@ namespace hpp {
         // start haptic simulation
         force              = false;
         btnDown            = false;
+        ///////////////////////////////////////////////
 
-        // enable force
-        dhdEnableForce (DHD_ON);
-
+        sleep(3);
         activated = true;
         long int iteration = 0;
         while (1) {
-          //dhdSleep(0.3);
+          dhdSleep(0.01);
+
+          // measure force
+          dhdGetForce (&fx, &fy, &fz);
+          sx = fx - ofx;
+          sy = fy - ofy;
+          sz = fz - ofz;
+          f = sqrt(sx*sx+sy*sy+sz*sz);
+
+          // display force
+//          printf ("  %4d  |      %+6.02f  |  %+6.02f   %+6.02f   %+6.02f   \r", (int)Pgain, f, sx, sy, sz);
+
+          // check for exit condition
+          if (!drdIsRunning()) done = -1;
+          if (dhdKbHit()) {
+            switch (dhdKbGet()) {
+              case ' ': ofx = fx; ofy = fy; ofz = fz; break;
+              case 'q': done = 1; break;
+              case ',': Pgain = Pgain-PgainStep; break;
+              case '.': Pgain = Pgain+PgainStep; break;
+            }
+
+            // adjust Pgain
+            if (Pgain < 1.5) Pgain = 1.5;
+            drdSetEncPGain (Pgain);
+          }
+
+
           // init variables
           posX = posY = posZ = 0.0;
 
           // read position of haptic device
           dhdGetPosition (&posX, &posY, &posZ);
+          // read force
+          double forces[3];
+          dhdGetForce(forces+0, forces+1, forces+2);
+          double gravite = 1.73785; forces[2]-= gravite;
           //posX = 100*posX;
           devicePos << posX,  posY,  posZ;
-          //cout << posX << endl;
+          if (fabs(forces[0])<1) forces[0] = 0;
+          if (fabs(forces[1])<1) forces[1] = 0;
+          if (fabs(forces[2])<1) forces[2] = 0;
+          cout << "device Pos " << forces[0] << " " << forces[1] << " " << forces[2] << "\r";
           // read orientation of haptic device
           dhdGetOrientationFrame (r);
           deviceRot << r[0][0], r[0][1], r[0][2],
@@ -283,36 +394,49 @@ namespace hpp {
           double rot_euler_haptic[3];
           dhdGetOrientationRad(&rot_euler_haptic[0], &rot_euler_haptic[1], &rot_euler_haptic[2]); 
           ::gepetto::corbaserver::Transform tr;
-          tr[0] = posX*100;
-          tr[1] = posY*100;
-          tr[2] = posZ*100;
+          double quat[4];
+          euler2Quat(rot_euler_haptic[0], rot_euler_haptic[1], rot_euler_haptic[2], quat);
+          tr[0] = forces[0]/30;
+          tr[1] = forces[1]/30;
+          tr[2] = forces[2]/30;
           tr[3] = 1;
           tr[4] = 0;
           tr[5] = 0;
           tr[6] = 0;
+          tr[3] = quat[0];
+          tr[4] = quat[1];
+          tr[5] = quat[2];
+          tr[6] = quat[3];
           // save current transfo-rmation in the planner's memory
           // TODO je pourrais utiliser du memcp...
-          (*Planner::actual_configuration_ptr_)[0] = tr[0];
-          (*Planner::actual_configuration_ptr_)[1] = tr[1];
-          (*Planner::actual_configuration_ptr_)[2] = tr[2];
+          (*Planner::actual_configuration_ptr_)[0]+= tr[0];
+          (*Planner::actual_configuration_ptr_)[1]+= tr[1];
+          (*Planner::actual_configuration_ptr_)[2]+= tr[2];
           (*Planner::actual_configuration_ptr_)[3] = tr[3];
           (*Planner::actual_configuration_ptr_)[4] = tr[4];
           (*Planner::actual_configuration_ptr_)[5] = tr[5];
           (*Planner::actual_configuration_ptr_)[6] = tr[6];
-          //cout << "input: "; for (int i=0; i<7; i++) cout << tr[i] << " "; cout << endl;
-          client_.gui()->applyConfiguration("0_scene_hpp_/robot_interactif", tr);
-          client_.gui()->applyConfiguration("0_scene_hpp_/curseur", tr);
+          //cout << "input: "; for (int i=0; i<7; i++) cout << tr[i] << " "; cout << "\r";
           // caler le robot au niveau du curseur
           hpp::model::Configuration_t sauv = problem().robot()->currentConfiguration();
           hpp::model::Configuration_t in = sauv;
-          in[0] = tr[0];
-          in[1] = tr[1];
-          in[2] = tr[2];
-          in[3] = tr[3];
-          in[4] = tr[4];
-          in[5] = tr[5];
-          in[6] = tr[6];
+          in[0] = (*Planner::actual_configuration_ptr_)[0];
+          in[1] = (*Planner::actual_configuration_ptr_)[1];
+          in[2] = (*Planner::actual_configuration_ptr_)[2];
+          in[3] = (*Planner::actual_configuration_ptr_)[3];
+          in[4] = (*Planner::actual_configuration_ptr_)[4];
+          in[5] = (*Planner::actual_configuration_ptr_)[5];
+          in[6] = (*Planner::actual_configuration_ptr_)[6];
+          tr[0] = (*Planner::actual_configuration_ptr_)[0];
+          tr[1] = (*Planner::actual_configuration_ptr_)[1];
+          tr[2] = (*Planner::actual_configuration_ptr_)[2];
+          tr[3] = (*Planner::actual_configuration_ptr_)[3];
+          tr[4] = (*Planner::actual_configuration_ptr_)[4];
+          tr[5] = (*Planner::actual_configuration_ptr_)[5];
+          tr[6] = (*Planner::actual_configuration_ptr_)[6];
           hpp::model::ConfigurationIn_t in_t(in);
+          client_.gui()->applyConfiguration("0_scene_hpp_/robot_interactif", tr);
+          client_.gui()->applyConfiguration("0_scene_hpp_/curseur", tr);
           problem().robot()->currentConfiguration(in_t);
           problem().robot()->computeForwardKinematics();
           client_.gui()->refresh();
@@ -361,7 +485,7 @@ namespace hpp {
     {
       while(!activated){
       }
-      //sleep(1);
+      usleep(500000);
       robot_mutex_.lock();
       typedef boost::tuple <NodePtr_t, ConfigurationPtr_t, PathPtr_t>
         DelayedEdge_t;
@@ -457,9 +581,8 @@ namespace hpp {
 
         }
         else{
-          cout << "manual config ";
-          for (int i = 0; i<7; i++) cout << (*Planner::actual_configuration_ptr_)[0] << " "; cout << endl;
-    
+          //cout << "                                                                                 \r"; 
+          //cout<<"manual config "; for (int i = 0; i<7; i++) cout << (*Planner::actual_configuration_ptr_)[i]<<" ";cout<<"\r";
           *q_rand = *actual_configuration_ptr_; 
         }
       }
