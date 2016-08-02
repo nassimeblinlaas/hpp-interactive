@@ -85,7 +85,7 @@ namespace hpp {
     using model::displayConfig;
     using namespace std;
     short int nb_launchs = 0;
-
+    bool activated = false;
     // returns an fcl distance request structure
     fcl::DistanceResult Planner::FindNearestObstacle(){
       fcl::DistanceRequest request(true, 0, 0, fcl::GST_INDEP);
@@ -143,7 +143,7 @@ namespace hpp {
     }
 
     Planner::Planner (const Problem& problem,
-					const RoadmapPtr_t& roadmap) :
+        const RoadmapPtr_t& roadmap) :
       PathPlanner (problem, roadmap),
       configurationShooter_ (problem.configurationShooter()),
       qProj_ (problem.robot ()->configSize ()),
@@ -156,8 +156,9 @@ namespace hpp {
       // adding interactive robot and positionning it
       client_.connect();
       cout << "adding landmark to viewer\n";
+      string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_3angles.urdf"; contact_activated_ = true;
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_mesh.urdf"; contact_activated_ = true;
-      string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_chaise.urdf"; contact_activated_ = true;
+      //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_chaise.urdf"; contact_activated_ = true;
       float f = (float) 0.1;
       gepetto::corbaserver::Color color;
       color[0] = 1; color[1] = 1; color[2] = 1; color[3] = 1.;
@@ -191,7 +192,7 @@ namespace hpp {
       (*config)[6] = 0;
       actual_configuration_ptr_ = config;
       // launch interactive thread 
-      
+
       //SixDOFMouseDriver::MouseInit(bounds);
       if (nb_launchs<2)
         boost::thread th(boost::bind( &Planner::InteractiveDeviceThread,this));
@@ -212,90 +213,349 @@ namespace hpp {
         dhdSleep (2.0);
       }else{
 
-      // identify device
-      printf ("%s device detected\n\n", dhdGetSystemName());
+        // identify device
+        printf ("%s device detected\n\n", dhdGetSystemName());
 
 
-      // object stiffness
-double Stiffness   = 2012;
-double TorqueGain  =    1.0;
-      // adjust stiffness for some devices
-      switch (dhdGetSystemType ()) {
-        case DHD_DEVICE_SIGMA331:
-        case DHD_DEVICE_SIGMA331_LEFT:
-        case DHD_DEVICE_SIGMA331S:
-        case DHD_DEVICE_SIGMA331S_LEFT:
-        case DHD_DEVICE_SIGMA33P:
-        case DHD_DEVICE_SIGMA33P_LEFT:
-          Stiffness    = 6000;
-          TorqueGain  =     1.0;
-          break;
-      }
-
-
-
-
-      double   posX, posY, posZ;
-      Eigen::Vector3d deviceForce;
-      Eigen::Vector3d deviceTorque;
-      Eigen::Vector3d devicePos;
-      double   r[3][3];
-      Eigen::Matrix3d deviceRot;
-      bool     force;
-      bool     btnDown;
-
-      // start haptic simulation
-      force              = false;
-      btnDown            = false;
-
-      // enable force
-      dhdEnableForce (DHD_ON);
-
-
-      while (1) {
-
-        // init variables
-        posX = posY = posZ = 0.0;
-
-        // read position of haptic device
-        dhdGetPosition (&posX, &posY, &posZ);
-        devicePos << posX,  posY,  posZ;
-
-        // read orientation of haptic device
-        dhdGetOrientationFrame (r);
-        deviceRot << r[0][0], r[0][1], r[0][2],
-                  r[1][0], r[1][1], r[1][2],
-                  r[2][0], r[2][1], r[2][2];
-
-        // compute forces and torques
-        deviceForce.setZero ();
-        deviceTorque.setZero ();
-  /*      ComputeInteractions (devicePos, deviceRot, deviceForce, deviceTorque);
-
-        // only enable forces once the device if in free space
-        if (!HapticsON) {
-          if (deviceForce.norm() == 0) {
-            HapticsON = true;
-          }
-          else {
-            deviceForce.setZero();
-            deviceTorque.setZero();
-          }
+        // object stiffness
+        double Stiffness   = 2012;
+        double TorqueGain  =    1.0;
+        // adjust stiffness for some devices
+        switch (dhdGetSystemType ()) {
+          case DHD_DEVICE_SIGMA331:
+          case DHD_DEVICE_SIGMA331_LEFT:
+          case DHD_DEVICE_SIGMA331S:
+          case DHD_DEVICE_SIGMA331S_LEFT:
+          case DHD_DEVICE_SIGMA33P:
+          case DHD_DEVICE_SIGMA33P_LEFT:
+            Stiffness    = 6000;
+            TorqueGain  =     1.0;
+            break;
         }
 
-        // disable torques if required
-        if (!TorquesON) deviceTorque.setZero();
-*/
-        // send forces to device
-        dhdSetForceAndTorqueAndGripperForce (deviceForce(0),  deviceForce(1),  deviceForce(2),
-            deviceTorque(0), deviceTorque(1), deviceTorque(2),
-            0.0);
+
+
+
+        double   posX, posY, posZ;
+        Eigen::Vector3d deviceForce;
+        Eigen::Vector3d deviceTorque;
+        Eigen::Vector3d devicePos;
+        double   r[3][3];
+        Eigen::Matrix3d deviceRot;
+        bool     force;
+        bool     btnDown;
+        bool HapticsON = true;
+        bool TorquesON = true;
+        // start haptic simulation
+        force              = false;
+        btnDown            = false;
+
+        // enable force
+        dhdEnableForce (DHD_ON);
+
+        activated = true;
+        long int iteration = 0;
+        while (1) {
+          //dhdSleep(0.3);
+          // init variables
+          posX = posY = posZ = 0.0;
+
+          // read position of haptic device
+          dhdGetPosition (&posX, &posY, &posZ);
+          //posX = 100*posX;
+          devicePos << posX,  posY,  posZ;
+          //cout << posX << endl;
+          // read orientation of haptic device
+          dhdGetOrientationFrame (r);
+          deviceRot << r[0][0], r[0][1], r[0][2],
+                    r[1][0], r[1][1], r[1][2],
+                    r[2][0], r[2][1], r[2][2];
+
+          //cout << ++iteration << devicePos << " " << deviceRot << endl;
+
+          // compute forces and torques
+          deviceForce.setZero ();
+          deviceTorque.setZero ();
+          // send forces to device
+          //dhdSetForceAndTorqueAndGripperForce (deviceForce(0),  deviceForce(1),  deviceForce(2),
+          //    deviceTorque(0), deviceTorque(1), deviceTorque(2),
+          //    0.0);
+          double rot_euler_haptic[3];
+          dhdGetOrientationRad(&rot_euler_haptic[0], &rot_euler_haptic[1], &rot_euler_haptic[2]); 
+          ::gepetto::corbaserver::Transform tr;
+          tr[0] = posX*100;
+          tr[1] = posY*100;
+          tr[2] = posZ*100;
+          tr[3] = 1;
+          tr[4] = 0;
+          tr[5] = 0;
+          tr[6] = 0;
+          // save current transfo-rmation in the planner's memory
+          // TODO je pourrais utiliser du memcp...
+          (*Planner::actual_configuration_ptr_)[0] = tr[0];
+          (*Planner::actual_configuration_ptr_)[1] = tr[1];
+          (*Planner::actual_configuration_ptr_)[2] = tr[2];
+          (*Planner::actual_configuration_ptr_)[3] = tr[3];
+          (*Planner::actual_configuration_ptr_)[4] = tr[4];
+          (*Planner::actual_configuration_ptr_)[5] = tr[5];
+          (*Planner::actual_configuration_ptr_)[6] = tr[6];
+          //cout << "input: "; for (int i=0; i<7; i++) cout << tr[i] << " "; cout << endl;
+          client_.gui()->applyConfiguration("0_scene_hpp_/robot_interactif", tr);
+          client_.gui()->applyConfiguration("0_scene_hpp_/curseur", tr);
+          // caler le robot au niveau du curseur
+          hpp::model::Configuration_t sauv = problem().robot()->currentConfiguration();
+          hpp::model::Configuration_t in = sauv;
+          in[0] = tr[0];
+          in[1] = tr[1];
+          in[2] = tr[2];
+          in[3] = tr[3];
+          in[4] = tr[4];
+          in[5] = tr[5];
+          in[6] = tr[6];
+          hpp::model::ConfigurationIn_t in_t(in);
+          problem().robot()->currentConfiguration(in_t);
+          problem().robot()->computeForwardKinematics();
+          client_.gui()->refresh();
+        }// while 1
+      }//if device
+    }//fonction
+
+    void Planner::init (const PlannerWkPtr_t& weak)
+    {
+      PathPlanner::init (weak);
+      weakPtr_ = weak;
+    }
+
+    bool belongs (const ConfigurationPtr_t& q, const Nodes_t& nodes)
+    {
+      for (Nodes_t::const_iterator itNode = nodes.begin ();
+	   itNode != nodes.end (); ++itNode) {
+	if (*((*itNode)->configuration ()) == *q) return true;
+      }
+      return false;
+    }
+
+    PathPtr_t Planner::extend (const NodePtr_t& near,
+					const ConfigurationPtr_t& target)
+    {
+      const SteeringMethodPtr_t& sm (problem ().steeringMethod ());
+      const ConstraintSetPtr_t& constraints (sm->constraints ());
+      if (constraints) {
+	ConfigProjectorPtr_t configProjector (constraints->configProjector ());
+	if (configProjector) {
+	  configProjector->projectOnKernel (*(near->configuration ()), *target,
+					    qProj_);
+	} else {
+	  qProj_ = *target;
+	}
+	if (constraints->apply (qProj_)) {
+	  return (*sm) (*(near->configuration ()), qProj_);
+	} else {
+	  return PathPtr_t ();
+	}
+      }
+      return (*sm) (*(near->configuration ()), *target);
+    }
+
+    void Planner::oneStep ()
+    {
+      while(!activated){
+      }
+      //sleep(1);
+      robot_mutex_.lock();
+      typedef boost::tuple <NodePtr_t, ConfigurationPtr_t, PathPtr_t>
+        DelayedEdge_t;
+      typedef std::vector <DelayedEdge_t> DelayedEdges_t;
+      DelayedEdges_t delayedEdges;
+      DevicePtr_t robot (problem ().robot ());
+      PathValidationPtr_t pathValidation (problem ().pathValidation ());
+      Nodes_t newNodes;
+      PathPtr_t validPath, path;
+      // Pick a random node
+      ConfigurationPtr_t q_rand = configurationShooter_->shoot ();
+      //
+      // First extend each connected component toward q_rand
+      //
+      double rando = rand();
+      rando = rando / RAND_MAX;
+      // keep random config
+      if (rando > Planner::random_prob_)
+      {
+        if (0){
+        //if (Planner::mode_contact_){
+          cout << rando << " contact q \n";
+          Matrix3 rot;
+          rot(0,0) = MGS.col[0].v[0];
+          rot(0,1) = MGS.col[0].v[1];
+          rot(0,2) = MGS.col[0].v[2];
+          rot(1,0) = MGS.col[1].v[0];
+          rot(1,1) = MGS.col[1].v[1];
+          rot(1,2) = MGS.col[1].v[2];
+          rot(2,0) = MGS.col[2].v[0];
+          rot(2,1) = MGS.col[2].v[1];
+          rot(2,2) = MGS.col[2].v[2];
+          // garder z à zéro
+          Vector3 val(0, (float)(*q_rand)[0], (float)(*q_rand)[2]);
+          //cout << "rot " << rot << endl;
+          //cout << "val " << val.transpose() << endl;
+          //std::cout << "one step distance centre/surf " << distance_ << std::endl;
+          //cout << "org " << org_[1] << " obj " << obj_[1]
+          //     << " signe org-obj " << signe(org_[1]-obj_[1]) << endl;
+
+          distance_mutex_.try_lock();
+          Vector3 org(
+              (float)org_[0]+signe(obj_[0]-org_[0])*distances_[0],
+              (float)org_[1]+signe(obj_[1]-org_[1])*distances_[1],
+              (float)org_[2]+signe(obj_[2]-org_[2])*distances_[2]
+              );
+          //cout << "org " << org.transpose() << endl;
+          val = rot.transpose()*val + org;
+          //cout << "nouveau val " << val.transpose() << endl;
+
+          // gros hack
+          //bool proche = false;
+          while(1){
+            double dist;
+            dist = sqrt(
+                pow(val[0]-(*Planner::actual_configuration_ptr_)[0], 2)+
+                pow(val[1]-(*Planner::actual_configuration_ptr_)[1], 2)+
+                pow(val[2]-(*Planner::actual_configuration_ptr_)[2], 2)
+                );
+            if (dist<2){
+              break;
+            }
+            else{
+              //cout << "retente\n";
+              q_rand = configurationShooter_->shoot ();
+              val[0] = 0;
+              val[1] = (float)(*q_rand)[1];
+              val[2] = (float)(*q_rand)[2];
+              Vector3 re_org((float)org_[0]+signe(obj_[0]-org_[0])*distances_[0],
+                  (float)org_[1]+signe(obj_[1]-org_[1])*distances_[1],
+                  (float)org_[2]+signe(obj_[2]-org_[2])*distances_[2]
+                  );
+              val = rot.transpose()*val + re_org;
+            }
+          }
+          distance_mutex_.unlock();
+
+          (*q_rand)[0] = val[0];
+          (*q_rand)[1] = val[1];
+          (*q_rand)[2] = val[2];
+          // fixer rotation
+          (*q_rand)[3] = (*Planner::actual_configuration_ptr_)[3];
+          (*q_rand)[4] = (*Planner::actual_configuration_ptr_)[4];
+          (*q_rand)[5] = (*Planner::actual_configuration_ptr_)[5];
+          (*q_rand)[6] = (*Planner::actual_configuration_ptr_)[6];
+
+          Planner::iteration_++;
+          if(Planner::iteration_ == 5){
+            Planner::mode_contact_ = false;
+            // ancien emplacement de distance_mutex_.unlock();
+          }
+
+
+        }
+        else{
+          cout << "manual config ";
+          for (int i = 0; i<7; i++) cout << (*Planner::actual_configuration_ptr_)[0] << " "; cout << endl;
+    
+          *q_rand = *actual_configuration_ptr_; 
+        }
       }
 
+      for (ConnectedComponents_t::const_iterator itcc =
+	     roadmap ()->connectedComponents ().begin ();
+	   itcc != roadmap ()->connectedComponents ().end (); ++itcc) {
+	// Find nearest node in roadmap
+	value_type distance;
+	NodePtr_t near = roadmap ()->nearestNode (q_rand, *itcc, distance);
+	path = extend (near, q_rand);
+	if (path) {
+	  core::PathValidationReportPtr_t report;
+	  bool pathValid = pathValidation->validate (path, false, validPath,
+						     report);
+	  // Insert new path to q_near in roadmap
+	  value_type t_final = validPath->timeRange ().second;
+	  if (t_final != path->timeRange ().first) {
+	    ConfigurationPtr_t q_new (new Configuration_t
+				      (validPath->end ()));
+	    if (!pathValid || !belongs (q_new, newNodes)) {
+	      newNodes.push_back (roadmap ()->addNodeAndEdges
+				  (near, q_new, validPath));
+	    } else {
+	      // Store edges to add for later insertion.
+	      // Adding edges while looping on connected components is indeed
+	      // not recommended.
+	      delayedEdges.push_back (DelayedEdge_t (near, q_new, validPath));
+	    }
+	  }
+	}
+      }
+      // Insert delayed edges
+      for (DelayedEdges_t::const_iterator itEdge = delayedEdges.begin ();
+	   itEdge != delayedEdges.end (); ++itEdge) {
+	const NodePtr_t& near = itEdge-> get <0> ();
+	const ConfigurationPtr_t& q_new = itEdge-> get <1> ();
+	const PathPtr_t& validPath = itEdge-> get <2> ();
+	NodePtr_t newNode = roadmap ()->addNode (q_new);
+	roadmap ()->addEdge (near, newNode, validPath);
+	interval_t timeRange = validPath->timeRange ();
+	roadmap ()->addEdge (newNode, near, validPath->extract
+			     (interval_t (timeRange.second ,
+					  timeRange.first)));
+      }
 
-}
-
+      //
+      // Second, try to connect new nodes together
+      //
+      const SteeringMethodPtr_t& sm (problem ().steeringMethod ());
+      for (Nodes_t::const_iterator itn1 = newNodes.begin ();
+	   itn1 != newNodes.end (); ++itn1) {
+	for (Nodes_t::const_iterator itn2 = boost::next (itn1);
+	     itn2 != newNodes.end (); ++itn2) {
+	  ConfigurationPtr_t q1 ((*itn1)->configuration ());
+	  ConfigurationPtr_t q2 ((*itn2)->configuration ());
+	  assert (*q1 != *q2);
+	  path = (*sm) (*q1, *q2);
+	  core::PathValidationReportPtr_t report;
+	  if (path && pathValidation->validate (path, false, validPath,
+						report)) {
+	    roadmap ()->addEdge (*itn1, *itn2, path);
+	    interval_t timeRange = path->timeRange ();
+	    roadmap ()->addEdge (*itn2, *itn1, path->extract
+				 (interval_t (timeRange.second,
+					      timeRange.first)));
+	  }
+	}
+      }
+    robot_mutex_.unlock();
     }
+
+    void Planner::configurationShooter
+    (const ConfigurationShooterPtr_t& shooter)
+    {
+      configurationShooter_ = shooter;
+    }
+
+
+  } // namespace core
+} // namespace hpp
+
+
+          /*
+             cout << "config curseur        " <<
+          //    trans_temp << endl;
+          //    //  (*actual_configuration_ptr_)[0] =
+          trans_temp.translation()[0] << " " <<
+          //    (*actual_configuration_ptr_)[1] =
+          trans_temp.translation()[1] << " " <<
+          //    (*actual_configuration_ptr_)[2] =
+          trans_temp.translation()[2] << endl;
+          //*/
+
+
+
 /*
     void Planner::InteractiveDeviceThread(){
       gepetto::corbaserver::Color color;
@@ -592,255 +852,3 @@ double TorqueGain  =    1.0;
     }
 
 //*/
-
-    void Planner::init (const PlannerWkPtr_t& weak)
-    {
-      PathPlanner::init (weak);
-      weakPtr_ = weak;
-    }
-
-    bool belongs (const ConfigurationPtr_t& q, const Nodes_t& nodes)
-    {
-      for (Nodes_t::const_iterator itNode = nodes.begin ();
-	   itNode != nodes.end (); ++itNode) {
-	if (*((*itNode)->configuration ()) == *q) return true;
-      }
-      return false;
-    }
-
-    PathPtr_t Planner::extend (const NodePtr_t& near,
-					const ConfigurationPtr_t& target)
-    {
-      const SteeringMethodPtr_t& sm (problem ().steeringMethod ());
-      const ConstraintSetPtr_t& constraints (sm->constraints ());
-      if (constraints) {
-	ConfigProjectorPtr_t configProjector (constraints->configProjector ());
-	if (configProjector) {
-	  configProjector->projectOnKernel (*(near->configuration ()), *target,
-					    qProj_);
-	} else {
-	  qProj_ = *target;
-	}
-	if (constraints->apply (qProj_)) {
-	  return (*sm) (*(near->configuration ()), qProj_);
-	} else {
-	  return PathPtr_t ();
-	}
-      }
-      return (*sm) (*(near->configuration ()), *target);
-    }
-
-
-    /// This method performs one step of RRT extension as follows
-    ///  1. a random configuration "q_rand" is shot,
-    ///  2. for each connected component,
-    ///    2.1. the closest node "q_near" is chosen,
-    ///    2.2. "q_rand" is projected first on the tangent space of the
-    ///         non-linear constraint at "q_near", this projection yields
-    ///         "q_tmp", then "q_tmp" is projected on the non-linear constraint
-    ///         manifold as "q_proj" (method extend)
-    ///    2.3. the steering method is called between "q_near" and "q_proj" that
-    ///         returns "path",
-    ///    2.4. a valid connected part of "path", called "validPath" starting at
-    ///         "q_near" is extracted, if "path" is valid (collision free),
-    ///         the full "path" is returned, "q_new" is the end configuration of
-    ///         "validPath",
-    ///    2.5  a new node containing "q_new" is added to the connected
-    ///         component and a new edge is added between nodes containing
-    ///         "q_near" and "q_new".
-    ///  3. Try to connect new nodes together using the steering method and
-    ///     the current PathValidation instance.
-    ///
-    ///  Note that edges are actually added to the roadmap after step 2 in order
-    ///  to avoid iterating on the list of connected components while modifying
-    ///  this list.
-
-    void Planner::oneStep ()
-    {
-      robot_mutex_.lock();
-      typedef boost::tuple <NodePtr_t, ConfigurationPtr_t, PathPtr_t>
-	DelayedEdge_t;
-      typedef std::vector <DelayedEdge_t> DelayedEdges_t;
-      DelayedEdges_t delayedEdges;
-      DevicePtr_t robot (problem ().robot ());
-      PathValidationPtr_t pathValidation (problem ().pathValidation ());
-      Nodes_t newNodes;
-      PathPtr_t validPath, path;
-      // Pick a random node
-      ConfigurationPtr_t q_rand = configurationShooter_->shoot ();
-      //
-      // First extend each connected component toward q_rand
-      //
-      double rando = rand();
-      rando = rando / RAND_MAX;
-      // keep random config
-      if (rando > Planner::random_prob_)
-      {
-        if (Planner::mode_contact_){
-          cout << rando << " contact q \n";
-          Matrix3 rot;
-          rot(0,0) = MGS.col[0].v[0];
-          rot(0,1) = MGS.col[0].v[1];
-          rot(0,2) = MGS.col[0].v[2];
-          rot(1,0) = MGS.col[1].v[0];
-          rot(1,1) = MGS.col[1].v[1];
-          rot(1,2) = MGS.col[1].v[2];
-          rot(2,0) = MGS.col[2].v[0];
-          rot(2,1) = MGS.col[2].v[1];
-          rot(2,2) = MGS.col[2].v[2];
-          // garder z à zéro
-          Vector3 val(0, (float)(*q_rand)[0], (float)(*q_rand)[2]);
-          //cout << "rot " << rot << endl;
-          //cout << "val " << val.transpose() << endl;
-          //std::cout << "one step distance centre/surf " << distance_ << std::endl;
-          //cout << "org " << org_[1] << " obj " << obj_[1]
-          //     << " signe org-obj " << signe(org_[1]-obj_[1]) << endl;
-
-          distance_mutex_.try_lock();
-          Vector3 org(
-              (float)org_[0]+signe(obj_[0]-org_[0])*distances_[0],
-              (float)org_[1]+signe(obj_[1]-org_[1])*distances_[1],
-              (float)org_[2]+signe(obj_[2]-org_[2])*distances_[2]
-              );
-          //cout << "org " << org.transpose() << endl;
-          val = rot.transpose()*val + org;
-          //cout << "nouveau val " << val.transpose() << endl;
-
-          // gros hack
-          //bool proche = false;
-          while(1){
-            double dist;
-            dist = sqrt(
-                pow(val[0]-(*Planner::actual_configuration_ptr_)[0], 2)+
-                pow(val[1]-(*Planner::actual_configuration_ptr_)[1], 2)+
-                pow(val[2]-(*Planner::actual_configuration_ptr_)[2], 2)
-                );
-            if (dist<2){
-              break;
-            }
-            else{
-              //cout << "retente\n";
-              q_rand = configurationShooter_->shoot ();
-              val[0] = 0;
-              val[1] = (float)(*q_rand)[1];
-              val[2] = (float)(*q_rand)[2];
-              Vector3 re_org((float)org_[0]+signe(obj_[0]-org_[0])*distances_[0],
-                  (float)org_[1]+signe(obj_[1]-org_[1])*distances_[1],
-                  (float)org_[2]+signe(obj_[2]-org_[2])*distances_[2]
-                  );
-              val = rot.transpose()*val + re_org;
-            }
-          }
-          distance_mutex_.unlock();
-
-          (*q_rand)[0] = val[0];
-          (*q_rand)[1] = val[1];
-          (*q_rand)[2] = val[2];
-          // fixer rotation
-          (*q_rand)[3] = (*Planner::actual_configuration_ptr_)[3];
-          (*q_rand)[4] = (*Planner::actual_configuration_ptr_)[4];
-          (*q_rand)[5] = (*Planner::actual_configuration_ptr_)[5];
-          (*q_rand)[6] = (*Planner::actual_configuration_ptr_)[6];
-
-          Planner::iteration_++;
-          if(Planner::iteration_ == 5){
-            Planner::mode_contact_ = false;
-            // ancien emplacement de distance_mutex_.unlock();
-          }
-
-  
-        }
-        else{
-          *q_rand = *actual_configuration_ptr_; 
-        }
-      }
-
-      for (ConnectedComponents_t::const_iterator itcc =
-	     roadmap ()->connectedComponents ().begin ();
-	   itcc != roadmap ()->connectedComponents ().end (); ++itcc) {
-	// Find nearest node in roadmap
-	value_type distance;
-	NodePtr_t near = roadmap ()->nearestNode (q_rand, *itcc, distance);
-	path = extend (near, q_rand);
-	if (path) {
-	  core::PathValidationReportPtr_t report;
-	  bool pathValid = pathValidation->validate (path, false, validPath,
-						     report);
-	  // Insert new path to q_near in roadmap
-	  value_type t_final = validPath->timeRange ().second;
-	  if (t_final != path->timeRange ().first) {
-	    ConfigurationPtr_t q_new (new Configuration_t
-				      (validPath->end ()));
-	    if (!pathValid || !belongs (q_new, newNodes)) {
-	      newNodes.push_back (roadmap ()->addNodeAndEdges
-				  (near, q_new, validPath));
-	    } else {
-	      // Store edges to add for later insertion.
-	      // Adding edges while looping on connected components is indeed
-	      // not recommended.
-	      delayedEdges.push_back (DelayedEdge_t (near, q_new, validPath));
-	    }
-	  }
-	}
-      }
-      // Insert delayed edges
-      for (DelayedEdges_t::const_iterator itEdge = delayedEdges.begin ();
-	   itEdge != delayedEdges.end (); ++itEdge) {
-	const NodePtr_t& near = itEdge-> get <0> ();
-	const ConfigurationPtr_t& q_new = itEdge-> get <1> ();
-	const PathPtr_t& validPath = itEdge-> get <2> ();
-	NodePtr_t newNode = roadmap ()->addNode (q_new);
-	roadmap ()->addEdge (near, newNode, validPath);
-	interval_t timeRange = validPath->timeRange ();
-	roadmap ()->addEdge (newNode, near, validPath->extract
-			     (interval_t (timeRange.second ,
-					  timeRange.first)));
-      }
-
-      //
-      // Second, try to connect new nodes together
-      //
-      const SteeringMethodPtr_t& sm (problem ().steeringMethod ());
-      for (Nodes_t::const_iterator itn1 = newNodes.begin ();
-	   itn1 != newNodes.end (); ++itn1) {
-	for (Nodes_t::const_iterator itn2 = boost::next (itn1);
-	     itn2 != newNodes.end (); ++itn2) {
-	  ConfigurationPtr_t q1 ((*itn1)->configuration ());
-	  ConfigurationPtr_t q2 ((*itn2)->configuration ());
-	  assert (*q1 != *q2);
-	  path = (*sm) (*q1, *q2);
-	  core::PathValidationReportPtr_t report;
-	  if (path && pathValidation->validate (path, false, validPath,
-						report)) {
-	    roadmap ()->addEdge (*itn1, *itn2, path);
-	    interval_t timeRange = path->timeRange ();
-	    roadmap ()->addEdge (*itn2, *itn1, path->extract
-				 (interval_t (timeRange.second,
-					      timeRange.first)));
-	  }
-	}
-      }
-    robot_mutex_.unlock();
-    }
-
-    void Planner::configurationShooter
-    (const ConfigurationShooterPtr_t& shooter)
-    {
-      configurationShooter_ = shooter;
-    }
-
-
-  } // namespace core
-} // namespace hpp
-
-
-          /*
-             cout << "config curseur        " <<
-          //    trans_temp << endl;
-          //    //  (*actual_configuration_ptr_)[0] =
-          trans_temp.translation()[0] << " " <<
-          //    (*actual_configuration_ptr_)[1] =
-          trans_temp.translation()[1] << " " <<
-          //    (*actual_configuration_ptr_)[2] =
-          trans_temp.translation()[2] << endl;
-          //*/
