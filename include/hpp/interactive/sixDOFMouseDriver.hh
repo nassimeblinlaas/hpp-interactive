@@ -28,7 +28,7 @@ class SixDOFMouseDriver{
 	public :
 		SixDOFMouseDriver();
 		// to call for init
-        static void MouseInit(double* bounds);
+        static void MouseInit(short int type, double* bounds);
         static void InitPosition(double* translation);
 		// blocking if no data
 		static const se3::SE3& getTransformation();
@@ -61,6 +61,7 @@ class SixDOFMouseDriver{
 		static bool has_moved_;
 
         static float cameraVectors_[9];
+                static short int type_;// device type 1 6D mouse 2 sigma7
 };
 
 

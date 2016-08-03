@@ -180,7 +180,8 @@ namespace hpp {
         this->problem().robot()->rootJoint()->lowerBound(2),
         this->problem().robot()->rootJoint()->upperBound(2)
       };
-      SixDOFMouseDriver::MouseInit(bounds);
+      short int type = 1; //device type 1 -dmouse 2 sigma7
+      SixDOFMouseDriver::MouseInit(type, bounds);
       ConfigurationPtr_t config (new Configuration_t ((hpp::model::size_type)7));
       (*config)[0] = 1;
       (*config)[1] = 1;

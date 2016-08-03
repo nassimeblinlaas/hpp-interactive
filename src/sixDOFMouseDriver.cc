@@ -5,7 +5,9 @@
 //#include <libudev.h>
 #include <locale.h>
 #include <unistd.h>
-
+#include <hpp/interactive/dhdc.h>
+#include <hpp/interactive/drdc.h>
+#include <stdio.h>
 #include <iostream>
 
 boost::thread* SixDOFMouseDriver::interactiveDeviceThread_ = 0;
@@ -21,7 +23,7 @@ double SixDOFMouseDriver::rotation_threshold_;
 bool SixDOFMouseDriver::has_moved_;
 // x, y, z for side, front, up vectors ; in this order
 float SixDOFMouseDriver::cameraVectors_[9];
-
+short int SixDOFMouseDriver::type_;
 
 using namespace std;
 
@@ -113,9 +115,12 @@ void SixDOFMouseDriver::InitPosition(double* translation)
 }
 
 
-void SixDOFMouseDriver::MouseInit(double* bounds)
+void SixDOFMouseDriver::MouseInit(short int type, double* bounds)
 {
-
+  
+  type_=type;
+  if (type_==1)
+  {
     // open device
 	// TODO
 	/*   Open the Device with non-blocking reads. In real life,
@@ -162,6 +167,97 @@ void SixDOFMouseDriver::MouseInit(double* bounds)
     //void* arg = 0;
 	SixDOFMouseDriver::interactiveDeviceThread_ = 
         new boost::thread(boost::thread(SixDOFMouseDriver::ReadMouse, bounds));
+
+  }
+  if (type_==2)
+  {
+    int    done = 0;
+    double f, fx, fy, fz;
+    double ofx = 0.0, ofy = 0.0, ofz = 0.0;
+    double sx, sy, sz;
+    double Pgain;
+    double PgainStep;
+    bool   oldButton = false;
+    // message
+    int major, minor, release, revision;
+    dhdGetSDKVersion (&major, &minor, &release, &revision);
+    printf ("Force Dimension - Force Sensor Emulation %d.%d.%d.%d\n", major, minor, release, revision);
+    printf ("(C) 2001-2015 Force Dimension\n");
+    printf ("All Rights Reserved.\n\n");
+
+    // open the first available device
+    if (drdOpen () < 0) {
+      printf ("error: cannot open device (%s)\n", dhdErrorGetLastStr ());
+      dhdSleep (2.0);
+    }else{
+
+      // print out device identifier
+      if (!drdIsSupported()) {
+        printf ("unsupported device\n");
+        printf ("exiting...\n");
+        dhdSleep (2.0);
+        drdClose (); 
+      }
+      printf ("%s haptic device detected\n\n", dhdGetSystemName());
+      // initialize if necessary
+      if (!drdIsInitialized() && (drdAutoInit() < 0)) {
+        printf ("error: initialization failed (%s)\n", dhdErrorGetLastStr ());
+        dhdSleep (2.0);
+      }
+
+      // start robot control loop
+      if (drdStart() < 0) {
+        printf ("error: control loop failed to start properly (%s)\n", dhdErrorGetLastStr ());
+        dhdSleep (2.0);
+      }
+
+      // goto workspace center
+      if (drdMoveToPos (0.0, 0.0, 0.0, false) < 0) {
+        printf ("error: failed to move to central position (%s)\n", dhdErrorGetLastStr ());
+        dhdSleep (2.0);
+      }
+
+      // retrieve current regulation gain (joint-space spring stiffness)
+      Pgain = drdGetEncPGain ();
+      PgainStep = 0.01*Pgain;
+      sleep(1);
+      //activated = true;
+      long int iteration = 0;
+    // init status
+    SixDOFMouseDriver::has_moved_ = false;
+
+    // init position
+
+    //*
+    transformation_.translation()[0] = 0;
+    transformation_.translation()[1] = 0;
+    transformation_.translation()[2] = 0;
+    //*/
+
+    // init rotation
+    transformation_.rotation().setIdentity();
+
+    // init speed
+    SixDOFMouseDriver::linear_speed_ = 30;
+    SixDOFMouseDriver::angular_speed_ = 40;
+
+    // init axes
+    SixDOFMouseDriver::cameraVectors_[0] = 1;
+    SixDOFMouseDriver::cameraVectors_[1] = 0;
+    SixDOFMouseDriver::cameraVectors_[2] = 0;
+    SixDOFMouseDriver::cameraVectors_[3] = 0;
+    SixDOFMouseDriver::cameraVectors_[4] = 1;
+    SixDOFMouseDriver::cameraVectors_[5] = 0;
+    SixDOFMouseDriver::cameraVectors_[6] = 0;
+    SixDOFMouseDriver::cameraVectors_[7] = 0;
+    SixDOFMouseDriver::cameraVectors_[8] = 1;
+
+	// execute thread 
+    //void* arg = 0;
+	SixDOFMouseDriver::interactiveDeviceThread_ = 
+        new boost::thread(boost::thread(SixDOFMouseDriver::ReadMouse, bounds));
+    }
+  }
 
 }
 
@@ -253,7 +349,7 @@ void SixDOFMouseDriver::ReadMouse(double* bounds_)
         //cout << "norme " << norme << endl;
         rot[0] = rot[0]/norme;
         rot[1] = rot[1]/norme;
-        rot[2] = rot[2]/norme;
+        rot[1] = rot[2]/norme;
         /*/
 
         /* // réorienter selon caméra
@@ -361,88 +457,85 @@ void SixDOFMouseDriver::ReadMouse(double* bounds_)
 void SixDOFMouseDriver::getData()
 {
 
-	union val{
-		char swap[2];
-		short int value;
-	};
-	val v;
+  if (type_==1)
+  {
+    union val{
+      char swap[2];
+      short int value;
+    };
+    val v;
 
-	// 6D mouse sends one 7 byte position and one 7 byte orientation frame
-	memset(SixDOFMouseDriver::data_, 0x0, 14);
+    // 6D mouse sends one 7 byte position and one 7 byte orientation frame
+    memset(SixDOFMouseDriver::data_, 0x0, 14);
 
-	// read position
-	if (read(SixDOFMouseDriver::fd_, SixDOFMouseDriver::data_, 7) != 7)
-		std::cout << "read error" << std::endl;
+    // read position
+    if (read(SixDOFMouseDriver::fd_, SixDOFMouseDriver::data_, 7) != 7)
+      std::cout << "read error" << std::endl;
 
-	if (SixDOFMouseDriver::data_[0] == 1){
-		//conversion to big endian
-		for (int i = 0; i<3; i++){
-			v.swap[0] = SixDOFMouseDriver::data_[1+2*i];
-			v.swap[1] = SixDOFMouseDriver::data_[1+2*i+1];
-			// divide by 512 for normalization
-			SixDOFMouseDriver::deviceValues_[i] = v.value;
-			SixDOFMouseDriver::deviceValuesNormalized_[i] = (float)v.value/512;
-		}
-	}
+    if (SixDOFMouseDriver::data_[0] == 1){
+      //conversion to big endian
+      for (int i = 0; i<3; i++){
+        v.swap[0] = SixDOFMouseDriver::data_[1+2*i];
+        v.swap[1] = SixDOFMouseDriver::data_[1+2*i+1];
+        // divide by 512 for normalization
+        SixDOFMouseDriver::deviceValues_[i] = v.value;
+        SixDOFMouseDriver::deviceValuesNormalized_[i] = (float)v.value/512;
+      }
+    }
 
-	// read orientation
-	if (read(SixDOFMouseDriver::fd_, SixDOFMouseDriver::data_+7, 7) != 7)
-		std::cout << "read error" << std::endl;
-	if (SixDOFMouseDriver::data_[7] == 2){
-		//conversion to big endian
-		for (int i = 0; i<3; i++){
-			v.swap[0] = SixDOFMouseDriver::data_[8+2*i];
-			v.swap[1] = SixDOFMouseDriver::data_[8+2*i+1];
-			// divide by 512 for normalization
-			SixDOFMouseDriver::deviceValues_[3+i] = v.value;
-			SixDOFMouseDriver::deviceValuesNormalized_[3+i] = (float)v.value/512;
-		}
-	}
+    // read orientation
+    if (read(SixDOFMouseDriver::fd_, SixDOFMouseDriver::data_+7, 7) != 7)
+      std::cout << "read error" << std::endl;
+    if (SixDOFMouseDriver::data_[7] == 2){
+      //conversion to big endian
+      for (int i = 0; i<3; i++){
+        v.swap[0] = SixDOFMouseDriver::data_[8+2*i];
+        v.swap[1] = SixDOFMouseDriver::data_[8+2*i+1];
+        // divide by 512 for normalization
+        SixDOFMouseDriver::deviceValues_[3+i] = v.value;
+        SixDOFMouseDriver::deviceValuesNormalized_[3+i] = (float)v.value/512;
+      }
+    }
 
-	
-//	//print values
-//	printf("rawdata position\n");
-//	for (int i = 0; i<7; ++i)
-//		printf("%02hhX ", SixDOFMouseDriver::data_[i]);
-//	printf("\n");
+  }
+  if (type_==2)
+  {
+    double   posX, posY, posZ;
+    // init variables
+    posX = posY = posZ = 0.0;
+    // read position of haptic device
+    dhdGetPosition (&posX, &posY, &posZ);
+    double gravite = 1.73785; posZ-= gravite;
+    SixDOFMouseDriver::deviceValuesNormalized_[0] = posX;
+    SixDOFMouseDriver::deviceValuesNormalized_[1] = posY;
+    SixDOFMouseDriver::deviceValuesNormalized_[3] = posZ;
+  }
 
-//	//print values
-//	printf("rawdata orientation\n");
-//	for (int i = 8; i<14; ++i){
-//		printf("%02hhX;", SixDOFMouseDriver::data_[i]);
-//	}
-//	printf("\n");
 
-//	printf("formatted values\n");
-//	for (int i = 0; i<14; ++i)
-//		printf("%02hhX ", SixDOFMouseDriver::data_[i]);
-//	printf("\n");
-//	printf("integer values\n");
-//	for (int i = 3; i<6; ++i) 
-//		std::cout << SixDOFMouseDriver::deviceValues_[i] << " ";
-//	std::cout << std::endl;
-//    printf("float values\n");
-//    for (int  i = 1; i<6; ++i)
-//        std::cout << SixDOFMouseDriver::deviceValuesNormalized_[i] << ";";
-//    std::cout << std::endl;
+  //	//print values
+  //	printf("rawdata position\n");
+  //	for (int i = 0; i<7; ++i)
+  //		printf("%02hhX ", SixDOFMouseDriver::data_[i]);
+  //	printf("\n");
 
-    /*
-    struct udev *udev;
-    struct udev_enumerate *enumerate;
-    struct udev_list_entry *devices, *dev_list_entry;
-    struct udev_device *dev;
-    struct udev_monitor *mon;
-    int fd;
-    //*/
-    //	udev = udev_new();
-    //	mon = udev_monitor_new_from_netlink(udev, "udev");
-    //	udev_monitor_filter_add_match_subsystem_devtype(mon, "hidraw", NULL);
-    //	udev_monitor_enable_receiving(mon);
-    //	fd = udev_monitor_get_fd(mon);
-    //
-    //	enumerate = udev_enumerate_new(udev);
-    //	udev_enumerate_add_match_subsystem(enumerate, "hidraw");
-    //	udev_enumerate_scan_devices(enumerate);
-    //	devices = udev_enumerate_get_list_entry(enumerate);
+  //	//print values
+  //	printf("rawdata orientation\n");
+  //	for (int i = 8; i<14; ++i){
+  //		printf("%02hhX;", SixDOFMouseDriver::data_[i]);
+  //	}
+  //	printf("\n");
+
+  //	printf("formatted values\n");
+  //	for (int i = 0; i<14; ++i)
+  //		printf("%02hhX ", SixDOFMouseDriver::data_[i]);
+  //	printf("\n");
+  //	printf("integer values\n");
+  //	for (int i = 3; i<6; ++i) 
+  //		std::cout << SixDOFMouseDriver::deviceValues_[i] << " ";
+  //	std::cout << std::endl;
+  //    printf("float values\n");
+  //    for (int  i = 1; i<6; ++i)
+  //        std::cout << SixDOFMouseDriver::deviceValuesNormalized_[i] << ";";
+  //    std::cout << std::endl;
 
 }
