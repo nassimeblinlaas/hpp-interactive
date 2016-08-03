@@ -211,8 +211,12 @@ void SixDOFMouseDriver::MouseInit(short int type, double* bounds)
         dhdSleep (2.0);
       }
 
+      double nullPose[DHD_MAX_DOF] = { 0.0, 0.0, 0.0,  // base  (translations)
+        0.0, 0.0, 0.0,  // wrist (rotations)
+        0.0 };          // gripper
+
       // goto workspace center
-      if (drdMoveToPos (0.0, 0.0, 0.0, false) < 0) {
+      if (drdMoveTo (nullPose) < 0) {
         printf ("error: failed to move to central position (%s)\n", dhdErrorGetLastStr ());
         dhdSleep (2.0);
       }
@@ -220,7 +224,7 @@ void SixDOFMouseDriver::MouseInit(short int type, double* bounds)
       // retrieve current regulation gain (joint-space spring stiffness)
       Pgain = drdGetEncPGain ();
       PgainStep = 0.01*Pgain;
-      sleep(1);
+      sleep(3);
       //activated = true;
       long int iteration = 0;
     // init status
@@ -238,8 +242,8 @@ void SixDOFMouseDriver::MouseInit(short int type, double* bounds)
     transformation_.rotation().setIdentity();
 
     // init speed
-    SixDOFMouseDriver::linear_speed_ = 30;
-    SixDOFMouseDriver::angular_speed_ = 40;
+    SixDOFMouseDriver::linear_speed_ = 10000;
+    SixDOFMouseDriver::angular_speed_ = 500;
 
     // init axes
     SixDOFMouseDriver::cameraVectors_[0] = 1;
@@ -388,12 +392,14 @@ void SixDOFMouseDriver::ReadMouse(double* bounds_)
         cout << "rotation " << rot[0] << " " << rot[1] << " " << rot[2] << endl << endl;
         //*/
 
-		/////////////////////////////////////////////////////////
-		// integrate rotations
-        double threshold = 0.5; // anciennement 0.5 0.2
+        /////////////////////////////////////////////////////////
+        // integrate rotations
+        double threshold;
+        if (type_==1) threshold = 0.5; // anciennement 0.5 0.2
+        if (type_==2) threshold = 0.03; // anciennement 0.5 0.2
         divideFactor = (float)SixDOFMouseDriver::angular_speed_;
         // rotation variations
-		se3::SE3::Vector3 v_local (0., 0., 0.);
+        se3::SE3::Vector3 v_local (0., 0., 0.);
 
 
         // threshold for rotations
@@ -504,11 +510,22 @@ void SixDOFMouseDriver::getData()
     // init variables
     posX = posY = posZ = 0.0;
     // read position of haptic device
-    dhdGetPosition (&posX, &posY, &posZ);
+    dhdGetForce(&posX, &posY, &posZ);
     double gravite = 1.73785; posZ-= gravite;
+    if(fabs(posX)<0.8) posX = 0;
+    else posX-=0.6;
+    if(fabs(posY)<0.8) posY = 0;
+    else posY-=0.6;
+    if(fabs(posZ)<0.8) posZ = 0;
+    else posZ-=0.6;
+    double angl[3];
+    dhdGetOrientationRad  (angl+0, angl+1, angl+2);
     SixDOFMouseDriver::deviceValuesNormalized_[0] = posX;
     SixDOFMouseDriver::deviceValuesNormalized_[1] = posY;
-    SixDOFMouseDriver::deviceValuesNormalized_[3] = posZ;
+    SixDOFMouseDriver::deviceValuesNormalized_[2] = posZ;
+    SixDOFMouseDriver::deviceValuesNormalized_[3] = angl[0];
+    SixDOFMouseDriver::deviceValuesNormalized_[4] = angl[1];
+    SixDOFMouseDriver::deviceValuesNormalized_[5] = angl[2];
   }
 
 
@@ -533,9 +550,11 @@ void SixDOFMouseDriver::getData()
   //	for (int i = 3; i<6; ++i) 
   //		std::cout << SixDOFMouseDriver::deviceValues_[i] << " ";
   //	std::cout << std::endl;
-  //    printf("float values\n");
-  //    for (int  i = 1; i<6; ++i)
-  //        std::cout << SixDOFMouseDriver::deviceValuesNormalized_[i] << ";";
-  //    std::cout << std::endl;
+      //printf("float values\n");
+      //for (int  i = 0; i<6; ++i)
+          //std::cout << SixDOFMouseDriver::deviceValuesNormalized_[i] << ";";
+      //std::cout << std::endl;
+
+//for (int i = 0; i<6; i++)SixDOFMouseDriver::deviceValuesNormalized_[i]=0;
 
 }

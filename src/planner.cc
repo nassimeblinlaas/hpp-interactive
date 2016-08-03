@@ -180,7 +180,7 @@ namespace hpp {
         this->problem().robot()->rootJoint()->lowerBound(2),
         this->problem().robot()->rootJoint()->upperBound(2)
       };
-      short int type = 1; //device type 1 -dmouse 2 sigma7
+      short int type = 2; //device type 1 -dmouse 2 sigma7
       SixDOFMouseDriver::MouseInit(type, bounds);
       ConfigurationPtr_t config (new Configuration_t ((hpp::model::size_type)7));
       (*config)[0] = 1;
@@ -207,12 +207,12 @@ namespace hpp {
         if (SixDOFMouseDriver::HasMoved() && nb_launchs<2){
           if (!init){
             const ConfigurationPtr_t initConfig_ = this->problem().initConfig();
-            double translations[3] = {
-              (*initConfig_)[0],
-              (*initConfig_)[1],
-              (*initConfig_)[2]
-            };
-            SixDOFMouseDriver::InitPosition(translations);
+            //double translations[3] = {
+              //(*initConfig_)[0],
+              //(*initConfig_)[1],
+              //(*initConfig_)[2]
+            //};
+            //SixDOFMouseDriver::InitPosition(translations);
             init = true;
           }
 
@@ -226,21 +226,21 @@ namespace hpp {
           normalizeQuat(quat_[0],quat_[1], quat_[2], quat_[3]);
           double mag = sqrt(pow(quat.w(),2)+pow(quat.x(),2)+pow(quat.y(),2)+pow(quat.z(),2));
           ::gepetto::corbaserver::Transform tr;
-          tr[0] = trans_temp.translation()[0];
+          //tr[0] = trans_temp.translation()[0];
+          //tr[1] = trans_temp.translation()[1];
+          //tr[2] = trans_temp.translation()[2]; // version sigma7
+          tr[0] = trans_temp.translation()[2];
           tr[1] = trans_temp.translation()[1];
-          tr[2] = trans_temp.translation()[2];
+          tr[2] = trans_temp.translation()[0];
           tr[3] = (float)quat.w()/(float)mag;
           tr[4] = (float)quat.x()/(float)mag;
           tr[5] = (float)quat.y()/(float)mag;
           tr[6] = (float)quat.z()/(float)mag;
 
           // save current transfo-rmation in the planner's memory
-          (*Planner::actual_configuration_ptr_)[0] =
-            trans_temp.translation()[0];
-          (*Planner::actual_configuration_ptr_)[1] =
-            trans_temp.translation()[1];
-          (*Planner::actual_configuration_ptr_)[2] =
-            trans_temp.translation()[2];
+          (*Planner::actual_configuration_ptr_)[0] = tr[0];
+          (*Planner::actual_configuration_ptr_)[1] = tr[1];
+          (*Planner::actual_configuration_ptr_)[2] = tr[2];
           (*Planner::actual_configuration_ptr_)[3] = tr[3];
           (*Planner::actual_configuration_ptr_)[4] = tr[4];
           (*Planner::actual_configuration_ptr_)[5] = tr[5];
@@ -291,6 +291,9 @@ namespace hpp {
             in[0] = trans_temp.translation()[0];
             in[1] = trans_temp.translation()[1];
             in[2] = trans_temp.translation()[2];
+            in[0] = tr[0];
+            in[1] = tr[1];
+            in[2] = tr[2];
             in[3] = tr[3];
             in[4] = tr[4];
             in[5] = tr[5];
