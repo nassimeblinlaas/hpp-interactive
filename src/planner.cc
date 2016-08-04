@@ -149,6 +149,7 @@ namespace hpp {
     {
 
       nb_launchs++;
+      type_ = 2; //device type 1 mouse 2 sigma7
       random_prob_ = 0; // 0 all human  1 all machine
       mode_contact_ = false;
       // adding interactive robot and positionning it
@@ -180,8 +181,7 @@ namespace hpp {
         this->problem().robot()->rootJoint()->lowerBound(2),
         this->problem().robot()->rootJoint()->upperBound(2)
       };
-      short int type = 2; //device type 1 -dmouse 2 sigma7
-      SixDOFMouseDriver::MouseInit(type, bounds);
+      SixDOFMouseDriver::MouseInit(type_, bounds);
       ConfigurationPtr_t config (new Configuration_t ((hpp::model::size_type)7));
       (*config)[0] = 1;
       (*config)[1] = 1;
@@ -222,16 +222,43 @@ namespace hpp {
           Eigen::Matrix3f mat = trans_temp.rotation();
           Eigen::Quaternionf quat(mat);
           // normaliser quaternion
-          quat_[0]=quat.w();quat_[1]=quat.x();quat_[2]=quat.y();quat_[3]=quat.z();
-          normalizeQuat(quat_[0],quat_[1], quat_[2], quat_[3]);
+          //quat_[0]=quat.w();quat_[1]=quat.x();quat_[2]=quat.y();quat_[3]=quat.z();
+          //normalizeQuat(quat_[0],quat_[1], quat_[2], quat_[3]);
           double mag = sqrt(pow(quat.w(),2)+pow(quat.x(),2)+pow(quat.y(),2)+pow(quat.z(),2));
           ::gepetto::corbaserver::Transform tr;
-          //tr[0] = trans_temp.translation()[0];
-          //tr[1] = trans_temp.translation()[1];
-          //tr[2] = trans_temp.translation()[2]; // version sigma7
-          tr[0] = trans_temp.translation()[2];
-          tr[1] = trans_temp.translation()[1];
-          tr[2] = trans_temp.translation()[0];
+          if(type_==1){
+            tr[0] = trans_temp.translation()[0];
+            tr[1] = trans_temp.translation()[1];
+            tr[2] = trans_temp.translation()[2];
+          }
+          if (type_==2){
+            Eigen::Vector3f translate;
+            translate << trans_temp.translation()[0], 
+                      trans_temp.translation()[1],
+                      trans_temp.translation()[2];
+            Eigen::Matrix3f rot90x;
+            Eigen::Matrix3f rot90y;
+            Eigen::Matrix3f rot90z;
+            double angle = 3.14159265/2;
+            rot90z << cos(angle), -sin(angle), 0, 
+                   sin(angle), cos(angle),  0,
+                   0,          0,           1;
+            rot90x << 1, 0, 0,
+                   0, cos(angle), -sin(angle),
+                   0, sin(angle), cos(angle);
+            rot90y << cos(angle), 0, sin(angle),
+                   0, 1, 0,
+                   -sin(angle), 0, cos(angle);  
+
+
+            //translate = translate.transpose() * rot90y;
+            tr[0] = translate[0]; // version sigma7
+            tr[1] = translate[1];
+            tr[2] = translate[2];
+            //tr[0] = trans_temp.translation()[0];
+            //tr[1] = trans_temp.translation()[1];
+            //tr[2] = trans_temp.translation()[2];
+          }
           tr[3] = (float)quat.w()/(float)mag;
           tr[4] = (float)quat.x()/(float)mag;
           tr[5] = (float)quat.y()/(float)mag;

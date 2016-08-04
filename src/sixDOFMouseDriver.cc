@@ -242,7 +242,7 @@ void SixDOFMouseDriver::MouseInit(short int type, double* bounds)
     transformation_.rotation().setIdentity();
 
     // init speed
-    SixDOFMouseDriver::linear_speed_ = 10000;
+    SixDOFMouseDriver::linear_speed_ = 1000;
     SixDOFMouseDriver::angular_speed_ = 500;
 
     // init axes
@@ -286,11 +286,11 @@ void SixDOFMouseDriver::ReadMouse(double* bounds_)
 		// translation
 		float divideFactor = (float)SixDOFMouseDriver::linear_speed_;// dt
 
-        /*
-        cout << "in the driver ";
+        //*
+        cout << "in the driver cam vect ";
         for (int i=0; i<9; i++)
             cout << SixDOFMouseDriver::cameraVectors_[i] << " ";
-        cout << endl;
+        cout << "\r";
         //*/
 
 
@@ -518,14 +518,23 @@ void SixDOFMouseDriver::getData()
     else posY-=0.6;
     if(fabs(posZ)<0.8) posZ = 0;
     else posZ-=0.6;
+    if (posX>10) posX=10;
+    if (posX<-10) posX=-10;
+    if (posY>10) posY=10;
+    if (posY<-10) posY=-10;
+    if (posZ>10) posZ=10;
+    if (posZ<-10) posZ=-10;
     double angl[3];
     dhdGetOrientationRad  (angl+0, angl+1, angl+2);
-    SixDOFMouseDriver::deviceValuesNormalized_[0] = posX;
-    SixDOFMouseDriver::deviceValuesNormalized_[1] = posY;
-    SixDOFMouseDriver::deviceValuesNormalized_[2] = posZ;
-    SixDOFMouseDriver::deviceValuesNormalized_[3] = angl[0];
-    SixDOFMouseDriver::deviceValuesNormalized_[4] = angl[1];
-    SixDOFMouseDriver::deviceValuesNormalized_[5] = angl[2];
+    SixDOFMouseDriver::deviceValuesNormalized_[0] = -posY/10;
+    SixDOFMouseDriver::deviceValuesNormalized_[1] = -posX/10;
+    SixDOFMouseDriver::deviceValuesNormalized_[2] = -posZ/10;
+    SixDOFMouseDriver::deviceValuesNormalized_[3] = 0;
+    SixDOFMouseDriver::deviceValuesNormalized_[4] = 0;
+    SixDOFMouseDriver::deviceValuesNormalized_[5] = 0;
+    //SixDOFMouseDriver::deviceValuesNormalized_[3] = angl[0];
+    //SixDOFMouseDriver::deviceValuesNormalized_[4] = angl[1];
+    //SixDOFMouseDriver::deviceValuesNormalized_[5] = angl[2];
   }
 
 
@@ -550,10 +559,10 @@ void SixDOFMouseDriver::getData()
   //	for (int i = 3; i<6; ++i) 
   //		std::cout << SixDOFMouseDriver::deviceValues_[i] << " ";
   //	std::cout << std::endl;
-      //printf("float values\n");
-      //for (int  i = 0; i<6; ++i)
-          //std::cout << SixDOFMouseDriver::deviceValuesNormalized_[i] << ";";
-      //std::cout << std::endl;
+      printf("float values\n");
+      for (int  i = 0; i<6; ++i)
+          std::cout << SixDOFMouseDriver::deviceValuesNormalized_[i] << ";";
+      std::cout << std::endl;
 
 //for (int i = 0; i<6; i++)SixDOFMouseDriver::deviceValuesNormalized_[i]=0;
 
