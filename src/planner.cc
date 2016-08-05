@@ -36,6 +36,8 @@
 #include <hpp/interactive/sixDOFMouseDriver.hh>
 #include <hpp/model/collision-object.hh>
 
+#include <hpp/interactive/dhdc.h>
+#include <hpp/interactive/drdc.h>
 #include <hpp/interactive/gram-schmidt.hh>
 
 typedef se3::SE3::Vector3 Vector3;
@@ -118,8 +120,23 @@ namespace hpp {
     }
 
     void Planner::ForceFeedback(){
+      double forces[3];
+      dhdGetForce(forces+0, forces+1, forces+2);
 
-  }
+
+      
+
+
+
+
+
+
+
+
+
+
+
+    }
 
     PlannerPtr_t Planner::createWithRoadmap
     (const Problem& problem, const RoadmapPtr_t& roadmap)
@@ -196,6 +213,7 @@ namespace hpp {
       actual_configuration_ptr_ = config;
       // launch interactive thread 
       
+        // using solveanddisplay relaunches planner -> anti core dump protection
       if (nb_launchs<2)
         boost::thread th(boost::bind( &Planner::InteractiveDeviceThread,this));
     }
@@ -207,320 +225,278 @@ namespace hpp {
       int index_lignes = 0;
 
       bool init = false;
-      while(1){
-        if (SixDOFMouseDriver::HasMoved() && nb_launchs<2){
-          if (!init){
-            const ConfigurationPtr_t initConfig_ = this->problem().initConfig();
-            //double translations[3] = {  //TODO
-              //(*initConfig_)[0],
-              //(*initConfig_)[1],
-              //(*initConfig_)[2]
-            //};
-            //SixDOFMouseDriver::InitPosition(translations);
-            init = true;
-          }
+      while(SixDOFMouseDriver::HasMoved() && nb_launchs<2){
+        if (!init){
+          const ConfigurationPtr_t initConfig_ = this->problem().initConfig();
+          //double translations[3] = {  //TODO
+          //(*initConfig_)[0],
+          //(*initConfig_)[1],
+          //(*initConfig_)[2]
+          //};
+          //SixDOFMouseDriver::InitPosition(translations);
+          init = true;
+        }
 
-          // get data from 6D mouse
-          se3::SE3 trans_temp = SixDOFMouseDriver::getTransformation();
-          // conversion matrice -> quaternion
-          Eigen::Matrix3f mat = trans_temp.rotation();
-          Eigen::Quaternionf quat(mat);
-          double mag = sqrt(pow(quat.w(),2)+pow(quat.x(),2)+pow(quat.y(),2)+pow(quat.z(),2));
-          ::gepetto::corbaserver::Transform tr;
-          if(type_==1){
-            tr[0] = trans_temp.translation()[0];
-            tr[1] = trans_temp.translation()[1];
-            tr[2] = trans_temp.translation()[2];
-          }
-          if (type_==2){
-            Eigen::Vector3f translate;
-            translate << trans_temp.translation()[0], 
-                      trans_temp.translation()[1],
-                      trans_temp.translation()[2];
-            Eigen::Matrix3f rot90x;
-            Eigen::Matrix3f rot90y;
-            Eigen::Matrix3f rot90z;
-            //double angle = 3.14159265/2;
-            //rot90z << cos(angle), -sin(angle), 0, 
-                   //sin(angle), cos(angle),  0,
-                   //0,          0,           1;
-            //rot90x << 1, 0, 0,
-                   //0, cos(angle), -sin(angle),
-                   //0, sin(angle), cos(angle);
-            //rot90y << cos(angle), 0, sin(angle),
-                   //0, 1, 0,
-                   //-sin(angle), 0, cos(angle);  
-            //translate = translate.transpose() * rot90y;
-            tr[0] = translate[0]; // version sigma7
-            tr[1] = translate[1];
-            tr[2] = translate[2];
-          }
-          tr[3] = (float)quat.w()/(float)mag;
-          tr[4] = (float)quat.x()/(float)mag;
-          tr[5] = (float)quat.y()/(float)mag;
-          tr[6] = (float)quat.z()/(float)mag;
+        // get data from 6D mouse
+        se3::SE3 trans_temp = SixDOFMouseDriver::getTransformation();
+        // conversion matrice -> quaternion
+        Eigen::Matrix3f mat = trans_temp.rotation();
+        Eigen::Quaternionf quat(mat);
+        double mag = sqrt(pow(quat.w(),2)+pow(quat.x(),2)+pow(quat.y(),2)+pow(quat.z(),2));
+        ::gepetto::corbaserver::Transform tr;
+        if(type_==1){
+          tr[0] = trans_temp.translation()[0];
+          tr[1] = trans_temp.translation()[1];
+          tr[2] = trans_temp.translation()[2];
+        }
+        if (type_==2){
+          Eigen::Vector3f translate;
+          translate << trans_temp.translation()[0], 
+                    trans_temp.translation()[1],
+                    trans_temp.translation()[2];
+          Eigen::Matrix3f rot90x;
+          Eigen::Matrix3f rot90y;
+          Eigen::Matrix3f rot90z;
+          //double angle = 3.14159265/2;
+          //rot90z << cos(angle), -sin(angle), 0, 
+          //sin(angle), cos(angle),  0,
+          //0,          0,           1;
+          //rot90x << 1, 0, 0,
+          //0, cos(angle), -sin(angle),
+          //0, sin(angle), cos(angle);
+          //rot90y << cos(angle), 0, sin(angle),
+          //0, 1, 0,
+          //-sin(angle), 0, cos(angle);  
+          //translate = translate.transpose() * rot90y;
+          tr[0] = translate[0]; // version sigma7
+          tr[1] = translate[1];
+          tr[2] = translate[2];
+        }
+        tr[3] = (float)quat.w()/(float)mag;
+        tr[4] = (float)quat.x()/(float)mag;
+        tr[5] = (float)quat.y()/(float)mag;
+        tr[6] = (float)quat.z()/(float)mag;
 
-          // save current transfo-rmation in the planner's memory
-          (*Planner::actual_configuration_ptr_)[0] = tr[0];
-          (*Planner::actual_configuration_ptr_)[1] = tr[1];
-          (*Planner::actual_configuration_ptr_)[2] = tr[2];
-          (*Planner::actual_configuration_ptr_)[3] = tr[3];
-          (*Planner::actual_configuration_ptr_)[4] = tr[4];
-          (*Planner::actual_configuration_ptr_)[5] = tr[5];
-          (*Planner::actual_configuration_ptr_)[6] = tr[6];
-          //(*Planner::actual_configuration_ptr_)[3] = quat_[0];
-          //(*Planner::actual_configuration_ptr_)[4] = quat_[1];
-          //(*Planner::actual_configuration_ptr_)[5] = quat_[2];
-          //(*Planner::actual_configuration_ptr_)[6] = quat_[3];
-          /*
-             cout << "config curseur        " <<
-          //    trans_temp << endl;
-          //    //  (*actual_configuration_ptr_)[0] =
-          trans_temp.translation()[0] << " " <<
-          //    (*actual_configuration_ptr_)[1] =
-          trans_temp.translation()[1] << " " <<
-          //    (*actual_configuration_ptr_)[2] =
-          trans_temp.translation()[2] << endl;
-          //*/
+        // save current transfo-rmation in the planner's memory
+        (*Planner::actual_configuration_ptr_)[0] = tr[0];
+        (*Planner::actual_configuration_ptr_)[1] = tr[1];
+        (*Planner::actual_configuration_ptr_)[2] = tr[2];
+        (*Planner::actual_configuration_ptr_)[3] = tr[3];
+        (*Planner::actual_configuration_ptr_)[4] = tr[4];
+        (*Planner::actual_configuration_ptr_)[5] = tr[5];
+        (*Planner::actual_configuration_ptr_)[6] = tr[6];
+        //(*Planner::actual_configuration_ptr_)[3] = quat_[0];
+        //(*Planner::actual_configuration_ptr_)[4] = quat_[1];
+        //(*Planner::actual_configuration_ptr_)[5] = quat_[2];
+        //(*Planner::actual_configuration_ptr_)[6] = quat_[3];
+        /*
+           cout << "config curseur        " <<
+        //    trans_temp << endl;
+        //    //  (*actual_configuration_ptr_)[0] =
+        trans_temp.translation()[0] << " " <<
+        //    (*actual_configuration_ptr_)[1] =
+        trans_temp.translation()[1] << " " <<
+        //    (*actual_configuration_ptr_)[2] =
+        trans_temp.translation()[2] << endl;
+        //*/
 
-          // afficher le robot
-          client_.gui()->applyConfiguration("0_scene_hpp_/robot_interactif", tr);
-          client_.gui()->applyConfiguration("0_scene_hpp_/curseur", tr);
+        // afficher le robot
+        client_.gui()->applyConfiguration("0_scene_hpp_/robot_interactif", tr);
+        client_.gui()->applyConfiguration("0_scene_hpp_/curseur", tr);
 
-          // get camera vectors to align cursor with viewer
-          unsigned long id = client_.gui()->getWindowID("window_hpp_");
-          gepetto::corbaserver::floatSeq* CamVects;
-          unsigned short int dim = 4;
-          CamVects = new gepetto::corbaserver::floatSeq();
-          CamVects->length(dim);
-          CamVects = client_.gui()->getCameraVectors((float)id, "");
-          ::Eigen::Matrix3f camMat = quat2Mat(CamVects->get_buffer()[0],CamVects->get_buffer()[1],
-              CamVects->get_buffer()[2],CamVects->get_buffer()[3]);
-          SixDOFMouseDriver::setCameraVectors(
-              camMat(0,0), camMat(0,1), camMat(0,2),
-              camMat(1,0), camMat(1,1), camMat(1,2),
-              camMat(2,0), camMat(2,1), camMat(2,2)
-              );
-
-
-
-          // using solveanddisplay relaunches planner -> anti core dump protection
-          if (nb_launchs<2){
-            //*
-            // caler le robot au niveau du curseur
-            robot_mutex_.lock();                // TODO mutex inoptimal !
-            hpp::model::Configuration_t sauv = problem().robot()->currentConfiguration();
-            hpp::model::Configuration_t in = sauv;
-            in[0] = trans_temp.translation()[0];
-            in[1] = trans_temp.translation()[1];
-            in[2] = trans_temp.translation()[2];
-            in[0] = tr[0];
-            in[1] = tr[1];
-            in[2] = tr[2];
-            in[3] = tr[3];
-            in[4] = tr[4];
-            in[5] = tr[5];
-            in[6] = tr[6];
-            hpp::model::ConfigurationIn_t in_t(in);
-            problem().robot()->currentConfiguration(in_t);
-            problem().robot()->computeForwardKinematics();
-
-            /*
-               cout << " robot " <<
-               (*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->name() << " tr "
-               << (*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->getTransform().getTranslation()
-               << endl;
-            //*/
-
-            // méthode de recherche du plus proche obst par itération
-            fcl::DistanceResult result;
-            result.min_distance = 999;
-            bool collision = false;
-            if (!mode_contact_) result = FindNearestObstacle();
-            collision = result.min_distance == -1 ? true : false;
-
-            robot_mutex_.unlock();
-
-            //*
-            // //////////////////////////////////////////////////////////////////
-            if (contact_activated_ && !collision && !mode_contact_){
-
-              //cout << " dist obstacle " << result.min_distance << std::endl;
-
-              // enregistrer les coordonnées des extrémités du segment robot/obstacle
-              // point sur le robot
-              gepetto::corbaserver::Position v = {
-                (float)result.nearest_points[0][0],
-                (float)result.nearest_points[0][1],
-                (float)result.nearest_points[0][2]};
-              // point sur l'obstacle
-              gepetto::corbaserver::Position w = {
-                (float)result.nearest_points[1][0],
-                (float)result.nearest_points[1][1],
-                (float)result.nearest_points[1][2]};
-
-              //const gepetto::corbaserver::Position* v = &v_;
-              //const gepetto::corbaserver::Position* w = &w_;
-
-              // algorithme de GRAM-SCHMIDT
-              if (result.min_distance != -1){
-                exist_obstacle_ = true;
-
-
-                Mat33f A;
-                // normale
-
-                A.col[0] = Vec3f(w[0]-v[0], w[1]-v[1], w[2]-v[2]);
-
-                // distance du centre de l'objet à sa surface
-                if (distance_mutex_.try_lock()) // TODO mutex inoptimal
-                {
-
-
-                  Eigen::Vector3f normal(
-                      (float)(result.nearest_points[0][0] - result.nearest_points[1][0]),
-                      (float)(result.nearest_points[0][1] - result.nearest_points[1][1]),
-                      (float)(result.nearest_points[0][2] - result.nearest_points[1][2])
-                      );
-
-                  //cout << "normale " << normal(0)<< " " << normal(1) << " "<< normal(2) << endl;
-                  for (int i=0; i< 3; i++){
-                    if (abs(normal(i))<(1e-10)) normal(i) = 0;
-                  }
-                  //cout << "normale " << normal(0)<< " " << normal(1) << " "<< normal(2) << endl;
-
-                  double norm_of_normal = sqrt( pow(normal(0), 2) +
-                      pow(normal(1), 2) +
-                      pow(normal(2), 2) );
-                  //cout << "norm of normale " << norm_of_normal << endl;
-                  normal(0) = normal(0)/(float)norm_of_normal;
-                  normal(1) = normal(1)/(float)norm_of_normal;
-                  normal(2) = normal(2)/(float)norm_of_normal;
-                  //cout << "normale " << normal(0)<< " " << normal(1) << " "<< normal(2) << endl;
-                  Eigen::Vector3f d_com_near_point(
-                      (float)result.nearest_points[1][0] - trans_temp.translation()[0],
-                      (float)result.nearest_points[1][1] - trans_temp.translation()[1],
-                      (float)result.nearest_points[1][2] - trans_temp.translation()[2]);
-                  //cout << "d_com_near_point " << d_com_near_point(0)<< " " << d_com_near_point(1) << " "<< d_com_near_point(2) << endl;
-                  distances_[0] = (float) (0.0 + normal(0) * d_com_near_point(0));
-                  distances_[1] = (float) (0.0 + normal(1) * d_com_near_point(1));
-                  distances_[2] = (float) (0.0 + normal(2) * d_com_near_point(2));
-                  //cout << "distances_ " << distances_[0]  << " " << distances_[1] << " " <<
-                  //         distances_[2] << endl;
+        // get camera vectors to align cursor with viewer
+        unsigned long id = client_.gui()->getWindowID("window_hpp_");
+        gepetto::corbaserver::floatSeq* CamVects;
+        unsigned short int dim = 4;
+        CamVects = new gepetto::corbaserver::floatSeq();
+        CamVects->length(dim);
+        CamVects = client_.gui()->getCameraVectors((float)id, "");
+        ::Eigen::Matrix3f camMat = quat2Mat(CamVects->get_buffer()[0],CamVects->get_buffer()[1],
+            CamVects->get_buffer()[2],CamVects->get_buffer()[3]);
+        SixDOFMouseDriver::setCameraVectors(
+            camMat(0,0), camMat(0,1), camMat(0,2),
+            camMat(1,0), camMat(1,1), camMat(1,2),
+            camMat(2,0), camMat(2,1), camMat(2,2)
+            );
 
 
 
-                  distance_ = (float)sqrt(
-                      pow((float)result.nearest_points[1][0] - trans_temp.translation()[0], 2) +
-                      pow((float)result.nearest_points[1][1] - trans_temp.translation()[1], 2) +
-                      pow((float)result.nearest_points[1][2] - trans_temp.translation()[2], 2));
-                  //distance_ = 0.05;
+        //*
+        // caler le robot au niveau du curseur
+        robot_mutex_.lock();                // TODO mutex inoptimal !
+        hpp::model::Configuration_t sauv = problem().robot()->currentConfiguration();
+        hpp::model::Configuration_t in = sauv;
+        in[0] = trans_temp.translation()[0];
+        in[1] = trans_temp.translation()[1];
+        in[2] = trans_temp.translation()[2];
+        in[0] = tr[0];
+        in[1] = tr[1];
+        in[2] = tr[2];
+        in[3] = tr[3];
+        in[4] = tr[4];
+        in[5] = tr[5];
+        in[6] = tr[6];
+        hpp::model::ConfigurationIn_t in_t(in);
+        problem().robot()->currentConfiguration(in_t);
+        problem().robot()->computeForwardKinematics();
 
+        /*
+           cout << " robot " <<
+           (*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->name() << " tr "
+           << (*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->getTransform().getTranslation()
+           << endl;
+        //*/
 
-                  distance_mutex_.unlock();
-                }
+        // méthode de recherche du plus proche obst par itération
+        fcl::DistanceResult result;
+        result.min_distance = 999;
+        bool collision = false;
+        //if (!mode_contact_)
+        result = FindNearestObstacle();
+        collision = result.min_distance == -1 ? true : false;
+        //cout << "result.min_distance " << result.min_distance << endl;
 
+        robot_mutex_.unlock();
 
+        //*
+        // //////////////////////////////////////////////////////////////////
+        if (contact_activated_ && !collision && !mode_contact_){
 
+          //cout << " dist obstacle " << result.min_distance << std::endl;
 
-                // vecteur aléatoire 1
-                double rando1 = rand(), rando2 = rand(), rando3 = rand();
-                rando1 = rando1 / RAND_MAX; rando2 = rando2 / RAND_MAX; rando3 = rando3 / RAND_MAX;
-                A.col[1] = Vec3f((float)rando1,(float)rando2, (float)rando3);
+          // enregistrer les coordonnées des extrémités du segment robot/obstacle
+          // point sur le robot
+          gepetto::corbaserver::Position v = {
+            (float)result.nearest_points[0][0],
+            (float)result.nearest_points[0][1],
+            (float)result.nearest_points[0][2]};
+          // point sur l'obstacle
+          gepetto::corbaserver::Position w = {
+            (float)result.nearest_points[1][0],
+            (float)result.nearest_points[1][1],
+            (float)result.nearest_points[1][2]};
 
-                // vecteur aléatoire 2
-                rando1 = rand(); rando2 = rand(); rando3 = rand();
-                rando1 = rando1 / RAND_MAX; rando2 = rando2 / RAND_MAX; rando3 = rando3 / RAND_MAX;
-                A.col[2] = Vec3f((float)rando1,(float)rando2, (float)rando3);
+          // algorithme de GRAM-SCHMIDT
+          if (result.min_distance != -1){
+            exist_obstacle_ = true;
 
+            Mat33f A;
+            // normale
+            A.col[0] = Vec3f(w[0]-v[0], w[1]-v[1], w[2]-v[2]);
+            // distance du centre de l'objet à sa surface
+            if (distance_mutex_.try_lock()) // TODO mutex inoptimal
+            {
+              Eigen::Vector3f normal(
+                  (float)(result.nearest_points[0][0] - result.nearest_points[1][0]),
+                  (float)(result.nearest_points[0][1] - result.nearest_points[1][1]),
+                  (float)(result.nearest_points[0][2] - result.nearest_points[1][2])
+                  );
+              //cout << "normale " << normal(0)<< " " << normal(1) << " "<< normal(2) << endl;
+              for (int i=0; i< 3; i++)
+                if (abs(normal(i))<(1e-10)) normal(i) = 0;
+              //cout << "normale " << normal(0)<< " " << normal(1) << " "<< normal(2) << endl;
+              double norm_of_normal = sqrt( pow(normal(0), 2) +
+                  pow(normal(1), 2) +
+                  pow(normal(2), 2) );
+              //cout << "norm of normale " << norm_of_normal << endl;
+              normal(0) = normal(0)/(float)norm_of_normal;
+              normal(1) = normal(1)/(float)norm_of_normal;
+              normal(2) = normal(2)/(float)norm_of_normal;
+              //cout << "normale " << normal(0)<< " " << normal(1) << " "<< normal(2) << endl;
+              Eigen::Vector3f d_com_near_point(
+                  (float)result.nearest_points[1][0] - trans_temp.translation()[0],
+                  (float)result.nearest_points[1][1] - trans_temp.translation()[1],
+                  (float)result.nearest_points[1][2] - trans_temp.translation()[2]);
+              //cout << "d_com_near_point " << d_com_near_point(0)<< " " << d_com_near_point(1) << " "<< d_com_near_point(2) << endl;
+              distances_[0] = (float) (0.0 + normal(0) * d_com_near_point(0));
+              distances_[1] = (float) (0.0 + normal(1) * d_com_near_point(1));
+              distances_[2] = (float) (0.0 + normal(2) * d_com_near_point(2));
+              //cout << "distances_ " << distances_[0]  << " " << distances_[1] << " " <<
+              //         distances_[2] << endl;
+              distance_ = (float)sqrt(
+                  pow((float)result.nearest_points[1][0] - trans_temp.translation()[0], 2) +
+                  pow((float)result.nearest_points[1][1] - trans_temp.translation()[1], 2) +
+                  pow((float)result.nearest_points[1][2] - trans_temp.translation()[2], 2));
+              //distance_ = 0.05;
+              distance_mutex_.unlock();
+            }
 
-                // calcule la matrice de rotation MGS si on n'est pas déjà en mode contact
-                if (!Planner::mode_contact_)
-                  modified_gram_schmidt(MGS, A);
+            // vecteur aléatoire 1
+            double rando1 = rand(), rando2 = rand(), rando3 = rand();
+            rando1 = rando1 / RAND_MAX; rando2 = rando2 / RAND_MAX; rando3 = rando3 / RAND_MAX;
+            A.col[1] = Vec3f((float)rando1,(float)rando2, (float)rando3);
+            // vecteur aléatoire 2
+            rando1 = rand(); rando2 = rand(); rando3 = rand();
+            rando1 = rando1 / RAND_MAX; rando2 = rando2 / RAND_MAX; rando3 = rando3 / RAND_MAX;
+            A.col[2] = Vec3f((float)rando1,(float)rando2, (float)rando3);
 
+            // calcule la matrice de rotation MGS si on n'est pas déjà en mode contact
+            if (!Planner::mode_contact_)
+              modified_gram_schmidt(MGS, A);
 
-                // afficher le repère local // //////////////////////////////////////////
-                string nom_ligne = "0_scene_hpp_/ligne";
-                string ind = boost::lexical_cast<std::string>(index_lignes);
-                nom_ligne += ind;
+            // afficher le repère local // //////////////////////////////////////////
+            string nom_ligne = "0_scene_hpp_/ligne";
+            string ind = boost::lexical_cast<std::string>(index_lignes);
+            nom_ligne += ind;
+            if (index_lignes > 0){
+              //cout << "index " << index_lignes << " obj à cacher " << nom_ligne << endl;
+              client_.gui()->setVisibility(nom_ligne.c_str(), "OFF");
+              string axe = nom_ligne +='a';
+              client_.gui()->setVisibility(axe.c_str(), "OFF");
+              axe = nom_ligne +='b';
+              client_.gui()->setVisibility(axe.c_str(), "OFF");
+            }
+            index_lignes++;
+            nom_ligne = "0_scene_hpp_/ligne";
+            ind = boost::lexical_cast<std::string>(index_lignes);
+            nom_ligne += ind;
+            client_.gui()->addLine(nom_ligne.c_str(), v, w, &color[0]);
+            // afficher les deux axes manquants du repère
+            w[0] = v[0] + MGS.col[1].v[0];
+            w[1] = v[1] + MGS.col[1].v[1];
+            w[2] = v[2] + MGS.col[1].v[2];
+            string axe = nom_ligne +='a';
+            client_.gui()->addLine(axe.c_str(), v, w, &color[0]);
+            w[0] = v[0] + MGS.col[2].v[0];
+            w[1] = v[1] + MGS.col[2].v[1];
+            w[2] = v[2] + MGS.col[2].v[2];
+            axe = nom_ligne +='b';
+            client_.gui()->addLine(axe.c_str(), v, w, &color[0]);
+            // //////////////////////////////////////////////////////////////
 
-                if (index_lignes > 0){
-                  //cout << "index " << index_lignes << " obj à cacher " << nom_ligne << endl;
-                  client_.gui()->setVisibility(nom_ligne.c_str(), "OFF");
-                  string axe = nom_ligne +='a';
-                  client_.gui()->setVisibility(axe.c_str(), "OFF");
-                  axe = nom_ligne +='b';
-                  client_.gui()->setVisibility(axe.c_str(), "OFF");
-                }
+            ::Eigen::Matrix3f MGS_;
+            MGS_ << MGS.col[0].v[0],
+                 MGS.col[1].v[0],
+                 MGS.col[2].v[0],
+                 MGS.col[0].v[1],
+                 MGS.col[1].v[1],
+                 MGS.col[2].v[1],
+                 MGS.col[0].v[2],
+                 MGS.col[1].v[2],
+                 MGS.col[2].v[2];
+            NewMinBounds = MGS_*min;
+            NewMaxBounds = MGS_*max;
 
-                index_lignes++;
-                nom_ligne = "0_scene_hpp_/ligne";
-                ind = boost::lexical_cast<std::string>(index_lignes);
-                nom_ligne += ind;
-                client_.gui()->addLine(nom_ligne.c_str(), v, w, &color[0]);
+            //cout << "d=" << result.min_distance << " \n";//<< std::endl;
+            if (result.min_distance<0.15 && !Planner::mode_contact_){
+              //if (0){
+              cout << "distance inférieure à 0.15" << std::endl;
+              //std::cout << " pt0 " << result.nearest_points[0] <<
+              //             " pt1 " << result.nearest_points[1] << std::endl;
 
-                // afficher les deux axes manquants du repère
-                w[0] = v[0] + MGS.col[1].v[0];
-                w[1] = v[1] + MGS.col[1].v[1];
-                w[2] = v[2] + MGS.col[1].v[2];
-                string axe = nom_ligne +='a';
-                client_.gui()->addLine(axe.c_str(), v, w, &color[0]);
-                w[0] = v[0] + MGS.col[2].v[0];
-                w[1] = v[1] + MGS.col[2].v[1];
-                w[2] = v[2] + MGS.col[2].v[2];
-                axe = nom_ligne +='b';
-                client_.gui()->addLine(axe.c_str(), v, w, &color[0]);
-                // //////////////////////////////////////////////////////////////
+              ForceFeedback();
 
-
-
-                ::Eigen::Matrix3f MGS_;
-                MGS_ << MGS.col[0].v[0],
-                     MGS.col[1].v[0],
-                     MGS.col[2].v[0],
-                     MGS.col[0].v[1],
-                     MGS.col[1].v[1],
-                     MGS.col[2].v[1],
-                     MGS.col[0].v[2],
-                     MGS.col[1].v[2],
-                     MGS.col[2].v[2];
-
-                NewMinBounds = MGS_*min;
-                NewMaxBounds = MGS_*max;
-
-
-                //cout << "d=" << result.min_distance << " \n";//<< std::endl;
-                if (result.min_distance<0.15 && !Planner::mode_contact_){
-                  //if (0){
-                  cout << "distance inférieure à 0.15" << std::endl;
-                  //std::cout << " pt0 " << result.nearest_points[0] <<
-                  //             " pt1 " << result.nearest_points[1] << std::endl;
-                  
-                  ForceFeedback();
-
-                  // sur l'obstacle
-                  org_ = result.nearest_points[0];
-                  //org_mutex_.unlock();
-
-                  // sur le robot
-                  obj_ = result.nearest_points[1];
-                  iteration_ = 0;
-                  Planner::mode_contact_ = true;
-                }
-
-                }// fin gram schmidt
-
-                //}// fin for paires de collision
-
-            }// fin activation contact
-            //*/
-          } // fin nb launch
-          //*/
-
-          // show modifications on screen
-          client_.gui()->refresh();
-
-        }// fin if has_moved_
+              // sur l'obstacle
+              org_ = result.nearest_points[0];
+              // sur le robot
+              obj_ = result.nearest_points[1];
+              iteration_ = 0;
+              Planner::mode_contact_ = true;
+            }
+          }// fin gram schmidt
+        }// fin activation contact
+        // show modifications on screen
+        client_.gui()->refresh();
       }// fin while(1) 
 
     }

@@ -171,13 +171,13 @@ void SixDOFMouseDriver::MouseInit(short int type, double* bounds)
   }
   if (type_==2)
   {
-    int    done = 0;
-    double f, fx, fy, fz;
-    double ofx = 0.0, ofy = 0.0, ofz = 0.0;
-    double sx, sy, sz;
+    //int    done = 0;
+    //double f, fx, fy, fz;
+    //double ofx = 0.0, ofy = 0.0, ofz = 0.0;
+    //double sx, sy, sz;
     double Pgain;
     double PgainStep;
-    bool   oldButton = false;
+    //bool   oldButton = false;
     // message
     int major, minor, release, revision;
     dhdGetSDKVersion (&major, &minor, &release, &revision);
@@ -225,7 +225,7 @@ void SixDOFMouseDriver::MouseInit(short int type, double* bounds)
       Pgain = drdGetEncPGain ();
       PgainStep = 0.01*Pgain;
       Pgain = 3;
-      sleep(2);
+      usleep(500000);
       //activated = true;
       long int iteration = 0;
     // init status
