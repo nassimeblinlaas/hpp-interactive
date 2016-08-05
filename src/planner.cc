@@ -117,6 +117,10 @@ namespace hpp {
       return result;
     }
 
+    void Planner::ForceFeedback(){
+
+  }
+
     PlannerPtr_t Planner::createWithRoadmap
     (const Problem& problem, const RoadmapPtr_t& roadmap)
     {
@@ -196,6 +200,7 @@ namespace hpp {
         boost::thread th(boost::bind( &Planner::InteractiveDeviceThread,this));
     }
 
+
     void Planner::InteractiveDeviceThread(){
       gepetto::corbaserver::Color color;
       color[0] = 1; color[1] = 1; color[2] = 1; color[3] = 1.;
@@ -220,9 +225,6 @@ namespace hpp {
           // conversion matrice -> quaternion
           Eigen::Matrix3f mat = trans_temp.rotation();
           Eigen::Quaternionf quat(mat);
-          // normaliser quaternion
-          //quat_[0]=quat.w();quat_[1]=quat.x();quat_[2]=quat.y();quat_[3]=quat.z();
-          //normalizeQuat(quat_[0],quat_[1], quat_[2], quat_[3]);
           double mag = sqrt(pow(quat.w(),2)+pow(quat.x(),2)+pow(quat.y(),2)+pow(quat.z(),2));
           ::gepetto::corbaserver::Transform tr;
           if(type_==1){
@@ -238,25 +240,20 @@ namespace hpp {
             Eigen::Matrix3f rot90x;
             Eigen::Matrix3f rot90y;
             Eigen::Matrix3f rot90z;
-            double angle = 3.14159265/2;
-            rot90z << cos(angle), -sin(angle), 0, 
-                   sin(angle), cos(angle),  0,
-                   0,          0,           1;
-            rot90x << 1, 0, 0,
-                   0, cos(angle), -sin(angle),
-                   0, sin(angle), cos(angle);
-            rot90y << cos(angle), 0, sin(angle),
-                   0, 1, 0,
-                   -sin(angle), 0, cos(angle);  
-
-
+            //double angle = 3.14159265/2;
+            //rot90z << cos(angle), -sin(angle), 0, 
+                   //sin(angle), cos(angle),  0,
+                   //0,          0,           1;
+            //rot90x << 1, 0, 0,
+                   //0, cos(angle), -sin(angle),
+                   //0, sin(angle), cos(angle);
+            //rot90y << cos(angle), 0, sin(angle),
+                   //0, 1, 0,
+                   //-sin(angle), 0, cos(angle);  
             //translate = translate.transpose() * rot90y;
             tr[0] = translate[0]; // version sigma7
             tr[1] = translate[1];
             tr[2] = translate[2];
-            //tr[0] = trans_temp.translation()[0];
-            //tr[1] = trans_temp.translation()[1];
-            //tr[2] = trans_temp.translation()[2];
           }
           tr[3] = (float)quat.w()/(float)mag;
           tr[4] = (float)quat.x()/(float)mag;
@@ -337,16 +334,16 @@ namespace hpp {
 
             // méthode de recherche du plus proche obst par itération
             fcl::DistanceResult result;
+            result.min_distance = 999;
             bool collision = false;
-            result = FindNearestObstacle();
+            if (!mode_contact_) result = FindNearestObstacle();
             collision = result.min_distance == -1 ? true : false;
 
-            mode_contact_ = false;
             robot_mutex_.unlock();
 
             //*
             // //////////////////////////////////////////////////////////////////
-            if (contact_activated_ && !collision){
+            if (contact_activated_ && !collision && !mode_contact_){
 
               //cout << " dist obstacle " << result.min_distance << std::endl;
 
@@ -392,13 +389,13 @@ namespace hpp {
                   }
                   //cout << "normale " << normal(0)<< " " << normal(1) << " "<< normal(2) << endl;
 
-                  float norm_of_normal = sqrt( pow(normal(0), 2) +
+                  double norm_of_normal = sqrt( pow(normal(0), 2) +
                       pow(normal(1), 2) +
                       pow(normal(2), 2) );
                   //cout << "norm of normale " << norm_of_normal << endl;
-                  normal(0) = normal(0)/norm_of_normal;
-                  normal(1) = normal(1)/norm_of_normal;
-                  normal(2) = normal(2)/norm_of_normal;
+                  normal(0) = normal(0)/(float)norm_of_normal;
+                  normal(1) = normal(1)/(float)norm_of_normal;
+                  normal(2) = normal(2)/(float)norm_of_normal;
                   //cout << "normale " << normal(0)<< " " << normal(1) << " "<< normal(2) << endl;
                   Eigen::Vector3f d_com_near_point(
                       (float)result.nearest_points[1][0] - trans_temp.translation()[0],
@@ -413,7 +410,7 @@ namespace hpp {
 
 
 
-                  distance_ = sqrt(
+                  distance_ = (float)sqrt(
                       pow((float)result.nearest_points[1][0] - trans_temp.translation()[0], 2) +
                       pow((float)result.nearest_points[1][1] - trans_temp.translation()[1], 2) +
                       pow((float)result.nearest_points[1][2] - trans_temp.translation()[2], 2));
@@ -495,10 +492,11 @@ namespace hpp {
                 //cout << "d=" << result.min_distance << " \n";//<< std::endl;
                 if (result.min_distance<0.15 && !Planner::mode_contact_){
                   //if (0){
-                  //cout << "distance inférieure à 0.15" << std::endl;
+                  cout << "distance inférieure à 0.15" << std::endl;
                   //std::cout << " pt0 " << result.nearest_points[0] <<
                   //             " pt1 " << result.nearest_points[1] << std::endl;
-
+                  
+                  ForceFeedback();
 
                   // sur l'obstacle
                   org_ = result.nearest_points[0];
@@ -506,7 +504,7 @@ namespace hpp {
 
                   // sur le robot
                   obj_ = result.nearest_points[1];
-
+                  iteration_ = 0;
                   Planner::mode_contact_ = true;
                 }
 
@@ -583,10 +581,10 @@ namespace hpp {
       double rando = rand();
       rando = rando / RAND_MAX;
       // keep random config
-      if (rando > Planner::random_prob_)
+      if (rando > Planner::random_prob_ || mode_contact_)
       {
         if (Planner::mode_contact_){
-          cout << rando << " contact q \n";
+          //cout << rando << " contact q \n";
           Matrix3 rot;
           rot(0,0) = MGS.col[0].v[0];
           rot(0,1) = MGS.col[0].v[1];
@@ -652,14 +650,13 @@ namespace hpp {
           (*q_rand)[6] = (*Planner::actual_configuration_ptr_)[6];
 
           Planner::iteration_++;
+          cout << "iteration contact " << iteration_ << endl;
           if(Planner::iteration_ == 5){
             Planner::mode_contact_ = false;
             // ancien emplacement de distance_mutex_.unlock();
           }
-
-  
         }
-        else{
+        else{ // mode interactif
           *q_rand = *actual_configuration_ptr_; 
         }
       }

@@ -52,7 +52,7 @@ namespace hpp {
       void InteractiveDeviceThread();
       fcl::DistanceResult FindNearestObstacle();
       void ShowBounds();
-
+      void ForceFeedback();
     protected:
       /// Constructor
       Planner (const Problem& problem, const RoadmapPtr_t& roadmap);

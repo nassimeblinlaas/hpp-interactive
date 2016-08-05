@@ -290,7 +290,7 @@ void SixDOFMouseDriver::ReadMouse(double* bounds_)
 		// translation
 		float divideFactor = (float)SixDOFMouseDriver::linear_speed_;// dt
 
-        //*
+        /*
         cout << "in the driver cam vect ";
         for (int i=0; i<9; i++)
             cout << SixDOFMouseDriver::cameraVectors_[i] << " ";
@@ -563,10 +563,10 @@ void SixDOFMouseDriver::getData()
   //	for (int i = 3; i<6; ++i) 
   //		std::cout << SixDOFMouseDriver::deviceValues_[i] << " ";
   //	std::cout << std::endl;
-      printf("float values\n");
-      for (int  i = 0; i<6; ++i)
-          std::cout << SixDOFMouseDriver::deviceValuesNormalized_[i] << ";";
-      std::cout << std::endl;
+      //printf("float values\n");
+      //for (int  i = 0; i<6; ++i)
+          //std::cout << SixDOFMouseDriver::deviceValuesNormalized_[i] << ";";
+      //std::cout << std::endl;
 
 //for (int i = 0; i<6; i++)SixDOFMouseDriver::deviceValuesNormalized_[i]=0;
 
