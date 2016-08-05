@@ -182,6 +182,7 @@ namespace hpp {
         this->problem().robot()->rootJoint()->upperBound(2)
       };
       SixDOFMouseDriver::MouseInit(type_, bounds);
+      ShowBounds();
       ConfigurationPtr_t config (new Configuration_t ((hpp::model::size_type)7));
       (*config)[0] = 1;
       (*config)[1] = 1;
@@ -767,6 +768,69 @@ namespace hpp {
       configurationShooter_ = shooter;
     }
 
+    // afficher bornes du problème
+    void Planner::ShowBounds(){
+        gepetto::corbaserver::Color color_rouge;
+        color_rouge[0]=(float)1;color_rouge[1]=(float)0.2;
+        color_rouge[2]=(float)0;color_rouge[3]=(float)1;
+        std::cout << "joint bounds " <<
+                     this->problem().robot()->rootJoint()->lowerBound(0) << " " <<
+                     this->problem().robot()->rootJoint()->upperBound(0) << " " <<
+                     this->problem().robot()->rootJoint()->lowerBound(1) << " " <<
+                     this->problem().robot()->rootJoint()->upperBound(1) << " " <<
+                     this->problem().robot()->rootJoint()->lowerBound(2) << " " <<
+                     this->problem().robot()->rootJoint()->upperBound(2) << " " <<
+        std::endl;
+
+        float mx = (float)this->problem().robot()->rootJoint()->lowerBound(0);
+        float my = (float)this->problem().robot()->rootJoint()->lowerBound(1);
+        float mz = (float)this->problem().robot()->rootJoint()->lowerBound(2);
+        float Mx = (float)this->problem().robot()->rootJoint()->upperBound(0);
+        float My = (float)this->problem().robot()->rootJoint()->upperBound(1);
+        float Mz = (float)this->problem().robot()->rootJoint()->upperBound(2);
+
+        min << mx, my, mz;
+        max << Mx, My, Mz;
+
+
+
+        //client.gui()->addLine();
+
+        const gepetto::corbaserver::Position A = {(float)mx, (float)my, (float)mz};
+        const gepetto::corbaserver::Position B = {(float)Mx, (float)my, (float)mz};
+        const gepetto::corbaserver::Position C = {(float)Mx, (float)My, (float)mz};
+        const gepetto::corbaserver::Position D = {(float)mx, (float)My, (float)mz};
+        const gepetto::corbaserver::Position E = {(float)mx, (float)my, (float)Mz};
+        const gepetto::corbaserver::Position F = {(float)Mx, (float)my, (float)Mz};
+        const gepetto::corbaserver::Position G = {(float)Mx, (float)My, (float)Mz};
+        const gepetto::corbaserver::Position H = {(float)mx, (float)My, (float)Mz};
+
+        //const gepetto::corbaserver::Position *A_ = &A[0];
+        //const gepetto::corbaserver::Position *B_ = &B[0];
+        //const gepetto::corbaserver::Position *C_ = &C[0];
+        //const gepetto::corbaserver::Position *D_ = &D[0];
+        //const gepetto::corbaserver::Position *E_ = &E[0];
+        //const gepetto::corbaserver::Position *F_ = &F[0];
+        //const gepetto::corbaserver::Position *G_ = &G[0];
+        //const gepetto::corbaserver::Position *H_ = &H[0];
+
+        string borne = "0_scene_hpp_/borne";
+        borne +="i";
+        client_.gui()->addLine(borne.c_str(), A, B, &color_rouge[0]);borne +="i";
+        client_.gui()->addLine(borne.c_str(), B, C, &color_rouge[0]);borne +="i";
+        client_.gui()->addLine(borne.c_str(), C, D, &color_rouge[0]);borne +="i";
+        client_.gui()->addLine(borne.c_str(), D, A, &color_rouge[0]);borne +="i";
+        client_.gui()->addLine(borne.c_str(), E, F, &color_rouge[0]);borne +="i";
+        client_.gui()->addLine(borne.c_str(), F, G, &color_rouge[0]);borne +="i";
+        client_.gui()->addLine(borne.c_str(), G, H, &color_rouge[0]);borne +="i";
+        client_.gui()->addLine(borne.c_str(), H, E, &color_rouge[0]);borne +="i";
+        client_.gui()->addLine(borne.c_str(), A, E, &color_rouge[0]);borne +="i";
+        client_.gui()->addLine(borne.c_str(), B, F, &color_rouge[0]);borne +="i";
+        client_.gui()->addLine(borne.c_str(), C, G, &color_rouge[0]);borne +="i";
+        client_.gui()->addLine(borne.c_str(), D, H, &color_rouge[0]);
+
+        client_.gui()->refresh();
+}
 
   } // namespace core
 } // namespace hpp

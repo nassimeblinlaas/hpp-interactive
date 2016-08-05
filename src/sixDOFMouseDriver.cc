@@ -224,7 +224,8 @@ void SixDOFMouseDriver::MouseInit(short int type, double* bounds)
       // retrieve current regulation gain (joint-space spring stiffness)
       Pgain = drdGetEncPGain ();
       PgainStep = 0.01*Pgain;
-      sleep(3);
+      Pgain = 3;
+      sleep(2);
       //activated = true;
       long int iteration = 0;
     // init status
@@ -255,6 +256,7 @@ void SixDOFMouseDriver::MouseInit(short int type, double* bounds)
     SixDOFMouseDriver::cameraVectors_[6] = 0;
     SixDOFMouseDriver::cameraVectors_[7] = 0;
     SixDOFMouseDriver::cameraVectors_[8] = 1;
+  
 
 	// execute thread 
     //void* arg = 0;
@@ -275,6 +277,8 @@ void SixDOFMouseDriver::ReadMouse(double* bounds_)
     for (int i=0; i<6; i++)
         bounds[i] = bounds_[i];
     //*/
+    bounds[0] = bounds_[2];
+    bounds[1] = bounds_[3];
 
 	// infinite loop
 	while (1){
@@ -527,14 +531,14 @@ void SixDOFMouseDriver::getData()
     double angl[3];
     dhdGetOrientationRad  (angl+0, angl+1, angl+2);
     SixDOFMouseDriver::deviceValuesNormalized_[0] = -posY/10;
-    SixDOFMouseDriver::deviceValuesNormalized_[1] = -posX/10;
-    SixDOFMouseDriver::deviceValuesNormalized_[2] = -posZ/10;
-    SixDOFMouseDriver::deviceValuesNormalized_[3] = 0;
-    SixDOFMouseDriver::deviceValuesNormalized_[4] = 0;
-    SixDOFMouseDriver::deviceValuesNormalized_[5] = 0;
-    //SixDOFMouseDriver::deviceValuesNormalized_[3] = angl[0];
-    //SixDOFMouseDriver::deviceValuesNormalized_[4] = angl[1];
-    //SixDOFMouseDriver::deviceValuesNormalized_[5] = angl[2];
+    SixDOFMouseDriver::deviceValuesNormalized_[1] = posZ/10;
+    SixDOFMouseDriver::deviceValuesNormalized_[2] = posX/10;
+    //SixDOFMouseDriver::deviceValuesNormalized_[3] = 0;
+    //SixDOFMouseDriver::deviceValuesNormalized_[4] = 0;
+    //SixDOFMouseDriver::deviceValuesNormalized_[5] = 0;
+    SixDOFMouseDriver::deviceValuesNormalized_[3] = angl[0];
+    SixDOFMouseDriver::deviceValuesNormalized_[4] = -angl[1];
+    SixDOFMouseDriver::deviceValuesNormalized_[5] = angl[2];
   }
 
 

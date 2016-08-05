@@ -54,7 +54,7 @@ namespace hpp {
 
       void InteractiveDeviceThread();
       fcl::DistanceResult FindNearestObstacle();
-
+      void ShowBounds();
 
     protected:
       /// Constructor

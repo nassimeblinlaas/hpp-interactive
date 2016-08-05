@@ -29,6 +29,8 @@ SET(${PROJECT_NAME}_HEADERS
   include/hpp/interactive/sixDOFMouseDriver.hh
   include/hpp/interactive/fwd.hh
   include/hpp/interactive/gram-schmidt.hh
+  include/hpp/interactive/dhdc.h
+  include/hpp/interactive/drdc.h
 )
 
 # Activate hpp-util logging if requested
