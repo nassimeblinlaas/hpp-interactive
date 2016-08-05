@@ -72,8 +72,6 @@ void normalizeQuat(double& w, double& x, double& y, double& z){
   w = w/mag; x = x/mag; y = y/mag; z = z/mag;
 }
 
-
-
 short int signe (double x) {
   return ((x < 0) ? -1 : 1);
 }
@@ -208,7 +206,7 @@ namespace hpp {
         if (SixDOFMouseDriver::HasMoved() && nb_launchs<2){
           if (!init){
             const ConfigurationPtr_t initConfig_ = this->problem().initConfig();
-            //double translations[3] = {
+            //double translations[3] = {  //TODO
               //(*initConfig_)[0],
               //(*initConfig_)[1],
               //(*initConfig_)[2]
@@ -443,9 +441,6 @@ namespace hpp {
                 if (!Planner::mode_contact_)
                   modified_gram_schmidt(MGS, A);
 
-                //print_mat("MGS", MGS);
-
-
 
                 // afficher le repère local // //////////////////////////////////////////
                 string nom_ligne = "0_scene_hpp_/ligne";
@@ -568,31 +563,6 @@ namespace hpp {
       }
       return (*sm) (*(near->configuration ()), *target);
     }
-
-
-    /// This method performs one step of RRT extension as follows
-    ///  1. a random configuration "q_rand" is shot,
-    ///  2. for each connected component,
-    ///    2.1. the closest node "q_near" is chosen,
-    ///    2.2. "q_rand" is projected first on the tangent space of the
-    ///         non-linear constraint at "q_near", this projection yields
-    ///         "q_tmp", then "q_tmp" is projected on the non-linear constraint
-    ///         manifold as "q_proj" (method extend)
-    ///    2.3. the steering method is called between "q_near" and "q_proj" that
-    ///         returns "path",
-    ///    2.4. a valid connected part of "path", called "validPath" starting at
-    ///         "q_near" is extracted, if "path" is valid (collision free),
-    ///         the full "path" is returned, "q_new" is the end configuration of
-    ///         "validPath",
-    ///    2.5  a new node containing "q_new" is added to the connected
-    ///         component and a new edge is added between nodes containing
-    ///         "q_near" and "q_new".
-    ///  3. Try to connect new nodes together using the steering method and
-    ///     the current PathValidation instance.
-    ///
-    ///  Note that edges are actually added to the roadmap after step 2 in order
-    ///  to avoid iterating on the list of connected components while modifying
-    ///  this list.
 
     void Planner::oneStep ()
     {
@@ -792,10 +762,6 @@ namespace hpp {
         min << mx, my, mz;
         max << Mx, My, Mz;
 
-
-
-        //client.gui()->addLine();
-
         const gepetto::corbaserver::Position A = {(float)mx, (float)my, (float)mz};
         const gepetto::corbaserver::Position B = {(float)Mx, (float)my, (float)mz};
         const gepetto::corbaserver::Position C = {(float)Mx, (float)My, (float)mz};
@@ -804,15 +770,6 @@ namespace hpp {
         const gepetto::corbaserver::Position F = {(float)Mx, (float)my, (float)Mz};
         const gepetto::corbaserver::Position G = {(float)Mx, (float)My, (float)Mz};
         const gepetto::corbaserver::Position H = {(float)mx, (float)My, (float)Mz};
-
-        //const gepetto::corbaserver::Position *A_ = &A[0];
-        //const gepetto::corbaserver::Position *B_ = &B[0];
-        //const gepetto::corbaserver::Position *C_ = &C[0];
-        //const gepetto::corbaserver::Position *D_ = &D[0];
-        //const gepetto::corbaserver::Position *E_ = &E[0];
-        //const gepetto::corbaserver::Position *F_ = &F[0];
-        //const gepetto::corbaserver::Position *G_ = &G[0];
-        //const gepetto::corbaserver::Position *H_ = &H[0];
 
         string borne = "0_scene_hpp_/borne";
         borne +="i";

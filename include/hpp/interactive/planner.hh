@@ -35,9 +35,6 @@
 
 namespace hpp {
   namespace interactive {
-    /// \addtogroup path_planning
-    /// \{
-
     /// Generic implementation of RRT algorithm
     class HPP_INTERACTIVE_DLLAPI Planner : public core::PathPlanner
     {
