@@ -1,4 +1,3 @@
-
 //
 // Copyright (c) 2014 CNRS
 // Authors: Florent Lamiraux
@@ -84,79 +83,17 @@ namespace hpp {
     using namespace std;
     short int nb_launchs = 0;
 
-    // returns an fcl distance request structure
-    fcl::DistanceResult Planner::FindNearestObstacle(){
-      fcl::DistanceRequest request(true, 0, 0, fcl::GST_INDEP);
-      fcl::DistanceResult result;
-      result.clear();
-      fcl::CollisionObject* robot_proche;
-      fcl::CollisionObject* obstacle_proche;
-      fcl::CollisionObject* obst_temp;
-      fcl::CollisionObject* robot_temp;
-      hpp::core::ObjectVector_t liste = this->problem().collisionObstacles();
-      double min_dist = 999;
-      for (hpp::core::ObjectVector_t::iterator it_obst = liste.begin();it_obst!=liste.end();++it_obst){
-        obst_temp = &*(*it_obst)->fcl();
-        for (hpp::model::ObjectIterator it_rob = this->problem().robot()->objectIterator(hpp::model::COLLISION);
-            !it_rob.isEnd(); ++it_rob){
-          robot_temp = &*(*it_rob)->fcl();
-          result.clear();
-          fcl::distance(obst_temp, robot_temp, request, result);
-          //cout << (*it_obst)->name() << "/" << (*it_rob)->name() << " " << result.min_distance << endl;
-          if (result.min_distance<min_dist){
-            if(result.min_distance==-1){
-              1;//collision = true; TODO vérifier que tout va bien
-            }
-
-            robot_proche = robot_temp;
-            obstacle_proche = obst_temp;
-            min_dist = result.min_distance;
-          }
-        }
-      }
-
-      fcl::distance(obstacle_proche, robot_proche, request, result);
-      return result;
-    }
 
     void Planner::ForceFeedback(){
       double forces[3];
-      dhdGetForce(forces+0, forces+1, forces+2);
+
+      while(1){
+
+        dhdGetForce(forces+0, forces+1, forces+2);
+        dhdSetForce(-2*forces[0], -2*forces[1], -2*forces[2]);
+      }
 
 
-      
-
-
-
-
-
-
-
-
-
-
-
-    }
-
-    PlannerPtr_t Planner::createWithRoadmap
-    (const Problem& problem, const RoadmapPtr_t& roadmap)
-    {
-      Planner* ptr = new Planner (problem, roadmap);
-      return PlannerPtr_t (ptr);
-    }
-
-    PlannerPtr_t Planner::create (const Problem& problem)
-    {
-      Planner* ptr = new Planner (problem);
-      return PlannerPtr_t (ptr);
-    }
-
-    Planner::Planner (const Problem& problem):
-      PathPlanner (problem),
-      configurationShooter_ (problem.configurationShooter()),
-      qProj_ (problem.robot ()->configSize ()),
-      client_(0, NULL)
-    {
     }
 
     Planner::Planner (const Problem& problem,
@@ -168,7 +105,7 @@ namespace hpp {
     {
 
       nb_launchs++;
-      type_ = 2; //device type 1 mouse 2 sigma7
+      type_ = 1; //device type 1 mouse 2 sigma7
       random_prob_ = 0; // 0 all human  1 all machine
       mode_contact_ = false;
       // adding interactive robot and positionning it
@@ -225,7 +162,9 @@ namespace hpp {
       int index_lignes = 0;
 
       bool init = false;
-      while(SixDOFMouseDriver::HasMoved() && nb_launchs<2){
+      cout << "interactive device thread beginning\n";
+      while(!SixDOFMouseDriver::HasMoved());
+      while(nb_launchs<2){
         if (!init){
           const ConfigurationPtr_t initConfig_ = this->problem().initConfig();
           //double translations[3] = {  //TODO
@@ -285,19 +224,15 @@ namespace hpp {
         (*Planner::actual_configuration_ptr_)[4] = tr[4];
         (*Planner::actual_configuration_ptr_)[5] = tr[5];
         (*Planner::actual_configuration_ptr_)[6] = tr[6];
-        //(*Planner::actual_configuration_ptr_)[3] = quat_[0];
-        //(*Planner::actual_configuration_ptr_)[4] = quat_[1];
-        //(*Planner::actual_configuration_ptr_)[5] = quat_[2];
-        //(*Planner::actual_configuration_ptr_)[6] = quat_[3];
         /*
            cout << "config curseur        " <<
         //    trans_temp << endl;
         //    //  (*actual_configuration_ptr_)[0] =
-        trans_temp.translation()[0] << " " <<
+        tr[0] << " " <<
         //    (*actual_configuration_ptr_)[1] =
-        trans_temp.translation()[1] << " " <<
+        tr[1] << " " <<
         //    (*actual_configuration_ptr_)[2] =
-        trans_temp.translation()[2] << endl;
+        tr[2] << endl;
         //*/
 
         // afficher le robot
@@ -761,6 +696,61 @@ namespace hpp {
 
         client_.gui()->refresh();
 }
+
+    // returns an fcl distance request structure
+    fcl::DistanceResult Planner::FindNearestObstacle(){
+      fcl::DistanceRequest request(true, 0, 0, fcl::GST_INDEP);
+      fcl::DistanceResult result;
+      result.clear();
+      fcl::CollisionObject* robot_proche;
+      fcl::CollisionObject* obstacle_proche;
+      fcl::CollisionObject* obst_temp;
+      fcl::CollisionObject* robot_temp;
+      hpp::core::ObjectVector_t liste = this->problem().collisionObstacles();
+      double min_dist = 999;
+      for (hpp::core::ObjectVector_t::iterator it_obst = liste.begin();it_obst!=liste.end();++it_obst){
+        obst_temp = &*(*it_obst)->fcl();
+        for (hpp::model::ObjectIterator it_rob = this->problem().robot()->objectIterator(hpp::model::COLLISION);
+            !it_rob.isEnd(); ++it_rob){
+          robot_temp = &*(*it_rob)->fcl();
+          result.clear();
+          fcl::distance(obst_temp, robot_temp, request, result);
+          //cout << (*it_obst)->name() << "/" << (*it_rob)->name() << " " << result.min_distance << endl;
+          if (result.min_distance<min_dist){
+            if(result.min_distance==-1){
+              1;//collision = true; TODO vérifier que tout va bien
+            }
+
+            robot_proche = robot_temp;
+            obstacle_proche = obst_temp;
+            min_dist = result.min_distance;
+          }
+        }
+      }
+
+      fcl::distance(obstacle_proche, robot_proche, request, result);
+      return result;
+    }
+    PlannerPtr_t Planner::createWithRoadmap
+    (const Problem& problem, const RoadmapPtr_t& roadmap)
+    {
+      Planner* ptr = new Planner (problem, roadmap);
+      return PlannerPtr_t (ptr);
+    }
+
+    PlannerPtr_t Planner::create (const Problem& problem)
+    {
+      Planner* ptr = new Planner (problem);
+      return PlannerPtr_t (ptr);
+    }
+
+    Planner::Planner (const Problem& problem):
+      PathPlanner (problem),
+      configurationShooter_ (problem.configurationShooter()),
+      qProj_ (problem.robot ()->configSize ()),
+      client_(0, NULL)
+    {
+    }
 
   } // namespace core
 } // namespace hpp

@@ -224,7 +224,7 @@ void SixDOFMouseDriver::MouseInit(short int type, double* bounds)
       // retrieve current regulation gain (joint-space spring stiffness)
       Pgain = drdGetEncPGain ();
       PgainStep = 0.01*Pgain;
-      Pgain = 3;
+      Pgain = 2;
       usleep(500000);
       //activated = true;
       long int iteration = 0;
@@ -281,8 +281,8 @@ void SixDOFMouseDriver::ReadMouse(double* bounds_)
     bounds[1] = bounds_[3];
 
 	// infinite loop
+        cout << "infinite ReadMouse loop thread\n";
 	while (1){
-        //cout << "infinite ReadMouse loop thread\n";
 		getData();
 		mutex_.unlock();
 
@@ -466,6 +466,7 @@ void SixDOFMouseDriver::ReadMouse(double* bounds_)
 // read data from device and fill class members
 void SixDOFMouseDriver::getData()
 {
+  //cout << "get data\n";
 
   if (type_==1)
   {
@@ -533,9 +534,6 @@ void SixDOFMouseDriver::getData()
     SixDOFMouseDriver::deviceValuesNormalized_[0] = -posY/10;
     SixDOFMouseDriver::deviceValuesNormalized_[1] = posZ/10;
     SixDOFMouseDriver::deviceValuesNormalized_[2] = posX/10;
-    //SixDOFMouseDriver::deviceValuesNormalized_[3] = 0;
-    //SixDOFMouseDriver::deviceValuesNormalized_[4] = 0;
-    //SixDOFMouseDriver::deviceValuesNormalized_[5] = 0;
     SixDOFMouseDriver::deviceValuesNormalized_[3] = angl[0];
     SixDOFMouseDriver::deviceValuesNormalized_[4] = -angl[1];
     SixDOFMouseDriver::deviceValuesNormalized_[5] = angl[2];
