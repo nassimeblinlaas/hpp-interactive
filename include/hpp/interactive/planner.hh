@@ -94,7 +94,7 @@ namespace hpp {
       ::Eigen::Vector3f max;
       short int iteration_;
       short int type_; //device type 1 mouse 2 sigma7
-
+      bool force_feedback_;
     };
     /// \}
   } // namespace interactive 

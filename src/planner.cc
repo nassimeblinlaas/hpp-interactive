@@ -86,14 +86,38 @@ namespace hpp {
 
     void Planner::ForceFeedback(){
       double forces[3];
-
+      double pos[3];
+      double ori[3][3];
+      double null[DHD_MAX_DOF] = {0.0,0.0,0.0,0.0,0.0,0.0,0.0};
+      double retour[DHD_MAX_DOF] = {0.0,0.0,0.0,0.0,0.0,0.0,0.0};
+      double a, b, c, d;
+      double init[3] = {-0.448, 0.82, 1.39};
+      cout << "ForceFeedback thread...\n";
+      sleep(2);
       while(1){
-
-        dhdGetForce(forces+0, forces+1, forces+2);
-        dhdSetForce(-2*forces[0], -2*forces[1], -2*forces[2]);
+        if(force_feedback_){
+          drdGetPositionAndOrientation(pos, ori);
+          dhdGetForce(forces, forces+1, forces+2);
+          init[0] = -0.448;
+          init[1] = 0.82;
+          init[2] = 1.39;
+          for (int i=0; i<3; i++){
+            retour[i] = init[i] - forces[i];
+            cout << init[i] << " " << forces[i] << " " << retour[i] << "/";
+          }
+          cout << "\n";
+         
+          dhdSetForce(retour[0], retour[1], retour[2]); 
+          //drdSetEncPGain(4);
+          //drdMoveTo(retour);
+          
+        }
+        else{
+          //drdSetEncPGain(2);
+          //drdMoveTo(null);
+        }
+        dhdSleep (0.01);
       }
-
-
     }
 
     Planner::Planner (const Problem& problem,
@@ -105,15 +129,15 @@ namespace hpp {
     {
 
       nb_launchs++;
-      type_ = 1; //device type 1 mouse 2 sigma7
+      type_ = 2; //device type 1 mouse 2 sigma7
       random_prob_ = 0; // 0 all human  1 all machine
       mode_contact_ = false;
       // adding interactive robot and positionning it
       client_.connect();
       cout << "adding landmark to viewer\n";
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_mesh.urdf"; contact_activated_ = true;
-      string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_3angles.urdf"; contact_activated_ = true;
-      //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_chaise.urdf"; contact_activated_ = true;
+      //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_3angles.urdf"; contact_activated_ = true;
+      string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_L.urdf"; contact_activated_ = true;
       float f = (float) 0.1;
       gepetto::corbaserver::Color color;
       color[0] = 1; color[1] = 1; color[2] = 1; color[3] = 1.;
@@ -150,9 +174,11 @@ namespace hpp {
       actual_configuration_ptr_ = config;
       // launch interactive thread 
       
-        // using solveanddisplay relaunches planner -> anti core dump protection
-      if (nb_launchs<2)
-        boost::thread th(boost::bind( &Planner::InteractiveDeviceThread,this));
+      // using solveanddisplay relaunches planner -> anti core dump protection
+      if (nb_launchs<2){
+        boost::thread th1(boost::bind( &Planner::InteractiveDeviceThread,this));
+        boost::thread th2(boost::bind( &Planner::ForceFeedback,this));
+      }
     }
 
 
@@ -162,7 +188,7 @@ namespace hpp {
       int index_lignes = 0;
 
       bool init = false;
-      cout << "interactive device thread beginning\n";
+      cout << "InteractiveDevice thread...\n";
       while(!SixDOFMouseDriver::HasMoved());
       while(nb_launchs<2){
         if (!init){
@@ -413,21 +439,21 @@ namespace hpp {
             NewMaxBounds = MGS_*max;
 
             //cout << "d=" << result.min_distance << " \n";//<< std::endl;
-            if (result.min_distance<0.15 && !Planner::mode_contact_){
-              //if (0){
-              cout << "distance inférieure à 0.15" << std::endl;
-              //std::cout << " pt0 " << result.nearest_points[0] <<
-              //             " pt1 " << result.nearest_points[1] << std::endl;
-
-              ForceFeedback();
-
-              // sur l'obstacle
-              org_ = result.nearest_points[0];
-              // sur le robot
-              obj_ = result.nearest_points[1];
-              iteration_ = 0;
-              Planner::mode_contact_ = true;
+            if (result.min_distance<0.15){
+              force_feedback_ = true;
+              if (!Planner::mode_contact_){
+                //cout << "distance inférieure à 0.15" << std::endl;
+                //std::cout << " pt0 " << result.nearest_points[0] <<
+                //             " pt1 " << result.nearest_points[1] << std::endl;
+                // sur l'obstacle
+                org_ = result.nearest_points[0];
+                // sur le robot
+                obj_ = result.nearest_points[1];
+                iteration_ = 0;
+                Planner::mode_contact_ = true;
+              }
             }
+            else force_feedback_ = false;
           }// fin gram schmidt
         }// fin activation contact
         // show modifications on screen
@@ -561,7 +587,7 @@ namespace hpp {
           (*q_rand)[6] = (*Planner::actual_configuration_ptr_)[6];
 
           Planner::iteration_++;
-          cout << "iteration contact " << iteration_ << endl;
+          //cout << "iteration contact " << iteration_ << endl;
           if(Planner::iteration_ == 5){
             Planner::mode_contact_ = false;
             // ancien emplacement de distance_mutex_.unlock();
@@ -724,6 +750,7 @@ namespace hpp {
             robot_proche = robot_temp;
             obstacle_proche = obst_temp;
             min_dist = result.min_distance;
+            if (min_dist<0.15) force_feedback_ = true;
           }
         }
       }
