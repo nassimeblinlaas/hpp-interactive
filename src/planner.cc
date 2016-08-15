@@ -93,9 +93,10 @@ namespace hpp {
       double a, b, c, d;
       double init[3] = {-0.448, 0.82, 1.39};
       cout << "ForceFeedback thread...\n";
-      sleep(2);
+      //sleep(2);
       while(1){
-        if(force_feedback_){
+        //if(force_feedback_){
+        if(1){
           drdGetPositionAndOrientation(pos, ori);
           dhdGetForce(forces, forces+1, forces+2);
           init[0] = -0.448;
@@ -103,11 +104,11 @@ namespace hpp {
           init[2] = 1.39;
           for (int i=0; i<3; i++){
             retour[i] = init[i] - forces[i];
-            cout << init[i] << " " << forces[i] << " " << retour[i] << "/";
+            //cout << init[i] << " " << forces[i] << " " << retour[i] << "/";
           }
-          cout << "\n";
+          //cout << "\n";
          
-          dhdSetForce(retour[0], retour[1], retour[2]); 
+          //dhdSetForce(retour[0], retour[1], retour[2]); 
           //drdSetEncPGain(4);
           //drdMoveTo(retour);
           
@@ -153,7 +154,7 @@ namespace hpp {
       client_.gui()->refresh();
       ConfigurationPtr_t q_rand = configurationShooter_->shoot ();
       // init mouse driver
-      double bounds[6] = {
+      const double bounds[6] = {
         this->problem().robot()->rootJoint()->lowerBound(0),
         this->problem().robot()->rootJoint()->upperBound(0),
         this->problem().robot()->rootJoint()->lowerBound(1),
@@ -501,9 +502,10 @@ namespace hpp {
 
     void Planner::oneStep ()
     {
+      //cout << "one step\n";
       robot_mutex_.lock();
       typedef boost::tuple <NodePtr_t, ConfigurationPtr_t, PathPtr_t>
-	DelayedEdge_t;
+        DelayedEdge_t;
       typedef std::vector <DelayedEdge_t> DelayedEdges_t;
       DelayedEdges_t delayedEdges;
       DevicePtr_t robot (problem ().robot ());

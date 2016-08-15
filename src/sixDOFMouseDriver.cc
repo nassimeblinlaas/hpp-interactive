@@ -21,6 +21,10 @@ double SixDOFMouseDriver::linear_speed_;
 double SixDOFMouseDriver::angular_speed_;
 double SixDOFMouseDriver::rotation_threshold_;
 bool SixDOFMouseDriver::has_moved_;
+bool SixDOFMouseDriver::recale_;
+double SixDOFMouseDriver::limits_[6];
+double SixDOFMouseDriver::K_[3];
+double SixDOFMouseDriver::K_off_[3];
 // x, y, z for side, front, up vectors ; in this order
 float SixDOFMouseDriver::cameraVectors_[9];
 short int SixDOFMouseDriver::type_;
@@ -97,13 +101,13 @@ inline void expMap (const se3::SE3::Vector3 & omega, se3::SE3::Matrix3 & R){
 
 
 inline se3::SE3::Matrix3 operatorHat(const se3::SE3::Vector3& v){
-    se3::SE3::Matrix3 m;
+  se3::SE3::Matrix3 m;
 
-    m << 	0		, -v[2], 	v[1],
-			v[2]	, 		0, -v[0],
-			-v[1]	,  v[0], 		0	;
+  m <<  0   ,   -v[2],    v[1],
+        v[2],   0,       -v[0],
+        -v[1],  v[0],     0;
 
-	return m;
+  return m;
 }
 
 void SixDOFMouseDriver::InitPosition(double* translation)
@@ -115,43 +119,32 @@ void SixDOFMouseDriver::InitPosition(double* translation)
 }
 
 
-void SixDOFMouseDriver::MouseInit(short int type, double* bounds)
+void SixDOFMouseDriver::MouseInit(short int type, const double* bounds)
 {
-  
   type_=type;
   if (type_==1)
   {
-    // open device
-	// TODO
-	/*   Open the Device with non-blocking reads. In real life,
-	 *         don't use a hard coded path; use libudev instead. */
     fd_ = open("/dev/hidraw1", O_RDONLY);
-	if (fd_ < 0) {
-		perror("Unable to open interactive device");
-		abort();
-	}
-	else {
-		std::cout << "device file descriptor : " << fd_ << "\n";
-	}
-
+    if (fd_ < 0) {
+      perror("Unable to open interactive device");
+      abort();
+    }
+    else {
+      std::cout << "device file descriptor : " << fd_ << "\n";
+    }
     // init status
     SixDOFMouseDriver::has_moved_ = false;
-
     // init position
-
     //*
     transformation_.translation()[0] = 0;
     transformation_.translation()[1] = 0;
     transformation_.translation()[2] = 0;
     //*/
-
     // init rotation
     transformation_.rotation().setIdentity();
-
     // init speed
     SixDOFMouseDriver::linear_speed_ = 20;
     SixDOFMouseDriver::angular_speed_ = 40;
-
     // init axes
     SixDOFMouseDriver::cameraVectors_[0] = 1;
     SixDOFMouseDriver::cameraVectors_[1] = 0;
@@ -162,29 +155,20 @@ void SixDOFMouseDriver::MouseInit(short int type, double* bounds)
     SixDOFMouseDriver::cameraVectors_[6] = 0;
     SixDOFMouseDriver::cameraVectors_[7] = 0;
     SixDOFMouseDriver::cameraVectors_[8] = 1;
-
-	// execute thread 
+    // execute thread 
     //void* arg = 0;
-	SixDOFMouseDriver::interactiveDeviceThread_ = 
-        new boost::thread(boost::thread(SixDOFMouseDriver::ReadMouse, bounds));
-
+    SixDOFMouseDriver::interactiveDeviceThread_ = 
+      new boost::thread(boost::thread(SixDOFMouseDriver::ReadMouse, bounds));
   }
   if (type_==2)
   {
-    //int    done = 0;
-    //double f, fx, fy, fz;
-    //double ofx = 0.0, ofy = 0.0, ofz = 0.0;
-    //double sx, sy, sz;
     double Pgain;
     double PgainStep;
-    //bool   oldButton = false;
-    // message
     int major, minor, release, revision;
     dhdGetSDKVersion (&major, &minor, &release, &revision);
     printf ("Force Dimension - Force Sensor Emulation %d.%d.%d.%d\n", major, minor, release, revision);
     printf ("(C) 2001-2015 Force Dimension\n");
     printf ("All Rights Reserved.\n\n");
-
     // open the first available device
     if (drdOpen () < 0) {
       printf ("error: cannot open device (%s)\n", dhdErrorGetLastStr ());
@@ -192,7 +176,6 @@ void SixDOFMouseDriver::MouseInit(short int type, double* bounds)
     }
     else
     {
-
       // print out device identifier
       if (!drdIsSupported()) {
         printf ("unsupported device\n");
@@ -202,68 +185,65 @@ void SixDOFMouseDriver::MouseInit(short int type, double* bounds)
       }
       printf ("%s haptic device detected\n\n", dhdGetSystemName());
       // initialize if necessary
-      if (!drdIsInitialized() && (drdAutoInit() < 0)) {
-        printf ("error: initialization failed (%s)\n", dhdErrorGetLastStr ());
-        dhdSleep (2.0);
+      //if (!drdIsInitialized() && (drdAutoInit() < 0)) {
+        //printf ("error: initialization failed (%s)\n", dhdErrorGetLastStr ());
+        //dhdSleep (2.0);
+      //}
+      dhdEnableForce (DHD_ON);
+      sleep(3);
+      //long int iteration = 0;
+      // init status
+      SixDOFMouseDriver::has_moved_ = false;
+      // init position
+      //*
+      transformation_.translation()[0] = 0;
+      transformation_.translation()[1] = 0;
+      transformation_.translation()[2] = 0;
+      //*/
+      // init rotation
+      transformation_.rotation().setIdentity();
+      // init speed
+      SixDOFMouseDriver::linear_speed_ = 1;
+      SixDOFMouseDriver::angular_speed_ = 500;
+      // init axes
+      SixDOFMouseDriver::cameraVectors_[0] = 1;
+      SixDOFMouseDriver::cameraVectors_[1] = 0;
+      SixDOFMouseDriver::cameraVectors_[2] = 0;
+      SixDOFMouseDriver::cameraVectors_[3] = 0;
+      SixDOFMouseDriver::cameraVectors_[4] = 1;
+      SixDOFMouseDriver::cameraVectors_[5] = 0;
+      SixDOFMouseDriver::cameraVectors_[6] = 0;
+      SixDOFMouseDriver::cameraVectors_[7] = 0;
+      SixDOFMouseDriver::cameraVectors_[8] = 1;
+      limits_[0]=-0.1318;
+      limits_[1]=0.06213;
+      limits_[2]=-0.0724;
+      limits_[3]=0.0346;
+      limits_[4]=-0.125;
+      limits_[5]=0.1448;
+      cout << "bounds ";
+      for (int i=0; i<6; i++) cout << bounds[i] << " ";
+      cout << endl;
+      cout << "limits ";
+      for (int i=0; i<6; i++) cout << limits_[i] << " ";
+      cout << endl;
+      for (int i=0; i<3; i++){
+        K_off_[i]=(bounds[2*i+1]*limits_[2*i]-limits_[2*i+1]*bounds[2*i])/(limits_[2*i]-limits_[2*i+1]);
+        K_[i] = (bounds[2*i]-K_off_[i])/limits_[2*i];
+        cout << "K/KOFF " << K_[i] << " " << K_off_[i] <<endl;
       }
+      /*
+         for (int i=0; i<6; i++)
+         bounds_[i] = bounds[i];
+         bounds_[0] = bounds[2];
+         bounds_[1] = bounds[3];
+      //*/
 
-      // start robot control loop
-      if (drdStart() < 0) {
-        printf ("error: control loop failed to start properly (%s)\n", dhdErrorGetLastStr ());
-        dhdSleep (2.0);
-      }
-
-      double nullPose[DHD_MAX_DOF] = { 0.0, 0.0, 0.0,  // base  (translations)
-        0.0, 0.0, 0.0,  // wrist (rotations)
-        0.0 };          // gripper
-
-      // goto workspace center
-      if (drdMoveTo (nullPose) < 0) {
-        printf ("error: failed to move to central position (%s)\n", dhdErrorGetLastStr ());
-        dhdSleep (2.0);
-      }
-
-      // retrieve current regulation gain (joint-space spring stiffness)
-      Pgain = drdGetEncPGain ();
-      PgainStep = 0.01*Pgain;
-      Pgain = 2;
-      drdSetEncPGain(Pgain);
-      usleep(500000);
-      //activated = true;
-      long int iteration = 0;
-    // init status
-    SixDOFMouseDriver::has_moved_ = false;
-
-    // init position
-
-    //*
-    transformation_.translation()[0] = 0;
-    transformation_.translation()[1] = 0;
-    transformation_.translation()[2] = 0;
-    //*/
-
-    // init rotation
-    transformation_.rotation().setIdentity();
-
-    // init speed
-    SixDOFMouseDriver::linear_speed_ = 1000;
-    SixDOFMouseDriver::angular_speed_ = 500;
-
-    // init axes
-    SixDOFMouseDriver::cameraVectors_[0] = 1;
-    SixDOFMouseDriver::cameraVectors_[1] = 0;
-    SixDOFMouseDriver::cameraVectors_[2] = 0;
-    SixDOFMouseDriver::cameraVectors_[3] = 0;
-    SixDOFMouseDriver::cameraVectors_[4] = 1;
-    SixDOFMouseDriver::cameraVectors_[5] = 0;
-    SixDOFMouseDriver::cameraVectors_[6] = 0;
-    SixDOFMouseDriver::cameraVectors_[7] = 0;
-    SixDOFMouseDriver::cameraVectors_[8] = 1;
-  
-
-	// execute thread 
-    //void* arg = 0;
-	SixDOFMouseDriver::interactiveDeviceThread_ = 
+      // init bras : durée de chute 
+      for (int i=0; i< 1000; i++) getData();
+      // execute thread 
+      //void* arg = 0;
+      SixDOFMouseDriver::interactiveDeviceThread_ = 
         new boost::thread(boost::thread(SixDOFMouseDriver::ReadMouse, bounds));
     }
   }
@@ -271,52 +251,29 @@ void SixDOFMouseDriver::MouseInit(short int type, double* bounds)
 }
 
 // read interactice device thread function
-void SixDOFMouseDriver::ReadMouse(double* bounds_)
+void SixDOFMouseDriver::ReadMouse(const double* bounds_)
 {
   se3::SE3::Vector3 pos, rot, axei, local, temp;
   double bounds[6];
-
-  //*
-  for (int i=0; i<6; i++)
-    bounds[i] = bounds_[i];
-  //*/
-  bounds[0] = bounds_[2];
-  bounds[1] = bounds_[3];
-
+  for (int i=0; i<6; i++) bounds[i]=bounds_[i];
   // infinite loop
   cout << "ReadDevice thread...\n";
   while (1){
     getData();
     mutex_.unlock();
-
+    se3::SE3 temp_trans = transformation_;
+    if (type_==1)
+    {
     /////////////////////////////////////////////////////////
     // translation
     float divideFactor = (float)SixDOFMouseDriver::linear_speed_;// dt
-
     /*
        cout << "in the driver cam vect ";
        for (int i=0; i<9; i++)
        cout << SixDOFMouseDriver::cameraVectors_[i] << " ";
        cout << "\r";
     //*/
-
-
     /*
-       pos[0] =
-       (float) SixDOFMouseDriver::deviceValuesNormalized_[0]/divideFactor*SixDOFMouseDriver::cameraVectors_[0] -
-       (float) SixDOFMouseDriver::deviceValuesNormalized_[1]/divideFactor*SixDOFMouseDriver::cameraVectors_[3] -
-       (float) SixDOFMouseDriver::deviceValuesNormalized_[2]/divideFactor*SixDOFMouseDriver::cameraVectors_[6];
-       pos[1] =
-       (float) SixDOFMouseDriver::deviceValuesNormalized_[0]/divideFactor*SixDOFMouseDriver::cameraVectors_[1] -
-       (float) SixDOFMouseDriver::deviceValuesNormalized_[1]/divideFactor*SixDOFMouseDriver::cameraVectors_[4] -
-       (float) SixDOFMouseDriver::deviceValuesNormalized_[2]/divideFactor*SixDOFMouseDriver::cameraVectors_[7];
-       pos[2] =
-       (float) SixDOFMouseDriver::deviceValuesNormalized_[0]/divideFactor*SixDOFMouseDriver::cameraVectors_[2] -
-       (float) SixDOFMouseDriver::deviceValuesNormalized_[1]/divideFactor*SixDOFMouseDriver::cameraVectors_[5] -
-       (float) SixDOFMouseDriver::deviceValuesNormalized_[2]/divideFactor*SixDOFMouseDriver::cameraVectors_[8];
-    //*/
-
-    //*
     for (int i=0; i<3; i++){
       pos[i] =
         (float) SixDOFMouseDriver::deviceValuesNormalized_[0]/divideFactor*SixDOFMouseDriver::cameraVectors_[i] -
@@ -324,26 +281,42 @@ void SixDOFMouseDriver::ReadMouse(double* bounds_)
         (float) SixDOFMouseDriver::deviceValuesNormalized_[2]/divideFactor*SixDOFMouseDriver::cameraVectors_[i+6];
     }
     //*/
-
-    //*
+    /*
     // bounds limits ---------------- TODO : provoque un effet de bords avec les rotations
-    if (pos[0]+transformation_.translation()[0]<bounds[0]) pos[0] = 0;
-    if (pos[0]+transformation_.translation()[0]>bounds[1]) pos[0] = 0;
-    if (pos[1]+transformation_.translation()[1]<bounds[2]) pos[1] = 0;
-    if (pos[1]+transformation_.translation()[1]>bounds[3]) pos[1] = 0;
-    if (pos[2]+transformation_.translation()[2]<bounds[4]) pos[2] = 0;
-    if (pos[2]+transformation_.translation()[2]>bounds[5]) pos[2] = 0;
+    if (pos[0]+transformation_.translation()[0]<bounds[0]){
+      pos[0] = 0;
+      cout << "pos[0]+transformation_.translation()[0]<bounds[0]\n";
+      cout << pos[0]<< "<" << bounds[0]<< "\n";
+    }
+    if (pos[0]+transformation_.translation()[0]>bounds[1]){
+      pos[0] = 0;
+      cout << "pos[0]+transformation_.translation()[0]>bounds[1]\n";
+      cout << pos[0] << ">" << bounds[1] << "\n";
+    }
+    if (pos[1]+transformation_.translation()[1]<bounds[2]){
+      pos[1] = 0;
+      cout << "pos[1]+transformation_.translation()[1]<bounds[2]\n";
+      cout << pos[1] << "<" << bounds[2] << "\n";
+    }
+    if (pos[1]+transformation_.translation()[1]>bounds[3]){
+      pos[1] = 0;
+      cout << "pos[1]+transformation_.translation()[1]>bounds[3]\n";
+      cout << pos[1] << ">" << bounds[3] << "\n";
+    }
+    if (pos[2]+transformation_.translation()[2]<bounds[4]){
+      pos[2] = 0;
+      cout << "pos[2]+transformation_.translation()[2]<bounds[4]\n";
+      cout << pos[2] << "<" << bounds[4] << "\n";
+    }
+    if (pos[2]+transformation_.translation()[2]>bounds[5]){
+      pos[2] = 0;
+      cout << "pos[2]+transformation_.translation()[2]>bounds[5]\n";
+      cout << pos[2] << ">" << bounds[5] << "\n";
+    }
     // -------------------------------------------------------
     //*/
-
-    se3::SE3 temp_trans = transformation_;
     temp_trans.translation(pos + transformation_.translation());
-
     /////////////////////////////////////////////////////////
-
-
-
-
     /*
        for (int i=0; i<3; i++){
        rot[i] =
@@ -355,35 +328,29 @@ void SixDOFMouseDriver::ReadMouse(double* bounds_)
      *SixDOFMouseDriver::cameraVectors_[i+6];
      }
     //cout << "rotation " << rot[0] << " " << rot[1] << " " << rot[2] << endl;
-
     double norme = sqrt(pow(rot[0], 2)+ pow(rot[1], 2)+pow(rot[2], 2));
     //cout << "norme " << norme << endl;
     rot[0] = rot[0]/norme;
     rot[1] = rot[1]/norme;
     rot[1] = rot[2]/norme;
     /*/
-
     /* // réorienter selon caméra
        Eigen::Vector3f res;
        res << SixDOFMouseDriver::deviceValuesNormalized_[3] ,
        SixDOFMouseDriver::deviceValuesNormalized_[4] ,
        SixDOFMouseDriver::deviceValuesNormalized_[5];
-
        cout << matrot << endl;
        res = matrot.inverse() * res;
-
     // res 0 tangage res1 roulis
     //cout << "rotation " << rot[0] << " " << rot[1] << " " << rot[2] << endl;
     // rotation
     //*/
-
     //* // sans modif, version initiale
     rot[0] = (float) (SixDOFMouseDriver::deviceValuesNormalized_[3]* M_PI);
     rot[1] = (float) (SixDOFMouseDriver::deviceValuesNormalized_[4]* M_PI);
     rot[2] = (float) (SixDOFMouseDriver::deviceValuesNormalized_[5]* M_PI);
     //cout << "ancienne meth "<< rot[0] << " " << rot[1] << " " << rot[2] << endl ;
     //*/
-
     /*
     // réorienter selon précédente position
     Eigen::Matrix3f matrot;
@@ -398,7 +365,6 @@ void SixDOFMouseDriver::ReadMouse(double* bounds_)
     rot[2] = -res(2);
     cout << "rotation " << rot[0] << " " << rot[1] << " " << rot[2] << endl << endl;
     //*/
-
     /////////////////////////////////////////////////////////
     // integrate rotations
     double threshold;
@@ -407,8 +373,6 @@ void SixDOFMouseDriver::ReadMouse(double* bounds_)
     divideFactor = (float)SixDOFMouseDriver::angular_speed_;
     // rotation variations
     se3::SE3::Vector3 v_local (0., 0., 0.);
-
-
     // threshold for rotations
     if (std::abs(rot[0]) > threshold)
       v_local[0] = (float)(rot[0]-threshold)/(float)divideFactor;
@@ -416,12 +380,9 @@ void SixDOFMouseDriver::ReadMouse(double* bounds_)
       v_local[1] = -(float)(rot[1]-threshold)/(float)divideFactor;
     if (std::abs(rot[2]) > threshold)
       v_local[2] = (float)(rot[2]-threshold)/(float)divideFactor;
-
     Eigen::Matrix3f matrot;
-
     //*
     matrot <<
-
       (abs(SixDOFMouseDriver::cameraVectors_[3]) < 1e-7 ? 0 : SixDOFMouseDriver::cameraVectors_[3]) ,
       (abs(SixDOFMouseDriver::cameraVectors_[4]) < 1e-7 ? 0 : SixDOFMouseDriver::cameraVectors_[4]) ,
       (abs(SixDOFMouseDriver::cameraVectors_[5]) < 1e-7 ? 0 : SixDOFMouseDriver::cameraVectors_[5]) ,
@@ -432,7 +393,6 @@ void SixDOFMouseDriver::ReadMouse(double* bounds_)
       (abs(SixDOFMouseDriver::cameraVectors_[1]) < 1e-7 ? 0 : SixDOFMouseDriver::cameraVectors_[1]) ,
       (abs(SixDOFMouseDriver::cameraVectors_[2]) < 1e-7 ? 0 : SixDOFMouseDriver::cameraVectors_[2]) ;
     //*/
-
     /*
        matrot << SixDOFMouseDriver::cameraVectors_[0] ,
        SixDOFMouseDriver::cameraVectors_[1] ,
@@ -461,6 +421,29 @@ void SixDOFMouseDriver::ReadMouse(double* bounds_)
     se3::SE3::Matrix3 R_new (temp_trans.rotation () * dR);
     temp_trans.rotation(R_new);
 
+    }
+    if (type_==2)
+    {
+      for (int i=0; i<3; i++)pos[i]=deviceValuesNormalized_[i];
+      cout << "nouv pos= " << pos[0] << " " << pos[1] << " " << pos[2] << "\r";
+      //for (int i=0; i<3; i++){
+        //pos[i] =
+          //(float) SixDOFMouseDriver::deviceValuesNormalized_[0]*
+            //SixDOFMouseDriver::cameraVectors_[i] -
+          //(float) SixDOFMouseDriver::deviceValuesNormalized_[1]*
+            //SixDOFMouseDriver::cameraVectors_[i+3] -
+          //(float) SixDOFMouseDriver::deviceValuesNormalized_[2]*
+            //SixDOFMouseDriver::cameraVectors_[i+6];
+      //}
+      temp_trans.translation(pos);
+      double ori[3][3]; // orientation
+      dhdGetOrientationFrame(ori);
+      se3::SE3::Matrix3 Rot;
+      Rot  << ori[0][0], ori[0][1], ori[0][2], ori[1][0], 
+        ori[1][1], ori[1][2], ori[2][0], ori[2][1], ori[2][2];
+      temp_trans.rotation(Rot);
+    } 
+
     /////////////////////////////////////////////////////////
     // apply configuration
     mutex_.lock();
@@ -472,8 +455,6 @@ void SixDOFMouseDriver::ReadMouse(double* bounds_)
 // read data from device and fill class members
 void SixDOFMouseDriver::getData()
 {
-  //cout << "get data\n";
-
   if (type_==1)
   {
     union val{
@@ -481,14 +462,11 @@ void SixDOFMouseDriver::getData()
       short int value;
     };
     val v;
-
     // 6D mouse sends one 7 byte position and one 7 byte orientation frame
     memset(SixDOFMouseDriver::data_, 0x0, 14);
-
     // read position
     if (read(SixDOFMouseDriver::fd_, SixDOFMouseDriver::data_, 7) != 7)
       std::cout << "read error" << std::endl;
-
     if (SixDOFMouseDriver::data_[0] == 1){
       //conversion to big endian
       for (int i = 0; i<3; i++){
@@ -499,7 +477,6 @@ void SixDOFMouseDriver::getData()
         SixDOFMouseDriver::deviceValuesNormalized_[i] = (float)v.value/512;
       }
     }
-
     // read orientation
     if (read(SixDOFMouseDriver::fd_, SixDOFMouseDriver::data_+7, 7) != 7)
       std::cout << "read error" << std::endl;
@@ -513,36 +490,42 @@ void SixDOFMouseDriver::getData()
         SixDOFMouseDriver::deviceValuesNormalized_[3+i] = (float)v.value/512;
       }
     }
-
   }
   if (type_==2)
   {
     double   posX, posY, posZ;
-    // init variables
     posX = posY = posZ = 0.0;
-    // read position of haptic device
-    dhdGetForce(&posX, &posY, &posZ);
-    double gravite = 1.73785; posZ-= gravite;
-    if(fabs(posX)<0.8) posX = 0;
-    else posX-=0.6;
-    if(fabs(posY)<0.8) posY = 0;
-    else posY-=0.6;
-    if(fabs(posZ)<0.8) posZ = 0;
-    else posZ-=0.6;
-    if (posX>10) posX=10;
-    if (posX<-10) posX=-10;
-    if (posY>10) posY=10;
-    if (posY<-10) posY=-10;
-    if (posZ>10) posZ=10;
-    if (posZ<-10) posZ=-10;
-    double angl[3];
-    dhdGetOrientationRad  (angl+0, angl+1, angl+2);
-    SixDOFMouseDriver::deviceValuesNormalized_[0] = -posY/10;
-    SixDOFMouseDriver::deviceValuesNormalized_[1] = posZ/10;
-    SixDOFMouseDriver::deviceValuesNormalized_[2] = posX/10;
-    SixDOFMouseDriver::deviceValuesNormalized_[3] = angl[0];
-    SixDOFMouseDriver::deviceValuesNormalized_[4] = -angl[1];
-    SixDOFMouseDriver::deviceValuesNormalized_[5] = angl[2];
+    Eigen::Vector3d deviceForce;
+    Eigen::Vector3d deviceTorque;
+    Eigen::Vector3d devicePos;
+    Eigen::Matrix3d deviceRot;
+    dhdEnableForce (DHD_ON);
+    if (dhdGetButtonMask()){
+      cout << "RECALE\n";
+      recale_ = true;
+    }
+    else recale_ = false;
+    if (!recale_){
+      //dhdGetForce(&posX, &posY, &posZ);
+      dhdGetPosition(&posX, &posY, &posZ);
+      //cout << "pos " << posX << " " << posY << " " << posZ;
+      SixDOFMouseDriver::deviceValuesNormalized_[0] = posX*K_[0]+K_off_[0];
+      SixDOFMouseDriver::deviceValuesNormalized_[2] = posZ*K_[2]+K_off_[2];
+      SixDOFMouseDriver::deviceValuesNormalized_[1] = posY*K_[1]+K_off_[1];
+      //SixDOFMouseDriver::deviceValuesNormalized_[2] = posX*K_[0];
+      //SixDOFMouseDriver::deviceValuesNormalized_[0] = posX*K_[0];
+      //SixDOFMouseDriver::deviceValuesNormalized_[1] = posY*K_[1];
+      //SixDOFMouseDriver::deviceValuesNormalized_[2] = posZ*K_[2];
+    }
+
+    else{
+      for (int i=0; i<6; i++) deviceValuesNormalized_[i] = 0;
+    }
+    // compute forces and torques
+    deviceForce.setZero ();
+    deviceTorque.setZero ();
+    // send forces to device
+    dhdSetForceAndTorqueAndGripperForce (deviceForce(0), deviceForce(1),  deviceForce(2),deviceTorque(0), deviceTorque(1), deviceTorque(2), 0.0);
   }
 
 
@@ -567,11 +550,29 @@ void SixDOFMouseDriver::getData()
   //	for (int i = 3; i<6; ++i) 
   //		std::cout << SixDOFMouseDriver::deviceValues_[i] << " ";
   //	std::cout << std::endl;
-      //printf("float values\n");
-      //for (int  i = 0; i<6; ++i)
-          //std::cout << SixDOFMouseDriver::deviceValuesNormalized_[i] << ";";
-      //std::cout << std::endl;
+  //printf("float values\n");
+  //for (int  i = 0; i<6; ++i)
+  //std::cout << SixDOFMouseDriver::deviceValuesNormalized_[i] << "\t\t\t";
+  //std::cout << "\n";
 
-//for (int i = 0; i<6; i++)SixDOFMouseDriver::deviceValuesNormalized_[i]=0;
+  //for (int i = 0; i<6; i++)SixDOFMouseDriver::deviceValuesNormalized_[i]=0;
 
 }
+
+
+
+    /*
+       pos[0] =
+       (float) SixDOFMouseDriver::deviceValuesNormalized_[0]/divideFactor*SixDOFMouseDriver::cameraVectors_[0] -
+       (float) SixDOFMouseDriver::deviceValuesNormalized_[1]/divideFactor*SixDOFMouseDriver::cameraVectors_[3] -
+       (float) SixDOFMouseDriver::deviceValuesNormalized_[2]/divideFactor*SixDOFMouseDriver::cameraVectors_[6];
+       pos[1] =
+       (float) SixDOFMouseDriver::deviceValuesNormalized_[0]/divideFactor*SixDOFMouseDriver::cameraVectors_[1] -
+       (float) SixDOFMouseDriver::deviceValuesNormalized_[1]/divideFactor*SixDOFMouseDriver::cameraVectors_[4] -
+       (float) SixDOFMouseDriver::deviceValuesNormalized_[2]/divideFactor*SixDOFMouseDriver::cameraVectors_[7];
+       pos[2] =
+       (float) SixDOFMouseDriver::deviceValuesNormalized_[0]/divideFactor*SixDOFMouseDriver::cameraVectors_[2] -
+       (float) SixDOFMouseDriver::deviceValuesNormalized_[1]/divideFactor*SixDOFMouseDriver::cameraVectors_[5] -
+       (float) SixDOFMouseDriver::deviceValuesNormalized_[2]/divideFactor*SixDOFMouseDriver::cameraVectors_[8];
+    //*/
+
