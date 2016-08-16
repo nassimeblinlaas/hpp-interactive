@@ -285,6 +285,7 @@ namespace hpp {
 
         //*
         // caler le robot au niveau du curseur
+        // TODO bug sur mutex je pense 
         robot_mutex_.lock();                // TODO mutex inoptimal !
         hpp::model::Configuration_t sauv = problem().robot()->currentConfiguration();
         hpp::model::Configuration_t in = sauv;
@@ -304,8 +305,8 @@ namespace hpp {
 
         /*
            cout << " robot " <<
-           (*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->name() << " tr "
-           << (*arg_->problem().robot()->objectIterator(hpp::model::COLLISION))->getTransform().getTranslation()
+           (*problem().robot()->objectIterator(hpp::model::COLLISION))->name() << " tr "
+           << (*problem().robot()->objectIterator(hpp::model::COLLISION))->getTransform().getTranslation()
            << endl;
         //*/
 
