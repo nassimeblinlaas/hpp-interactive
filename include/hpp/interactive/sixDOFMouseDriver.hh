@@ -42,7 +42,7 @@ class SixDOFMouseDriver{
     static void setCameraVectors(float a1, float a2, float a3,
         float b1, float b2, float b3,
         float c1, float c2, float c3);
-
+    static void setForceAndTorque(Eigen::Vector3d force, Eigen::Vector3d Torque);
   private :
     static void getData();
     static void ReadMouse(const double* bounds);
@@ -66,7 +66,9 @@ class SixDOFMouseDriver{
     static double limits_[6];// limites en position du Sigma7
     static double K_[3];// multiplicateur pour limites Sigma7 
     static double K_off_[3];//décalage
-    
+
+    static Eigen::Vector3d deviceForce_;
+    static Eigen::Vector3d deviceTorque_;
 };
 
 

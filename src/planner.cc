@@ -85,39 +85,79 @@ namespace hpp {
 
 
     void Planner::ForceFeedback(){
+      Eigen::Vector3d force_fd, torque_fd, obj_local;
       double forces[3];
-      double pos[3];
-      double ori[3][3];
-      double null[DHD_MAX_DOF] = {0.0,0.0,0.0,0.0,0.0,0.0,0.0};
-      double retour[DHD_MAX_DOF] = {0.0,0.0,0.0,0.0,0.0,0.0,0.0};
-      double a, b, c, d;
-      double init[3] = {-0.448, 0.82, 1.39};
+      fcl::Vec3f delta; //distance obj/contact
+      fcl::Vec3f normale;
+      double norme_delta;
+      double force;
+      fcl::Vec3f force_vec;
+      fcl::Vec3f p_0;
       cout << "ForceFeedback thread...\n";
-      //sleep(2);
+      sleep(3);
+      double gain=150;
+      double force_max = 10;
+      fcl::Vec3f penetration, obj_ffb;
+      bool force_feed = false;
+      double pos[3], pen;
+      fcl::Vec3f signes;
       while(1){
-        //if(force_feedback_){
-        if(1){
-          drdGetPositionAndOrientation(pos, ori);
-          dhdGetForce(forces, forces+1, forces+2);
-          init[0] = -0.448;
-          init[1] = 0.82;
-          init[2] = 1.39;
-          for (int i=0; i<3; i++){
-            retour[i] = init[i] - forces[i];
-            //cout << init[i] << " " << forces[i] << " " << retour[i] << "/";
-          }
-          //cout << "\n";
+        //Eigen::Vector3f pos = SixDOFMouseDriver::getTransformation().translation();
+        //cout << pos.transpose() << endl;
+        for (int i=0; i<3; i++) signes[i]=signe(org_temp[i]-pos[i]);
+        obj_ffb= {pos[0]+signes[0]*distances_[0], pos[1]+signes[1]*distances_[1], pos[2]+signes[2]*distances_[2]}; // TODO vérifier les distances, autre bug pour le moment
+//      positions mesurées varient de 0.37 parfois ! en x
+        //if (!force_feed) cout << "pos " << pos.transpose() << " obj_ffb " << obj_ffb << endl;
+        p_0 = org_temp - obj_ffb; // vecteur obj->robot
+        double p_0_norm = p_0.norm();
+        force_feed = p_0_norm < d_ ? true : false;
+        //cout << org_temp << obj_ffb << p_0_norm << " " << d_ << "     " << force_feed << endl;
          
-          //dhdSetForce(retour[0], retour[1], retour[2]); 
-          //drdSetEncPGain(4);
-          //drdMoveTo(retour);
+        if(force_feed){
+          //p_0 = org_temp - obj_temp;
+          pen = d_ - p_0_norm;
+          //cout << p_0 << "\t\t"<< pen << endl; 
+          normale = p_0 / p_0_norm;
+          //cout << "SEUIL!! " << pen << "\n";
+          
+          //fcl::Vec3f signes={signe(p_0[0]),signe(p_0[1]),signe(p_0[2])};
+          //cout << "signes " << signes << endl;
+          //cout << obj_ffb[0] << " " << org_[0] << " " << signe(p_0[0]) << endl;
+          //cout <<"d " << d_ <<" dist " << p_0.norm() << " pen " << pen << endl;
+          //cout << org_ << " " << obj_ffb <<  " " << p_0 << " p0nrm " << p_0.norm() << "dist " << dist_cont_ <<  endl;
+          
+          force = pen * gain;
+          force_vec = force * normale;
+          
+
+          cout << "pen " << pen << "\t\t signes " << signes << " force " << force_vec << endl;
+          for (int i=0; i<3; i++){
+            force_fd[i] = force_vec[i]*signes[i];
+            if (fabs(force_fd[i])>force_max)
+              force_fd[i]=force_max*signes[i];
+          }
+
+          //force_fd[0] = force_vec[0]*signes[0];
+          //if (fabs(force_fd[0])>force_max)
+            //force_fd[0]=force_max*signes[0];
+          //force_fd[0] = 0;
+          //force_fd[2] = 0;
+
+          //penetration[0] = penetration[2] = 0; 
+          //cout <<" force=" << force_fd.transpose() << endl;
+          //cout<<" p "<<penetration[0]<<"\t\t"<<penetration[1]<<"\t\t"<<penetration[2]<<"\n";
+          force_fd.setZero();
+          //cout << "pen " << pen << "\t\t signes " << signes << " force " << force_fd.transpose() << endl;
+          
           
         }
         else{
-          //drdSetEncPGain(2);
-          //drdMoveTo(null);
+          force_fd.setZero();
+          torque_fd.setZero();
+          //cout <<"!ffb\n";
         }
-        dhdSleep (0.01);
+        SixDOFMouseDriver::setForceAndTorque(force_fd, torque_fd);
+        //dhdSleep(0.1);
       }
     }
 
@@ -132,7 +172,9 @@ namespace hpp {
       nb_launchs++;
       type_ = 2; //device type 1 mouse 2 sigma7
       random_prob_ = 0; // 0 all human  1 all machine
+      d_ = 0.35; // distance entrée mode contact
       mode_contact_ = false;
+      force_feedback_=false;
       // adding interactive robot and positionning it
       client_.connect();
       cout << "adding landmark to viewer\n";
@@ -318,9 +360,11 @@ namespace hpp {
         result = FindNearestObstacle();
         collision = result.min_distance == -1 ? true : false;
         //cout << "result.min_distance " << result.min_distance << endl;
-
+        org_temp = result.nearest_points[0];
+        obj_temp = result.nearest_points[1];
+        dist_cont_ = result.min_distance;
         robot_mutex_.unlock();
-
+        //cout << "ligne 365  " << org_temp << "\t" << obj_temp << endl;
         //*
         // //////////////////////////////////////////////////////////////////
         if (contact_activated_ && !collision && !mode_contact_){
@@ -377,9 +421,9 @@ namespace hpp {
               //cout << "distances_ " << distances_[0]  << " " << distances_[1] << " " <<
               //         distances_[2] << endl;
               distance_ = (float)sqrt(
-                  pow((float)result.nearest_points[1][0] - trans_temp.translation()[0], 2) +
-                  pow((float)result.nearest_points[1][1] - trans_temp.translation()[1], 2) +
-                  pow((float)result.nearest_points[1][2] - trans_temp.translation()[2], 2));
+                pow((float)result.nearest_points[1][0] - trans_temp.translation()[0], 2) +
+                pow((float)result.nearest_points[1][1] - trans_temp.translation()[1], 2) +
+                pow((float)result.nearest_points[1][2] - trans_temp.translation()[2], 2));
               //distance_ = 0.05;
               distance_mutex_.unlock();
             }
@@ -441,10 +485,10 @@ namespace hpp {
             NewMaxBounds = MGS_*max;
 
             //cout << "d=" << result.min_distance << " \n";//<< std::endl;
-            if (result.min_distance<0.15){
-              force_feedback_ = true;
+            if (result.min_distance<d_){
+              //force_feedback_ = true;
               if (!Planner::mode_contact_){
-                //cout << "distance inférieure à 0.15" << std::endl;
+                cout << "distance inférieure à 0.15" << std::endl;
                 //std::cout << " pt0 " << result.nearest_points[0] <<
                 //             " pt1 " << result.nearest_points[1] << std::endl;
                 // sur l'obstacle
@@ -452,7 +496,7 @@ namespace hpp {
                 // sur le robot
                 obj_ = result.nearest_points[1];
                 iteration_ = 0;
-                Planner::mode_contact_ = true;
+                //Planner::mode_contact_ = true;
               }
             }
             else force_feedback_ = false;
@@ -750,15 +794,20 @@ namespace hpp {
               1;//collision = true; TODO vérifier que tout va bien
             }
 
+            // TODO grave : un problème sur l'itération, les point objet change
             robot_proche = robot_temp;
             obstacle_proche = obst_temp;
             min_dist = result.min_distance;
-            if (min_dist<0.15) force_feedback_ = true;
           }
         }
       }
 
       fcl::distance(obstacle_proche, robot_proche, request, result);
+      if (result.min_distance <d_&&result.min_distance!=-1) {
+        force_feedback_ = true;
+        //obj_ffb_ = result.nearest_points[1];
+      }
+      //cout << result.nearest_points[0] << " " << result.nearest_points[1] << endl;
       return result;
     }
     PlannerPtr_t Planner::createWithRoadmap

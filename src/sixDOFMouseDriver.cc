@@ -28,6 +28,8 @@ double SixDOFMouseDriver::K_off_[3];
 // x, y, z for side, front, up vectors ; in this order
 float SixDOFMouseDriver::cameraVectors_[9];
 short int SixDOFMouseDriver::type_;
+Eigen::Vector3d SixDOFMouseDriver::deviceForce_;
+Eigen::Vector3d SixDOFMouseDriver::deviceTorque_;
 
 using namespace std;
 
@@ -40,6 +42,11 @@ const se3::SE3& SixDOFMouseDriver::getTransformation(){
     const se3::SE3& trans = SixDOFMouseDriver::transformation_;
 	mutex_.unlock();
 	return trans;
+}
+
+void SixDOFMouseDriver::setForceAndTorque(Eigen::Vector3d force, Eigen::Vector3d torque){
+  SixDOFMouseDriver::deviceForce_=force;
+  SixDOFMouseDriver::deviceTorque_=torque;
 }
 
 void SixDOFMouseDriver::setCameraVectors(float a1, float a2, float a3,
@@ -430,7 +437,7 @@ void SixDOFMouseDriver::ReadMouse(const double* bounds_)
     if (type_==2)
     {
       for (int i=0; i<3; i++)pos[i]=deviceValuesNormalized_[i];
-      cout << "nouv pos= " << pos[0] << " " << pos[1] << " " << pos[2] << "\r";
+      //cout << "nouv pos= " << pos[0] << " " << pos[1] << " " << pos[2] << "\r";
       for (int i=0; i<3; i++){
         pos[i] =
           (float) SixDOFMouseDriver::deviceValuesNormalized_[0]*
@@ -446,6 +453,7 @@ void SixDOFMouseDriver::ReadMouse(const double* bounds_)
       se3::SE3::Matrix3 Rot;
       Rot  << ori[0][0], ori[0][1], ori[0][2], ori[1][0], 
         ori[1][1], ori[1][2], ori[2][0], ori[2][1], ori[2][2];
+      //Rot.setZero();
       temp_trans.rotation(Rot);
     } 
 
@@ -453,6 +461,7 @@ void SixDOFMouseDriver::ReadMouse(const double* bounds_)
     // apply configuration
     mutex_.lock();
     transformation_ = temp_trans;
+    //cout << transformation_.translation().transpose() << endl;
     SixDOFMouseDriver::has_moved_ = true;
   }
 }
@@ -501,8 +510,8 @@ void SixDOFMouseDriver::getData()
     int fact = 50;
     double   posX, posY, posZ;
     posX = posY = posZ = 0.0;
-    Eigen::Vector3d deviceForce;
-    Eigen::Vector3d deviceTorque;
+    //Eigen::Vector3d deviceForce;
+    //Eigen::Vector3d deviceTorque;
     Eigen::Vector3d devicePos;
     Eigen::Matrix3d deviceRot;
     dhdEnableForce (DHD_ON);
@@ -519,9 +528,6 @@ void SixDOFMouseDriver::getData()
       //dhdGetForce(&posX, &posY, &posZ);
       dhdGetPosition(&posX, &posY, &posZ);
       //cout << "pos " << posX << " " << posY << " " << posZ;
-      SixDOFMouseDriver::deviceValuesNormalized_[0] = posX*K_[0]+K_off_[0];
-      SixDOFMouseDriver::deviceValuesNormalized_[1] = posY*K_[1]+K_off_[1];
-      SixDOFMouseDriver::deviceValuesNormalized_[2] = posZ*K_[2]+K_off_[2];
       SixDOFMouseDriver::deviceValuesNormalized_[0] = posY*fact+K_off_[0];
       SixDOFMouseDriver::deviceValuesNormalized_[1] = -posZ*fact+K_off_[1];
       SixDOFMouseDriver::deviceValuesNormalized_[2] = -posX*fact+K_off_[2];
@@ -531,10 +537,10 @@ void SixDOFMouseDriver::getData()
       //for (int i=0; i<6; i++) deviceValuesNormalized_[i] = 0;
     //}
     // compute forces and torques
-    deviceForce.setZero ();
-    deviceTorque.setZero ();
+    //deviceForce_.setZero ();
+    //deviceTorque_.setZero ();
     // send forces to device
-    dhdSetForceAndTorqueAndGripperForce (deviceForce(0), deviceForce(1),  deviceForce(2),deviceTorque(0), deviceTorque(1), deviceTorque(2), 0.0);
+    dhdSetForceAndTorqueAndGripperForce (deviceForce_(0), deviceForce_(1),  deviceForce_(2),deviceTorque_(0), deviceTorque_(1), deviceTorque_(2), 0.0);
   }
 
 
