@@ -86,10 +86,12 @@ namespace hpp {
       fcl::Vec3f obj_ffb_;  // obj_ pendant contact
       fcl::Vec3f org_temp;
       fcl::Vec3f obj_temp;
+      Eigen::Vector3f d_com_near_point_;
      
       double dist_cont_; // distance robot/contact 
       float distance_;    // distance centre du robot/point de contact
       float distances_[3];   // distances centre du robot/point de contact
+      short int signes_[3]; // positions obj/obstacle 
       boost::mutex distance_mutex_; // protège l'accès à distance_
       fcl::CollisionObject* o2ptr;
       double repere_local_[3][3];

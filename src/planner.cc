@@ -38,6 +38,7 @@
 #include <hpp/interactive/dhdc.h>
 #include <hpp/interactive/drdc.h>
 #include <hpp/interactive/gram-schmidt.hh>
+#include <math.h>
 
 typedef se3::SE3::Vector3 Vector3;
 typedef se3::SE3::Matrix3 Matrix3;
@@ -85,7 +86,7 @@ namespace hpp {
 
 
     void Planner::ForceFeedback(){
-      Eigen::Vector3d force_fd, torque_fd, obj_local;
+      Eigen::Vector3d force_fd, torque_fd, obj_local, prev_force_fd;
       double forces[3];
       fcl::Vec3f delta; //distance obj/contact
       fcl::Vec3f normale;
@@ -95,28 +96,40 @@ namespace hpp {
       fcl::Vec3f p_0;
       cout << "ForceFeedback thread...\n";
       sleep(3);
-      double gain=150;
-      double force_max = 10;
+      double gain=350;
+      double force_max = 15;
       fcl::Vec3f penetration, obj_ffb;
       bool force_feed = false;
       double pos[3], pen;
       fcl::Vec3f signes;
+      FILE * pFile;
+      pFile = fopen ("log.csv","w");
+      long int iteration=0;
       while(1){
-        //Eigen::Vector3f pos = SixDOFMouseDriver::getTransformation().translation();
-        //cout << pos.transpose() << endl;
+        iteration++;
+        clock_t begin = clock();
+        Eigen::Vector3f pos = SixDOFMouseDriver::getTransformation().translation();
         for (int i=0; i<3; i++) signes[i]=signe(org_temp[i]-pos[i]);
-        obj_ffb= {pos[0]+signes[0]*distances_[0], pos[1]+signes[1]*distances_[1], pos[2]+signes[2]*distances_[2]}; // TODO vérifier les distances, autre bug pour le moment
-//      positions mesurées varient de 0.37 parfois ! en x
-        //if (!force_feed) cout << "pos " << pos.transpose() << " obj_ffb " << obj_ffb << endl;
+        //cout << setprecision(3) <<"obj " <<  setw(3) << pos.transpose() << "\t\tobst "<< setw(3) <<org_temp <<"sgn " << signes << endl;
+        // obj_ffb est le point le plus proche de l'obstacle
+        obj_ffb= {pos[0]+signes[0]*d_com_near_point_[0], pos[1]+signes[1]*d_com_near_point_[1], pos[2]+signes[2]*d_com_near_point_[2]}; 
+        obj_ffb= {pos[0]+d_com_near_point_[0], pos[1]+d_com_near_point_[1], pos[2]+d_com_near_point_[2]}; 
+        //obj_ffb= {pos[0], pos[1], pos[2]};
         p_0 = org_temp - obj_ffb; // vecteur obj->robot
         double p_0_norm = p_0.norm();
         force_feed = p_0_norm < d_ ? true : false;
-        //cout << org_temp << obj_ffb << p_0_norm << " " << d_ << "     " << force_feed << endl;
+        //if (!force_feed&&iteration%15==1) cout <<"pos "<<pos.transpose()<<"+dist " << d_com_near_point_[0]<<" "<< d_com_near_point_[1]<<" "<< d_com_near_point_[2]<<" " << "* sgn " << signes << "=obj "<<obj_ffb<< " obj-obst " << org_temp << "=p_0 "<<p_0<<" p_0_norm "<<p_0_norm<<endl;
+        
+
+
+//if (!force_feed) cout <<"obst " << org_temp << " pos "<<pos.transpose()<<" obj_ffb "<<obj_ffb<<" p_0"<<p_0<<" nrm"<<p_0_norm<<endl;
+        //cout<<setprecision(3)<<setw(3)<<org_temp<< distances_[0]<<" "<<distances_[1]<<" "<<distances_[2]<<setw(3)<<obj_ffb<<p_0_norm<<" "<<d_<<" "<<force_feed<<endl;
+        //cout << setprecision(6) << setw(6) << obj_ffb << p_0_norm << endl;
          
         if(force_feed){
           //p_0 = org_temp - obj_temp;
           pen = d_ - p_0_norm;
-          //cout << p_0 << "\t\t"<< pen << endl; 
+//cout << p_0 << "\t\t"<< pen << endl; 
           normale = p_0 / p_0_norm;
           //cout << "SEUIL!! " << pen << "\n";
           
@@ -125,28 +138,53 @@ namespace hpp {
           //cout << obj_ffb[0] << " " << org_[0] << " " << signe(p_0[0]) << endl;
           //cout <<"d " << d_ <<" dist " << p_0.norm() << " pen " << pen << endl;
           //cout << org_ << " " << obj_ffb <<  " " << p_0 << " p0nrm " << p_0.norm() << "dist " << dist_cont_ <<  endl;
-          
+
           force = pen * gain;
           force_vec = force * normale;
+                    
+          if(iteration%15==1)cout <<"pen=d_-p_0_norm="<<d_<<"-"<<p_0_norm<<"="<<pen<<" force="<<force<<" vec" << force_vec<<endl;          
+
+          //for (int i=0; i<3; i++){
+            //force_fd[i] = -force_vec[i]*signes[i];
+            //if (fabs(force_fd[i])>force_max)
+              //force_fd[i]=signe(force_fd[i])*force_max*signes[i];
+          //}
+          //force_vec[1] = force_vec[2] = 0;
+          //if(iteration%10==1)fprintf (pFile, "obst;%f;%f;%f;obj;%f;%f;%f;p_0;%f;%f;%f;p0norm;%f;pen;%f;force;%f;%f;%f;\n",org_[0],org_[1],org_[2],obj_ffb[0],obj_ffb[1],obj_ffb[2],p_0[0],p_0[1],p_0[2],p_0.norm(),pen,force_vec[0],force_vec[1],force_vec[2]);
+          //if(iteration%15==1)fprintf (pFile, "obst;%f;obj;%f;p_0;%f;p0norm;%f;pen;%f;force;%f;\n",org_[1],obj_ffb[1],p_0[1],p_0.norm(),pen,force_vec[1]);
+
+          //if(iteration%55==1)printf ("obst;%f;obj;%f;p_0;%f;p0norm;%f;pen;%f;force;%f;\n",org_[1],obj_ffb[1],p_0[1],p_0.norm(),pen,force_vec[1]);
+          //force_fd[0] = force_vec[1]*signes[1];
+          //force_fd[1] = force_vec[1]*signes[1];
+
+          // avant arrière x rouge
+          force_fd[0] = (force_vec[0]+2*prev_force_fd[0])/3;
+          if (fabs(force_fd[0])>force_max)
+            force_fd[0]=force_max*signes[0];
+          if(force_fd[0]==-prev_force_fd[0])force_fd[0]=prev_force_fd[0];
+         
+          // droite gauche y vert 
+          force_fd[1] = (force_vec[1]+2*prev_force_fd[1])/3;
+          if (fabs(force_fd[1])>force_max)
+            force_fd[1]=force_max*signes[1];
+          if(force_fd[1]==-prev_force_fd[1])force_fd[1]=prev_force_fd[1];
           
+          force_fd[2] = (-force_vec[2]+2*prev_force_fd[2])/3;
+          if (fabs(force_fd[2])>force_max)
+            force_fd[2]=force_max*signes[2];
+          if(force_fd[2]==-prev_force_fd[2])force_fd[2]=prev_force_fd[2];
 
-          cout << "pen " << pen << "\t\t signes " << signes << " force " << force_vec << endl;
-          for (int i=0; i<3; i++){
-            force_fd[i] = force_vec[i]*signes[i];
-            if (fabs(force_fd[i])>force_max)
-              force_fd[i]=force_max*signes[i];
-          }
-
-          //force_fd[0] = force_vec[0]*signes[0];
-          //if (fabs(force_fd[0])>force_max)
-            //force_fd[0]=force_max*signes[0];
+          //cout << setprecision(5) << setw(5) << "pen (" << pen << "*"<<gain<<")*" << signes << " * " <<force_vec<<"="<<force_fd.transpose()<<endl;
+          //cout << setprecision(5) << setw(5) << "pen (" << pen << "*"<<gain<<")* " <<force_vec<<"="<<force_fd.transpose()<<endl;
+          //if (fabs(force_fd[1])>force_max)
+            //force_fd[1]=force_max*signes[1];
           //force_fd[0] = 0;
           //force_fd[2] = 0;
 
           //penetration[0] = penetration[2] = 0; 
           //cout <<" force=" << force_fd.transpose() << endl;
           //cout<<" p "<<penetration[0]<<"\t\t"<<penetration[1]<<"\t\t"<<penetration[2]<<"\n";
-          force_fd.setZero();
+          //force_fd.setZero();
           //cout << "pen " << pen << "\t\t signes " << signes << " force " << force_fd.transpose() << endl;
           
           
@@ -156,9 +194,15 @@ namespace hpp {
           torque_fd.setZero();
           //cout <<"!ffb\n";
         }
+        torque_fd.setZero();
         SixDOFMouseDriver::setForceAndTorque(force_fd, torque_fd);
+        prev_force_fd=force_fd;
         //dhdSleep(0.1);
+        clock_t end = clock();
+        double elapsed_secs = double(end - begin) / CLOCKS_PER_SEC;
+        //cout << "temps=" <<elapsed_secs<<endl; 
       }
+      fclose (pFile);
     }
 
     Planner::Planner (const Problem& problem,
@@ -172,7 +216,7 @@ namespace hpp {
       nb_launchs++;
       type_ = 2; //device type 1 mouse 2 sigma7
       random_prob_ = 0; // 0 all human  1 all machine
-      d_ = 0.35; // distance entrée mode contact
+      d_ = 0.10; // distance entrée mode contact
       mode_contact_ = false;
       force_feedback_=false;
       // adding interactive robot and positionning it
@@ -410,16 +454,15 @@ namespace hpp {
               normal(1) = normal(1)/(float)norm_of_normal;
               normal(2) = normal(2)/(float)norm_of_normal;
               //cout << "normale " << normal(0)<< " " << normal(1) << " "<< normal(2) << endl;
-              Eigen::Vector3f d_com_near_point(
+              d_com_near_point_ = {
                   (float)result.nearest_points[1][0] - trans_temp.translation()[0],
                   (float)result.nearest_points[1][1] - trans_temp.translation()[1],
-                  (float)result.nearest_points[1][2] - trans_temp.translation()[2]);
+                  (float)result.nearest_points[1][2] - trans_temp.translation()[2]};
               //cout << "d_com_near_point " << d_com_near_point(0)<< " " << d_com_near_point(1) << " "<< d_com_near_point(2) << endl;
-              distances_[0] = (float) (0.0 + normal(0) * d_com_near_point(0));
-              distances_[1] = (float) (0.0 + normal(1) * d_com_near_point(1));
-              distances_[2] = (float) (0.0 + normal(2) * d_com_near_point(2));
-              //cout << "distances_ " << distances_[0]  << " " << distances_[1] << " " <<
-              //         distances_[2] << endl;
+              distances_[0] = (float) (0.0 + normal(0) * d_com_near_point_(0));
+              distances_[1] = (float) (0.0 + normal(1) * d_com_near_point_(1));
+              distances_[2] = (float) (0.0 + normal(2) * d_com_near_point_(2));
+              //cout<<"distances_ "<<distances_[0]<<" "<<distances_[1]<<" "<<distances_[2]<<endl;
               distance_ = (float)sqrt(
                 pow((float)result.nearest_points[1][0] - trans_temp.translation()[0], 2) +
                 pow((float)result.nearest_points[1][1] - trans_temp.translation()[1], 2) +
@@ -488,7 +531,7 @@ namespace hpp {
             if (result.min_distance<d_){
               //force_feedback_ = true;
               if (!Planner::mode_contact_){
-                cout << "distance inférieure à 0.15" << std::endl;
+                //cout << "distance inférieure à 0.15" << std::endl;
                 //std::cout << " pt0 " << result.nearest_points[0] <<
                 //             " pt1 " << result.nearest_points[1] << std::endl;
                 // sur l'obstacle
@@ -789,12 +832,12 @@ namespace hpp {
           result.clear();
           fcl::distance(obst_temp, robot_temp, request, result);
           //cout << (*it_obst)->name() << "/" << (*it_rob)->name() << " " << result.min_distance << endl;
-          if (result.min_distance<min_dist){
+          if (floor(1000*result.min_distance)/1000<min_dist){
             if(result.min_distance==-1){
               1;//collision = true; TODO vérifier que tout va bien
             }
 
-            // TODO grave : un problème sur l'itération, les point objet change
+            // TODO grave : un problème sur l'itération, les point objet change problème résolu : istance calculée depuis l'un ou l'autre corps de l'objet
             robot_proche = robot_temp;
             obstacle_proche = obst_temp;
             min_dist = result.min_distance;

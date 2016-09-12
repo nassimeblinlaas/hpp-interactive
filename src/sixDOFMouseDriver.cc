@@ -1,4 +1,4 @@
-
+#include <ctime>
 #include <hpp/interactive/sixDOFMouseDriver.hh>
 #include <stdlib.h>
 #include <stdio.h>
@@ -453,8 +453,8 @@ void SixDOFMouseDriver::ReadMouse(const double* bounds_)
       se3::SE3::Matrix3 Rot;
       Rot  << ori[0][0], ori[0][1], ori[0][2], ori[1][0], 
         ori[1][1], ori[1][2], ori[2][0], ori[2][1], ori[2][2];
-      //Rot.setZero();
-      temp_trans.rotation(Rot);
+      Rot.setZero();
+      temp_trans.rotation(2*Rot);
     } 
 
     /////////////////////////////////////////////////////////
