@@ -32,6 +32,7 @@ class SixDOFMouseDriver{
     static void InitPosition(double* translation);
     // blocking if no data
     static const se3::SE3& getTransformation();
+    static const se3::SE3& getTransformationNoMutex();
     // return false before first data
     static bool HasMoved(){return has_moved_;};
 

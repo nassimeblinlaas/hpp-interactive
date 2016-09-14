@@ -50,9 +50,10 @@ namespace hpp {
       void configurationShooter (const ConfigurationShooterPtr_t& shooter);
 
       void InteractiveDeviceThread();
+      void ActuateArm();
       fcl::DistanceResult FindNearestObstacle();
       void ShowBounds();
-      void ForceFeedback();
+      //void ForceFeedback();
     protected:
       /// Constructor
       Planner (const Problem& problem, const RoadmapPtr_t& roadmap);
@@ -83,10 +84,7 @@ namespace hpp {
 
       fcl::Vec3f org_;    // orig pt référence pour gram schmidt
       fcl::Vec3f obj_;    // point de l'objet le plus proche de l'obstacle
-      fcl::Vec3f obj_ffb_;  // obj_ pendant contact
-      fcl::Vec3f org_temp;
-      fcl::Vec3f obj_temp;
-      Eigen::Vector3f d_com_near_point_;
+      //fcl::Vec3f obj_ffb_;  // obj_ pendant contact
      
       double dist_cont_; // distance robot/contact 
       float distance_;    // distance centre du robot/point de contact
@@ -102,7 +100,6 @@ namespace hpp {
       short int iteration_;
       short int type_; //device type 1 mouse 2 sigma7
       bool force_feedback_;
-      double d_;      
     };
     /// \}
   } // namespace interactive 

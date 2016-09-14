@@ -43,6 +43,9 @@ const se3::SE3& SixDOFMouseDriver::getTransformation(){
 	mutex_.unlock();
 	return trans;
 }
+const se3::SE3& SixDOFMouseDriver::getTransformationNoMutex(){
+	return SixDOFMouseDriver::transformation_;
+}
 
 void SixDOFMouseDriver::setForceAndTorque(Eigen::Vector3d force, Eigen::Vector3d torque){
   SixDOFMouseDriver::deviceForce_=force;
