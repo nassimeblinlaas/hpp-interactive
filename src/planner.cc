@@ -70,7 +70,8 @@ namespace hpp {
     Eigen::Vector3d deviceForce;
     Eigen::Vector3d deviceTorque;
     Eigen::Vector3f normal;
-
+    
+    boost::mutex normal_mutex;
 
 
 
@@ -82,7 +83,8 @@ namespace hpp {
 void* ForceFeedback(void*){
 
   //clock_t begin, end, end2 ;
-  Eigen::Vector3f temp, pos, force_vec, obst;//, normale;//, signes;
+  Eigen::Vector3f temp, pos, force_vec, obst, normale;//, signes;
+  Eigen::Vector3d obst_d;
   double err, prev_err, force, gain, D, kP, kD;
   bool force_feed = false;
   //long int iteration = 0;
@@ -90,6 +92,12 @@ void* ForceFeedback(void*){
   //double max=15;max++;
   sleep(2);
   while(1){
+    obst.setZero();
+    pos.setZero();
+    temp.setZero();
+    normal_mutex.lock();
+    normale = normal;
+    normal_mutex.unlock();
     //iteration++;
     pos = SixDOFMouseDriver::getTransformationNoMutex().translation();
     for (int i=0; i<3; i++){
@@ -97,13 +105,21 @@ void* ForceFeedback(void*){
       obst[i]=(float)org_temp[i]; 
     }
     // départ du plan P
-    temp=obst-(float)d_*normal;
+    temp=obst-d_*normale;
     // équation du plan P: Ax+By+Cz+D=0;
-    D=-(temp[0]*normal[0]+temp[1]*normal[1]+temp[2]*normal[2]);
+    double aa = temp[0]*normale[0];
+    double ab = temp[1]*normale[1];
+    double ac = temp[2]*normale[2];
+    //D = aa + ab + ac;
+    //cout <<" aa "<<aa<<"="<<temp[0]<<"*"<<normale[0];
+    //cout <<" ab "<<ab<<"="<<temp[1]<<"*"<<normale[1];
+    //cout <<" ac "<<ac<<"="<<temp[2]<<"*"<<normale[2];
+    //D = -D;
+    D=-(temp[0]*normale[0]+temp[1]*normale[1]+temp[2]*normale[2]);
     // position du point proche de l'objet par rapport à P
-    err = (pos[0]+d_com_near_point_[0])*normal[0]+
-      (pos[1]+d_com_near_point_[1])*normal[1]+
-      (pos[2]+d_com_near_point_[2])*normal[2]+D;
+    err = (pos[0]+d_com_near_point_[0])*normale[0]+
+      (pos[1]+d_com_near_point_[1])*normale[1]+
+      (pos[2]+d_com_near_point_[2])*normale[2]+D;
     //end = clock();
     //dt = double(end - begin) / CLOCKS_PER_SEC;
     //begin = clock();
@@ -112,16 +128,21 @@ void* ForceFeedback(void*){
     //prev_err = err;
     force = kP;//+kD;
     force_feed = err > 0;
-    force_vec = normal*(float)force;
+    force_vec = normale*(float)force;
     if (force_feed){
-      force_vec.setZero();
+      //force_vec.setZero();
+    //cout << "pos="<<pos.transpose()<<" obst="<<obst.transpose()<<" n="<<normal.transpose()<<" temp="<<temp.transpose()<<" D="<<D<<" err="<< err <<" force="<<force_vec.transpose()<<"!!!!!!!!!!!!!"<<endl; 
       //cout << "force="<<force<<"=kP:"<<kP<<"+kD:"<<kD<<"\n";
       //t = clock();
+      cout << "!!!!!!!!!!!!!!!!!!!!\n";
     }
     else{
       force_vec.setZero();
+    //cout << "pos="<<pos.transpose()<<" obst="<<obst.transpose()<<" n="<<normal.transpose()<<" temp="<<temp.transpose()<<" D="<<D<<" err="<< err <<" force="<<force_vec.transpose()<<endl; 
       //cout <<"zero\n";
+      cout << endl;
     }
+    D = 0;
     //force_vec[1] = force_vec[0] = 0;
 
     /////// cout /////////////////////////////////////////////////////////////////////
@@ -132,7 +153,6 @@ void* ForceFeedback(void*){
     //clock_t begin, end;
     //fprintf (pFile, "t;pos[0];pos[1];pos[2];obst[0];obst[1];obst[2];normale[0];normale[1];normale[2];temp[0];temp[1];temp[2];D;err;force_vec[0];force_vec[1];force_vec[2]\n");
     //cout << normal.transpose()<< endl;
-    //cout << "pos="<<pos.transpose()<<" obst="<<obst.transpose()<<" n="<<normale.transpose()<<" temp="<<temp.transpose()<<" D="<<D<<" err="<< err <<" force="<<force_vec.transpose()<<endl; 
     //cout << " err="<< err <<" force="<<force_vec.transpose()<<endl; 
     //t = clock();
     //cout << "t="<<elapsed_secs<<endl;
@@ -409,22 +429,25 @@ void* ForceFeedback(void*){
             // distance du centre de l'objet à sa surface
             if (distance_mutex_.try_lock()) // TODO mutex inoptimal
             {
+              normal_mutex.lock();
               normal={
                   (float)(result.nearest_points[0][0] - result.nearest_points[1][0]),
                   (float)(result.nearest_points[0][1] - result.nearest_points[1][1]),
                   (float)(result.nearest_points[0][2] - result.nearest_points[1][2])
                   };
+              normal.normalize();
+              normal_mutex.unlock();
               //cout << "normale " << normal(0)<< " " << normal(1) << " "<< normal(2) << endl;
-              for (int i=0; i< 3; i++)
-                if (abs(normal(i))<(1e-10)) normal(i) = 0;
+              //for (int i=0; i< 3; i++)
+                //if (abs(normal(i))<(1e-10)) normal(i) = 0;
               //cout << "normale " << normal(0)<< " " << normal(1) << " "<< normal(2) << endl;
-              double norm_of_normal = sqrt( pow(normal(0), 2) +
-                  pow(normal(1), 2) +
-                  pow(normal(2), 2) );
+              //double norm_of_normal = sqrt( pow(normal(0), 2) +
+                  //pow(normal(1), 2) +
+                  //pow(normal(2), 2) );
               //cout << "norm of normale " << norm_of_normal << endl;
-              normal(0) = normal(0)/(float)norm_of_normal;
-              normal(1) = normal(1)/(float)norm_of_normal;
-              normal(2) = normal(2)/(float)norm_of_normal;
+              //normal(0) = normal(0)/(float)norm_of_normal;
+              //normal(1) = normal(1)/(float)norm_of_normal;
+              //normal(2) = normal(2)/(float)norm_of_normal;
               //cout << "normale " << normal(0)<< " " << normal(1) << " "<< normal(2) << endl;
               d_com_near_point_ = {
                   (float)result.nearest_points[1][0] - trans_temp.translation()[0],
