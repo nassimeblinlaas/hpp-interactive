@@ -1,3 +1,4 @@
+#include <array>
 #include <ctime>
 #include <hpp/interactive/sixDOFMouseDriver.hh>
 #include <stdlib.h>
@@ -33,6 +34,39 @@ Eigen::Vector3d SixDOFMouseDriver::deviceTorque_;
 
 using namespace std;
 
+typedef std::array<float, 3> float3;
+
+Eigen::Matrix3f quat2Mat(float x, float y, float z, float w){
+  ::Eigen::Matrix3f ret;
+
+  ret(0, 0) = 1 - 2*(float)(pow(y, 2) + pow(z, 2));
+  ret(0, 1) = 2*x*y - 2*z*w;
+  ret(0, 2) = 2*x*z + 2*y*w;
+  ret(1, 0) = 2*x*y + 2*z*w;
+  ret(1, 1) = 1 - 2*(float)(pow(x, 2) + pow(z, 2));
+  ret(1, 2) = 2*y*z - 2*x*w;
+  ret(2, 0) = 2*x*z - 2*y*w;
+  ret(2, 1) = 2*y*z + 2*x*w;
+  ret(2, 2) = 1 - 2*(float)(pow(x, 2) + pow(y, 2));
+
+  return ret;
+}
+
+void normalizeQuat(double& w, double& x, double& y, double& z){
+  double mag = sqrt(pow(w,2)+pow(x,2)+pow(y,2)+pow(z,2));
+  w = w/mag; x = x/mag; y = y/mag; z = z/mag;
+}
+
+float3 quat2Euler(float q0, float q1, float q2, float q3)
+{
+  return
+  {
+    atan2(2 * (q0*q1 + q2*q3), 1 - 2 * (q1*q1 + q2*q2)),
+      asin( 2 * (q0*q2 - q3*q1)),
+      atan2(2 * (q0*q3 + q1*q2), 1 - 2 * (q2*q2 + q3*q3))
+  };
+}
+  
 SixDOFMouseDriver::SixDOFMouseDriver(){
 
 }
@@ -172,8 +206,6 @@ void SixDOFMouseDriver::MouseInit(short int type, const double* bounds)
   }
   if (type_==2)
   {
-    double Pgain;
-    double PgainStep;
     int major, minor, release, revision;
     dhdGetSDKVersion (&major, &minor, &release, &revision);
     printf ("Force Dimension - Force Sensor Emulation %d.%d.%d.%d\n", major, minor, release, revision);
@@ -275,7 +307,7 @@ void SixDOFMouseDriver::ReadMouse(const double* bounds_)
   cout << "ReadDevice thread...\n";
   while (1){
     getData();
-    mutex_.unlock();
+    //mutex_.unlock();
     se3::SE3 temp_trans = transformation_;
     if (type_==1)
     {
@@ -439,7 +471,7 @@ void SixDOFMouseDriver::ReadMouse(const double* bounds_)
     }
     if (type_==2)
     {
-      for (int i=0; i<3; i++)pos[i]=deviceValuesNormalized_[i];
+      for (int i=0; i<3; i++)pos[i]=(float)deviceValuesNormalized_[i];
       //cout << "nouv pos= " << pos[0] << " " << pos[1] << " " << pos[2] << "\r";
       for (int i=0; i<3; i++){
         pos[i] =
@@ -454,15 +486,25 @@ void SixDOFMouseDriver::ReadMouse(const double* bounds_)
       double ori[3][3]; // orientation
       dhdGetOrientationFrame(ori);
       se3::SE3::Matrix3 Rot;
-      Rot  << ori[0][0], ori[0][1], ori[0][2], ori[1][0], 
-        ori[1][1], ori[1][2], ori[2][0], ori[2][1], ori[2][2];
-      Rot.setZero();
-      temp_trans.rotation(2*Rot);
+      Rot  << (float)ori[0][0], (float)ori[0][1], (float)ori[0][2], (float)ori[1][0], 
+        (float)ori[1][1], (float)ori[1][2], (float)ori[2][0],
+        (float)ori[2][1], (float)ori[2][2];
+      Eigen::Matrix3f mat = Rot;
+      Eigen::Quaternionf q(mat);
+      q.normalize();
+        
+      float3 r;
+      r = quat2Euler(q.w(),q.x(),q.y(),q.z());
+      cout << "les angles " << r[0]<<endl;//<<" "<<r[1]<<" "<<r[2]<<endl; 
+      //Rot.setZero();
+      Eigen::Matrix3f temp =quat2Mat(q.x(), 0,0,/*q.y(), q.z(),*/ 10*q.w());
+      temp_trans.rotation(temp);
+      //temp_trans.rotation(Rot);
     } 
 
     /////////////////////////////////////////////////////////
     // apply configuration
-    mutex_.lock();
+    //mutex_.lock();
     transformation_ = temp_trans;
     //cout << transformation_.translation().transpose() << endl;
     SixDOFMouseDriver::has_moved_ = true;
@@ -543,7 +585,7 @@ void SixDOFMouseDriver::getData()
     //deviceForce_.setZero ();
     //deviceTorque_.setZero ();
     // send forces to device
-    dhdSetForceAndTorqueAndGripperForce (deviceForce_(0), deviceForce_(1),  deviceForce_(2),deviceTorque_(0), deviceTorque_(1), deviceTorque_(2), 0.0);
+    //dhdSetForceAndTorqueAndGripperForce (deviceForce_(0), deviceForce_(1),  deviceForce_(2),deviceTorque_(0), deviceTorque_(1), deviceTorque_(2), 0.0);
   }
 
 

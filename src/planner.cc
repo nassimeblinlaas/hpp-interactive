@@ -44,7 +44,7 @@
 typedef se3::SE3::Vector3 Vector3;
 typedef se3::SE3::Matrix3 Matrix3;
 
-::Eigen::Matrix3f quat2Mat(float x, float y, float z, float w){
+extern ::Eigen::Matrix3f quat2Mat(float x, float y, float z, float w);/*{
   ::Eigen::Matrix3f ret;
 
   ret(0, 0) = 1 - 2*(float)(pow(y, 2) + pow(z, 2));
@@ -58,7 +58,7 @@ typedef se3::SE3::Matrix3 Matrix3;
   ret(2, 2) = 1 - 2*(float)(pow(x, 2) + pow(y, 2));
 
   return ret;
-}
+}*/
 
 void euler2Quat(double psi, double theta, double phi, double* quat){
   psi/=2; theta/=2; phi/=2;
@@ -70,10 +70,10 @@ void euler2Quat(double psi, double theta, double phi, double* quat){
 }
 
 // normaliser quaternion
-void normalizeQuat(double& w, double& x, double& y, double& z){
+extern void normalizeQuat(double& w, double& x, double& y, double& z);/*{
   double mag = sqrt(pow(w,2)+pow(x,2)+pow(y,2)+pow(z,2));
   w = w/mag; x = x/mag; y = y/mag; z = z/mag;
-}
+}*/
 
 short int signe (double x) {
   return ((x < 0) ? -1 : 1);
@@ -106,12 +106,17 @@ namespace hpp {
     short int nb_launchs = 0;
 
     fcl::Vec3f org_temp;
+    fcl::Vec3f prev_org_temp;
     fcl::Vec3f obj_temp;
     Eigen::Vector3f d_com_near_point_;
     double d_;      
+    bool change_obst_;
+
+Eigen::Matrix3f camMat;
 
 Eigen::Vector3d deviceForce;
 Eigen::Vector3d deviceTorque;
+Eigen::Vector3f normal;
 
 void Planner::ActuateArm(){
   cout << "Actuate Arm thread...\n";
@@ -123,108 +128,97 @@ void Planner::ActuateArm(){
   }
 }
 
-//void Planner::ForceFeedback(){
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 void* ForceFeedback(void*){
-  cout << "ForceFeedback thread...\n";
-  sleep(1);
 
-  Eigen::Vector3d force_fd, prev_force_fd, torque_fd;
-  Eigen::Vector3f pos;
-  fcl::Vec3f obj_ffb, signes, normale, force_vec, p_0;
-  double force;
-  double gain=1550;
-  double force_max = 15;
+  //clock_t begin, end, end2 ;
+  Eigen::Vector3f temp, pos, force_vec, obst;//, normale;//, signes;
+  double err, prev_err, force, gain, D, kP, kD;
   bool force_feed = false;
-  double pen, pen_prev, pen_der, delta_t;
-  FILE * pFile;
-  pFile = fopen ("log.csv","w");
-  clock_t begin, end, end2 ;
-  clock_t e1, e2;
-  
-  double elapsed_secs;
-  long int iteration=0;
-  //double a, b, c;
-  e1=e2= clock();
-  pen_prev = 0;
+  //long int iteration = 0;
+  gain = 50;
+  //double max=15;max++;
+  sleep(2);
+  //FILE * pFile;
+  //pFile = fopen ("log.csv","w");
+  //double t;
+  //double dt; 
+  //clock_t begin, end;
+  //fprintf (pFile, "t;pos[0];pos[1];pos[2];obst[0];obst[1];obst[2];normale[0];normale[1];normale[2];temp[0];temp[1];temp[2];D;err;force_vec[0];force_vec[1];force_vec[2]\n");
   while(1){
-    iteration++;
-    begin = clock();
+    //iteration++;
     pos = SixDOFMouseDriver::getTransformationNoMutex().translation();
-    end = clock();
-    double elapsed_secs = double(end - begin) / CLOCKS_PER_SEC;
-    if (force_feed) cout << "temps get=\t\t" <<elapsed_secs<<endl; 
-    for (int i=0; i<3; i++) signes[i]=signe(org_temp[i]-pos[i]);
-    obj_ffb= {pos[0]+d_com_near_point_[0], pos[1]+d_com_near_point_[1], pos[2]+d_com_near_point_[2]}; 
-    p_0 = org_temp - obj_ffb; // vecteur obj->robot
-    double p_0_norm = p_0.norm();
-    force_feed = p_0_norm < d_ ? true : false;
-    //if (!force_feed&&iteration%15==1) cout <<"pos "<<pos.transpose()<<"+dist " << d_com_near_point_[0]<<" "<< d_com_near_point_[1]<<" "<< d_com_near_point_[2]<<" " << "* sgn " << signes << "=obj "<<obj_ffb<< " obj-obst " << org_temp << "=p_0 "<<p_0<<" p_0_norm "<<p_0_norm<<endl;
-
-    end2 = clock();
-    elapsed_secs = double(end2 - end) / CLOCKS_PER_SEC;
-    if (force_feed) cout << "temps dist=\t\t" <<elapsed_secs<<endl; 
-    if(force_feed){
-      // terme proportionnel
-      pen = d_ - p_0_norm;
-      // derme dérivatif
-      pen_der = (pen-pen_prev);
-      e2 = clock();
-      delta_t = e2 - e1;
-      e1 = e2;
-      // total 
-      force = pen * gain + (pen_der/delta_t)*gain*0.02;
-      // normalisé 
-      normale = p_0 / p_0_norm;
-      force_vec = force * normale;
-      
-      end = clock();
-      elapsed_secs = double(end - end2) / CLOCKS_PER_SEC;
-      cout << "temps force=\t\t" <<elapsed_secs<<endl; 
-      //cout << setprecision(5) << setw(5) << "pen (" << pen << "*"<<gain<<") *n " <<normale<<"="<<force_vec<<endl;
-      //if(iteration%10==1)fprintf (pFile, "obst;%f;%f;%f;obj;%f;%f;%f;p_0;%f;%f;%f;p0norm;%f;pen;%f;force;%f;%f;%f;\n",org_[0],org_[1],org_[2],obj_ffb[0],obj_ffb[1],obj_ffb[2],p_0[0],p_0[1],p_0[2],p_0.norm(),pen,force_vec[0],force_vec[1],force_vec[2]);
-      //force_fd.setZero();
-
-      // 0 avant arrière x rouge // 1 droite gauche y vert // 2 bas haut z bleu 
-      force_fd[0] = force_vec[0];
-      //if (fabs(force_fd[0])>force_max)
-      //force_fd[0]=force_max*signes[0];
-      //if(force_fd[0]==-prev_force_fd[0])force_fd[0]=prev_force_fd[0];
-
-      force_fd[1] = force_vec[1];
-      //if (fabs(force_fd[1])>force_max)
-      //force_fd[1]=force_max*signes[0];
-      //if(force_fd[1]==-prev_force_fd[1])force_fd[1]=prev_force_fd[1];
-
-      force_fd[2] = -force_vec[2];
-      //if (fabs(force_fd[2])>force_max)
-      //force_fd[2]=force_max*signes[0];
-      //if(force_fd[2]==-prev_force_fd[2])force_fd[2]=prev_force_fd[2];
+    for (int i=0; i<3; i++){
+      //signes[i]=signe(org_temp[i]-pos[i]);
+      obst[i]=(float)org_temp[i]; 
+    }
+    // départ du plan P
+    temp=obst-(float)d_*normal;
+    // équation du plan P: Ax+By+Cz+D=0;
+    D=-(temp[0]*normal[0]+temp[1]*normal[1]+temp[2]*normal[2]);
+    // position du point proche de l'objet par rapport à P
+    err = (pos[0]+d_com_near_point_[0])*normal[0]+
+      (pos[1]+d_com_near_point_[1])*normal[1]+
+      (pos[2]+d_com_near_point_[2])*normal[2]+D;
+    //end = clock();
+    //dt = double(end - begin) / CLOCKS_PER_SEC;
+    //begin = clock();
+    kP = err * gain;
+    //kD = 0.250*gain*(err-prev_err);
+    //prev_err = err;
+    force = kP;//+kD;
+    force_feed = err > 0;
+    force_vec = normal*(float)force;
+    if (force_feed){
+      force_vec.setZero();
+      //cout << "force="<<force<<"=kP:"<<kP<<"+kD:"<<kD<<"\n";
+      //t = clock();
     }
     else{
-      force_fd.setZero();
-      torque_fd.setZero();
-      //a=b=c=0;
+      force_vec.setZero();
+      //cout <<"zero\n";
     }
-    //torque_fd.setZero();
-    end2 = clock();
-    elapsed_secs = double(end2 - end) / CLOCKS_PER_SEC;
-    if (force_feed) cout << "temps save=\t\t" <<elapsed_secs<<endl; 
-    
-    //deviceForce = force_fd;
-    //deviceTorque = torque_fd;  
-    dhdSetForceAndTorqueAndGripperForce (force_fd[0], force_fd[1], force_fd[2], torque_fd[0], torque_fd[1], torque_fd[2], 0.0);
-    //SixDOFMouseDriver::setForceAndTorque(force_fd, torque_fd);
-    //dhdSleep(0.1);
-    //prev_force_fd=force_fd;
-    end = clock();
-    elapsed_secs = double(end - end2) / CLOCKS_PER_SEC;
-    if (force_feed) cout << "temps envoi=\t\t" <<elapsed_secs<<endl; 
-    elapsed_secs = double(end - begin) / CLOCKS_PER_SEC;
-    if (force_feed) cout << "temps total=\t\t" <<elapsed_secs<<endl<<endl; 
-  } 
-  fclose (pFile);
-  return 0;
+    //force_vec[1] = force_vec[0] = 0;
+
+    /////// cout /////////////////////////////////////////////////////////////////////
+    //cout << normal.transpose()<< endl;
+    //cout << "pos="<<pos.transpose()<<" obst="<<obst.transpose()<<" n="<<normale.transpose()<<" temp="<<temp.transpose()<<" D="<<D<<" err="<< err <<" force="<<force_vec.transpose()<<endl; 
+    //cout << " err="<< err <<" force="<<force_vec.transpose()<<endl; 
+    //t = clock();
+    //cout << "t="<<elapsed_secs<<endl;
+    //if(iteration%10==1)
+    //cout << "err="<<err<<"=Somme des pos="<<pos.transpose()<<"*normale="<<normale.transpose()<<"+D="<<D<<endl;
+    //cout <<"pos "<<pos.transpose()<< " sgn " << signes[0]<<" "<<signes[1]<<" "<<signes[2] << " longs "<< d_com_near_point_.transpose()<< " d " << d_<< " errv1 " << err;
+    //err = pos[0]*normal[0]+pos[1]*normal[1]+pos[2]*normal[2]+D;
+    //cout <<"\terrv2 " << err;
+    //err = (pos[0]+d_com_near_point_[0]*signes[0])*normal[0]+
+      //(pos[1]+d_com_near_point_[1]*signes[1])*normal[1]+
+      //(pos[2]+d_com_near_point_[2]*signes[2])*normal[2]+D;
+    //cout <<"\terrv3 " << err<<endl;
+      //cout << "obst="<<obst[1]<<" temp="<<temp[1]<<" pos="<<pos[1]<<" err"<<err<<" force="<<force_vec.transpose()<<" n "<<normal.transpose()<<endl;
+    //fprintf (pFile, "%f;%f;%f;%f\n",t,pos[1],err*100,force_vec[1]);
+    //fprintf (pFile, "%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f\n",t,pos[0],pos[1],pos[2],obst[0],obst[1],obst[2],normal[0],normal[1],normal[2],temp[0],temp[1],temp[2],D,err*100,force_vec[0],force_vec[1],force_vec[2]);
+    ////////////////////////////////////////////////////////////////////////////////////
+
+    //force_vec.setZero();
+    dhdSetForce(force_vec[0], force_vec[1], -force_vec[2]);
+  }
+  return NULL;
 }
+
 
 
     Planner::Planner (const Problem& problem,
@@ -238,9 +232,10 @@ void* ForceFeedback(void*){
       nb_launchs++;
       type_ = 2; //device type 1 mouse 2 sigma7
       random_prob_ = 0; // 0 all human  1 all machine
-      d_ = 0.20; // distance entrée mode contact
-      mode_contact_ = false;
-      force_feedback_=false;
+      d_ = 0.10; // distance entrée mode contact
+      Planner::mode_contact_ = false;
+      change_obst_ = false;
+      //force_feedback_=false;
       // adding interactive robot and positionning it
       client_.connect();
       cout << "adding landmark to viewer\n";
@@ -302,13 +297,14 @@ void* ForceFeedback(void*){
       gepetto::corbaserver::Color color;
       color[0] = 1; color[1] = 1; color[2] = 1; color[3] = 1.;
       int index_lignes = 0;
-
+      sleep(1);//TODO ceci pour régler le pb init curseur viteuf, à changer
       bool init = false;
       cout << "InteractiveDevice thread...\n";
       while(!SixDOFMouseDriver::HasMoved());
       while(nb_launchs<2){
         if (!init){
           const ConfigurationPtr_t initConfig_ = this->problem().initConfig();
+          //TODO régler le pb init curseur ici en prenant les infos du script python
           //double translations[3] = {  //TODO
           //(*initConfig_)[0],
           //(*initConfig_)[1],
@@ -388,7 +384,7 @@ void* ForceFeedback(void*){
         CamVects = new gepetto::corbaserver::floatSeq();
         CamVects->length(dim);
         CamVects = client_.gui()->getCameraVectors((float)id, "");
-        ::Eigen::Matrix3f camMat = quat2Mat(CamVects->get_buffer()[0],CamVects->get_buffer()[1],
+        camMat = quat2Mat(CamVects->get_buffer()[0],CamVects->get_buffer()[1],
             CamVects->get_buffer()[2],CamVects->get_buffer()[3]);
         SixDOFMouseDriver::setCameraVectors(
             camMat(0,0), camMat(0,1), camMat(0,2),
@@ -400,8 +396,12 @@ void* ForceFeedback(void*){
 
         //*
         // caler le robot au niveau du curseur
-        // TODO bug sur mutex je pense 
+        // TODO bug sur mutex je pense // TODO bug avéré : blocage à l'init parfois
+        // le bug est dû au problème init curseur : le contact s'active puis le robot s'éloigne
+        // directement ensuite le "gros hack" essaye de rester dans une petite distance et tourne
+        // à l'infini
         robot_mutex_.lock();                // TODO mutex inoptimal !
+        //cout << "robot_mutex_lock device thread\n";
         hpp::model::Configuration_t sauv = problem().robot()->currentConfiguration();
         hpp::model::Configuration_t in = sauv;
         in[0] = trans_temp.translation()[0];
@@ -429,18 +429,24 @@ void* ForceFeedback(void*){
         fcl::DistanceResult result;
         result.min_distance = 999;
         bool collision = false;
-        //if (!mode_contact_)
         result = FindNearestObstacle();
         collision = result.min_distance == -1 ? true : false;
         //cout << "result.min_distance " << result.min_distance << endl;
         org_temp = result.nearest_points[0];
+        change_obst_ = (org_temp-prev_org_temp).norm()>0.001;
+        //change_obst_ = org_temp!=prev_org_temp;
+        if(result.min_distance==-1)org_temp=prev_org_temp;
+        prev_org_temp=org_temp;
+        
         obj_temp = result.nearest_points[1];
         dist_cont_ = result.min_distance;
         robot_mutex_.unlock();
+        //cout << "robot_mutex_unlock device thread\n";
+        
         //cout << "ligne 365  " << org_temp << "\t" << obj_temp << endl;
         //*
         // //////////////////////////////////////////////////////////////////
-        if (contact_activated_ && !collision && !mode_contact_){
+        if (contact_activated_ && !collision && !Planner::mode_contact_){
 
           //cout << " dist obstacle " << result.min_distance << std::endl;
 
@@ -466,11 +472,11 @@ void* ForceFeedback(void*){
             // distance du centre de l'objet à sa surface
             if (distance_mutex_.try_lock()) // TODO mutex inoptimal
             {
-              Eigen::Vector3f normal(
+              normal={
                   (float)(result.nearest_points[0][0] - result.nearest_points[1][0]),
                   (float)(result.nearest_points[0][1] - result.nearest_points[1][1]),
                   (float)(result.nearest_points[0][2] - result.nearest_points[1][2])
-                  );
+                  };
               //cout << "normale " << normal(0)<< " " << normal(1) << " "<< normal(2) << endl;
               for (int i=0; i< 3; i++)
                 if (abs(normal(i))<(1e-10)) normal(i) = 0;
@@ -568,10 +574,11 @@ void* ForceFeedback(void*){
                 // sur le robot
                 obj_ = result.nearest_points[1];
                 iteration_ = 0;
-                //Planner::mode_contact_ = true;
+                //cout << "contact activated\n";
+                Planner::mode_contact_ = true;
               }
             }
-            else force_feedback_ = false;
+            //else force_feedback_ = false; // TODO rechanger la condition
           }// fin gram schmidt
         }// fin activation contact
         // show modifications on screen
@@ -619,8 +626,9 @@ void* ForceFeedback(void*){
 
     void Planner::oneStep ()
     {
-      //cout << "one step\n";
+        //cout << "one step\n";
       robot_mutex_.lock();
+      //cout << "robot_mutex_lock one step\n";
       typedef boost::tuple <NodePtr_t, ConfigurationPtr_t, PathPtr_t>
         DelayedEdge_t;
       typedef std::vector <DelayedEdge_t> DelayedEdges_t;
@@ -637,7 +645,7 @@ void* ForceFeedback(void*){
       double rando = rand();
       rando = rando / RAND_MAX;
       // keep random config
-      if (rando > Planner::random_prob_ || mode_contact_)
+      if (rando > Planner::random_prob_ || Planner::mode_contact_)
       {
         if (Planner::mode_contact_){
           //cout << rando << " contact q \n";
@@ -658,8 +666,9 @@ void* ForceFeedback(void*){
           //std::cout << "one step distance centre/surf " << distance_ << std::endl;
           //cout << "org " << org_[1] << " obj " << obj_[1]
           //     << " signe org-obj " << signe(org_[1]-obj_[1]) << endl;
-
+          //cout << "will distancemutex try lock\n";
           distance_mutex_.try_lock();
+          //cout << "trylock ok\n";
           Vector3 org(
               (float)org_[0]+signe(obj_[0]-org_[0])*distances_[0],
               (float)org_[1]+signe(obj_[1]-org_[1])*distances_[1],
@@ -670,7 +679,7 @@ void* ForceFeedback(void*){
           //cout << "nouveau val " << val.transpose() << endl;
 
           // gros hack
-          //bool proche = false;
+          // bool proche = false;
           while(1){
             double dist;
             dist = sqrt(
@@ -695,6 +704,7 @@ void* ForceFeedback(void*){
             }
           }
           distance_mutex_.unlock();
+          //cout <<"fin hack wile 1\n";
 
           (*q_rand)[0] = val[0];
           (*q_rand)[1] = val[1];
@@ -783,6 +793,7 @@ void* ForceFeedback(void*){
 	}
       }
     robot_mutex_.unlock();
+    //cout << "robot_mutex_unlock one step\n";
     }
 
     void Planner::configurationShooter
@@ -917,3 +928,214 @@ void* ForceFeedback(void*){
           //    (*actual_configuration_ptr_)[2] =
           trans_temp.translation()[2] << endl;
           //*/
+
+
+
+
+
+
+//void* ForceFeedback_n(void*){
+//
+  ////clock_t begin, end, end2 ;
+  //Eigen::Vector3f signes, pos, force_vec, obst, normale;
+  //double err, obj, force, gain, max;
+  //gain = 100;
+  //obj = 0.3;
+  //max=15;max++;
+  //sleep(3);
+  //while(1){
+    //pos = SixDOFMouseDriver::getTransformationNoMutex().translation();
+    //for (int i=0; i<3; i++){
+      //signes[i]=signe(org_temp[i]-pos[i]);
+      //obst[i]=(float)org_temp[i]-signes[i]*(d_com_near_point_[i]+(float)d_); 
+     // 
+    //}
+    //err = (pos-obst).norm();
+    //if(err>0) force = err*gain;
+    //else force=0;
+   // 
+    //normale = (pos-obst) / (float)err;
+    //force_vec = (float)force * normale;
+    ////if (force>max)force=max*signe(force);
+    ////else force = 0;
+    //cout << "obj="<<obj<<" pos="<<pos.transpose()<<" err="<<err<<" force="<<force<<" n"<<normale<<" f_vec"<<force_vec<<endl; 
+    ////force_fd[0] = force;
+    ////force_fd.setZero();
+    //force_vec[0]=force_vec[2]=0;
+    //dhdSetForce(force_vec[0], force_vec[1], -force_vec[2]);
+   // 
+//
+  //}
+  //return NULL;
+//}
+
+
+
+
+
+
+//void* _ForceFeedback(void*){
+//
+  //clock_t begin, end, end2 ;
+  //Eigen::Vector3f signes, pos, force_fd;
+  //double tmps, err, obj, force, gain, max;
+  //gain = 100;
+  //obj = 0.3;
+  //max=15;
+  //sleep(3);
+  //while(1){
+    //for (int i=0; i<3; i++) signes[i]=signe(org_temp[i]-pos[i]);
+    //obj=org_temp[0]+signe[0]*(d_com_near_point_[0]+d_); 
+    //pos = SixDOFMouseDriver::getTransformationNoMutex().translation();
+    //err = pos[0]-obj;
+    //if (err>0){
+      //force = err*gain;
+      //if (force>max)force=max*signe(force);
+    //}
+    //else force = 0;
+    //cout << "obj="<<obj<<" pos="<<pos.transpose()<<" err="<<err<<" force="<<force<<endl; 
+    //force_fd[0] = force;
+    ////force_fd.setZero();
+    //dhdSetForce(force_fd[0], force_fd[1], force_fd[2]);
+   // 
+//
+  //}
+//}
+
+
+
+
+
+
+
+
+
+
+
+////void Planner::ForceFeedback(){
+//void* ForceFeedback_(void*){
+  //cout << "ForceFeedback thread...\n";
+  //sleep(1);
+//
+  //Eigen::Vector3d force_fd, prev_force_fd, torque_fd;
+  //Eigen::Vector3f pos;
+  //fcl::Vec3f obj_ffb, signes, normale, force_vec, p_0;
+  //double force, prev_force;
+  //double gain=3000;
+  //double force_max = 15;
+  //bool force_feed = false;
+  //double pen, pen_prev, pen_diff, delta_t;
+  //FILE * pFile;
+  //pFile = fopen ("log.csv","w");
+  //clock_t begin, end, end2 ;
+  //clock_t e1, e2;
+ // 
+  //double elapsed_secs;
+  //long int iteration=0;
+  ////double a, b, c;
+  //e1=e2= clock();
+  //pen_prev = 0;
+  //fprintf (pFile, "t;posx;posy;posz;1000*p;1000*dp/dt;P;D;f\n");
+  //while(1){
+    //iteration++;
+    //begin = clock();
+    //pos = SixDOFMouseDriver::getTransformationNoMutex().translation();
+    ////end = clock();
+    ////double elapsed_secs = double(end - begin) / CLOCKS_PER_SEC;
+    ////if (force_feed) cout << "temps get=\t\t" <<elapsed_secs<<endl; 
+    //for (int i=0; i<3; i++) signes[i]=signe(org_temp[i]-pos[i]);
+    //obj_ffb= {pos[0]+d_com_near_point_[0], pos[1]+d_com_near_point_[1], pos[2]+d_com_near_point_[2]}; 
+    //p_0 = org_temp - obj_ffb; // vecteur obj->robot
+    //double p_0_norm = p_0.norm();
+    //force_feed = p_0_norm < d_ ? true : false;
+    ////if (!force_feed&&iteration%15==1) cout <<"pos "<<pos.transpose()<<"+dist " << d_com_near_point_[0]<<" "<< d_com_near_point_[1]<<" "<< d_com_near_point_[2]<<" " << "* sgn " << signes << "=obj "<<obj_ffb<< " obj-obst " << org_temp << "=p_0 "<<p_0<<" p_0_norm "<<p_0_norm<<endl;
+//
+    //cout << "obst"<<org_temp<<" obj"<<obj_ffb<<" obst-obj"<<p_0<<" norme"<<p_0_norm<<"\t\tFFB"<<force_feed<<endl;
+    ////end2 = clock();
+    ////elapsed_secs = double(end2 - end) / CLOCKS_PER_SEC;
+    ////if (force_feed) cout << "temps dist=\t\t" <<elapsed_secs<<endl; 
+    //if(force_feed){
+      //// terme proportionnel
+      //pen = d_ - p_0_norm;
+      //// derme dérivatif
+      //pen_diff = (pen-pen_prev);
+      //pen_prev = pen;
+      //e2 = clock();
+      //delta_t = e2 - e1;
+      //e1 = e2;
+      //double P = pen*gain;
+      //double D = pen_diff/delta_t*300*gain;
+      //// total 
+      //force = P;// + D;
+      //// normalisé 
+      //normale = p_0 / p_0_norm;
+      //force_vec = force * normale;
+     // 
+      ////end = clock();
+      ////elapsed_secs = double(end - end2) / CLOCKS_PER_SEC;
+      ////cout << "temps force=\t\t" <<elapsed_secs<<endl; 
+      ////cout << setprecision(5) << setw(5) << "pen (" << pen << "*"<<gain<<") *n " <<normale<<"="<<force_vec<<endl;
+     // 
+      ////if(iteration%1==1)fprintf (pFile, "obst;%f;%f;%f;obj;%f;%f;%f;p_0;%f;%f;%f;p0norm;%f;pen;%f;force;%f;%f;%f;\n",org_[0],org_[1],org_[2],obj_ffb[0],obj_ffb[1],obj_ffb[2],p_0[0],p_0[1],p_0[2],p_0.norm(),pen,force_vec[0],force_vec[1],force_vec[2]);
+      //double t = clock();
+      ////cout <<"t="<<t<<"\tpos="<<pos.transpose()<<"\tpen="<<pen<<"\tdpen"<<pen_diff<<"\tdt"<<delta_t<<"\tpen_der/dt="<<pen_diff/delta_t<<"\tP="<<P<<"\tD="<<D<<"\tforce="<<force<<endl;
+      ////if(iteration%10==1)
+      //fprintf (pFile, "%lf;%lf;%lf;%lf;%lf;%lf;%lf,%f,%f\n",t,pos[0],pos[1],pos[2],pen,pen_diff/delta_t,P,D,force);
+      ////force_fd.setZero();
+//
+      //// 0 avant arrière x rouge // 1 droite gauche y vert // 2 bas haut z bleu 
+      //force_fd[0] = force_vec[0];
+      //if (fabs(force_fd[0])>force_max)
+      //force_fd[0]=force_max*signes[0];
+      //if(force_fd[0]==-prev_force_fd[0])force_fd[0]=prev_force_fd[0];
+////
+      //force_fd[1] = force_vec[1];
+      //if (fabs(force_fd[1])>force_max)
+      //force_fd[1]=force_max*signes[0];
+      //if(force_fd[1]==-prev_force_fd[1])force_fd[1]=prev_force_fd[1];
+////
+      //force_fd[2] = -force_vec[2];
+      //if (fabs(force_fd[2])>force_max)
+      //force_fd[2]=force_max*signes[0];
+      //if(force_fd[2]==-prev_force_fd[2])force_fd[2]=prev_force_fd[2];
+    //}
+    //else{
+      //force_fd.setZero();
+      //torque_fd.setZero();
+      ////a=b=c=0;
+    //}
+    //torque_fd.setZero();
+    ////force_fd.setZero();
+    ////end2 = clock();
+    ////elapsed_secs = double(end2 - end) / CLOCKS_PER_SEC;
+    ////if (force_feed) cout << "temps save=\t\t" <<elapsed_secs<<endl; 
+    //for (int i=0; i<3; i++)force_fd[i]=(force_fd[i]+prev_force_fd[i])/2; 
+    ////deviceForce = force_fd;
+    ////deviceTorque = torque_fd;  
+    //double ff[7];
+    //ff[0] = force_fd[0]; 
+    //ff[1] = force_fd[1]; 
+    //ff[2] = force_fd[2]; 
+    //ff[3] = torque_fd[3];
+    //ff[4] = torque_fd[4];
+    //ff[5] = torque_fd[5];
+    //ff[6] = 0;
+    //end = clock();
+    //dhdSetForce(force_fd[0], force_fd[1], force_fd[2]);
+    //end2 = clock();
+    //elapsed_secs = double(end2 - end) / CLOCKS_PER_SEC;
+    ////if (force_feed) cout << "temps envoi=\t\t" <<elapsed_secs<<endl; 
+    ////dhdSetForceAndTorqueAndGripperForce (force_fd[0], force_fd[1], force_fd[2], torque_fd[0], torque_fd[1], torque_fd[2], 0.0);
+    ////SixDOFMouseDriver::setForceAndTorque(force_fd, torque_fd);
+    ////dhdSleep(0.1);
+    //prev_force_fd=force_fd;
+    ////end = clock();
+    ////elapsed_secs = double(end - end2) / CLOCKS_PER_SEC;
+    ////if (force_feed) cout << "temps envoi=\t\t" <<elapsed_secs<<endl; 
+    ////elapsed_secs = double(end - begin) / CLOCKS_PER_SEC;
+    ////if (force_feed) cout << "temps total=\t\t" <<elapsed_secs<<endl<<endl; 
+  //} 
+  //fclose (pFile);
+  //return 0;
+//}
+
