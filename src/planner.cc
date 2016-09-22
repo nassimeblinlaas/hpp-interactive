@@ -44,60 +44,14 @@
 typedef se3::SE3::Vector3 Vector3;
 typedef se3::SE3::Matrix3 Matrix3;
 
-extern ::Eigen::Matrix3f quat2Mat(float x, float y, float z, float w);/*{
-  ::Eigen::Matrix3f ret;
-
-  ret(0, 0) = 1 - 2*(float)(pow(y, 2) + pow(z, 2));
-  ret(0, 1) = 2*x*y - 2*z*w;
-  ret(0, 2) = 2*x*z + 2*y*w;
-  ret(1, 0) = 2*x*y + 2*z*w;
-  ret(1, 1) = 1 - 2*(float)(pow(x, 2) + pow(z, 2));
-  ret(1, 2) = 2*y*z - 2*x*w;
-  ret(2, 0) = 2*x*z - 2*y*w;
-  ret(2, 1) = 2*y*z + 2*x*w;
-  ret(2, 2) = 1 - 2*(float)(pow(x, 2) + pow(y, 2));
-
-  return ret;
-}*/
-
-void euler2Quat(double psi, double theta, double phi, double* quat){
-  psi/=2; theta/=2; phi/=2;
-
-  quat[0] = cos(psi) * cos(theta) * cos(phi) + sin(psi) * sin(theta) * sin(phi);
-  quat[1] = sin(psi) * cos(theta) * cos(phi) - cos(psi) * sin(theta) * sin(phi);
-  quat[2] = cos(psi) * sin(theta) * cos(phi) + sin(psi) * cos(theta) * sin(phi);
-  quat[3] = cos(psi) * cos(theta) * sin(phi) - sin(psi) * sin(theta) * cos(phi);
-}
-
-// normaliser quaternion
-extern void normalizeQuat(double& w, double& x, double& y, double& z);/*{
-  double mag = sqrt(pow(w,2)+pow(x,2)+pow(y,2)+pow(z,2));
-  w = w/mag; x = x/mag; y = y/mag; z = z/mag;
-}*/
+extern Eigen::Matrix3f quat2Mat(float x, float y, float z, float w);
+extern void euler2Quat(double psi, double theta, double phi, double* quat);
+extern void normalizeQuat(double& w, double& x, double& y, double& z);
 
 short int signe (double x) {
   return ((x < 0) ? -1 : 1);
 }
 
-void lisser(Eigen::Vector3d force_fd, Eigen::Vector3d prev, Eigen::Vector3d torque_fd){
-  bool condi = false;
-  bool cond[3];
-  //double f[3];
-  short int signei[3];
-  for (int i=0;i<3;i++){
-    cond[i] = false;
-    //f[i]=prev[i];
-    signei[i] = signe(force_fd[i]-prev[i]);
-  }
-  while(!condi){
-    for (int i=0;i<3;i++){
-      cond[i]=(prev[i]!=force_fd[i]);
-      prev[i]+=signei[i];
-    }
-    SixDOFMouseDriver::setForceAndTorque(prev, torque_fd);
-    condi = cond[0] || cond[1] || cond[2];
-  }
-}
 
 namespace hpp {
   namespace interactive {
@@ -112,27 +66,10 @@ namespace hpp {
     double d_;      
     bool change_obst_;
 
-Eigen::Matrix3f camMat;
-
-Eigen::Vector3d deviceForce;
-Eigen::Vector3d deviceTorque;
-Eigen::Vector3f normal;
-
-void Planner::ActuateArm(){
-  cout << "Actuate Arm thread...\n";
-  deviceForce.setZero(); deviceTorque.setZero();  
-  while(1){
-    //cout << "actuating\n";
-    dhdSetForceAndTorqueAndGripperForce (deviceForce(0), deviceForce(1),  deviceForce(2),
-      deviceTorque(0), deviceTorque(1), deviceTorque(2), 0.0);
-  }
-}
-
-
-
-
-
-
+    Eigen::Matrix3f camMat;
+    Eigen::Vector3d deviceForce;
+    Eigen::Vector3d deviceTorque;
+    Eigen::Vector3f normal;
 
 
 
@@ -152,12 +89,6 @@ void* ForceFeedback(void*){
   gain = 50;
   //double max=15;max++;
   sleep(2);
-  //FILE * pFile;
-  //pFile = fopen ("log.csv","w");
-  //double t;
-  //double dt; 
-  //clock_t begin, end;
-  //fprintf (pFile, "t;pos[0];pos[1];pos[2];obst[0];obst[1];obst[2];normale[0];normale[1];normale[2];temp[0];temp[1];temp[2];D;err;force_vec[0];force_vec[1];force_vec[2]\n");
   while(1){
     //iteration++;
     pos = SixDOFMouseDriver::getTransformationNoMutex().translation();
@@ -194,6 +125,12 @@ void* ForceFeedback(void*){
     //force_vec[1] = force_vec[0] = 0;
 
     /////// cout /////////////////////////////////////////////////////////////////////
+    //FILE * pFile;
+    //pFile = fopen ("log.csv","w");
+    //double t;
+    //double dt; 
+    //clock_t begin, end;
+    //fprintf (pFile, "t;pos[0];pos[1];pos[2];obst[0];obst[1];obst[2];normale[0];normale[1];normale[2];temp[0];temp[1];temp[2];D;err;force_vec[0];force_vec[1];force_vec[2]\n");
     //cout << normal.transpose()<< endl;
     //cout << "pos="<<pos.transpose()<<" obst="<<obst.transpose()<<" n="<<normale.transpose()<<" temp="<<temp.transpose()<<" D="<<D<<" err="<< err <<" force="<<force_vec.transpose()<<endl; 
     //cout << " err="<< err <<" force="<<force_vec.transpose()<<endl; 
@@ -1139,3 +1076,22 @@ void* ForceFeedback(void*){
   //return 0;
 //}
 
+/*void lisser(Eigen::Vector3d force_fd, Eigen::Vector3d prev, Eigen::Vector3d torque_fd){
+  bool condi = false;
+  bool cond[3];
+  //double f[3];
+  short int signei[3];
+  for (int i=0;i<3;i++){
+    cond[i] = false;
+    //f[i]=prev[i];
+    signei[i] = signe(force_fd[i]-prev[i]);
+  }
+  while(!condi){
+    for (int i=0;i<3;i++){
+      cond[i]=(prev[i]!=force_fd[i]);
+      prev[i]+=signei[i];
+    }
+    SixDOFMouseDriver::setForceAndTorque(prev, torque_fd);
+    condi = cond[0] || cond[1] || cond[2];
+  }
+}*/

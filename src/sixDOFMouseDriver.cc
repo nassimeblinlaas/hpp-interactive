@@ -66,6 +66,15 @@ float3 quat2Euler(float q0, float q1, float q2, float q3)
       atan2(2 * (q0*q3 + q1*q2), 1 - 2 * (q2*q2 + q3*q3))
   };
 }
+
+void euler2Quat(double psi, double theta, double phi, double* quat){
+  psi/=2; theta/=2; phi/=2;
+
+  quat[0] = cos(psi) * cos(theta) * cos(phi) - sin(psi) * sin(theta) * sin(phi);//w
+  quat[1] = sin(psi) * sin(theta) * cos(phi) + cos(psi) * cos(theta) * cos(phi);//x
+  quat[2] = sin(psi) * cos(theta) * cos(phi) + cos(psi) * sin(theta) * sin(phi);//y
+  quat[3] = cos(psi) * sin(theta) * cos(phi) - sin(psi) * cos(theta) * sin(phi);//z
+}
   
 SixDOFMouseDriver::SixDOFMouseDriver(){
 
@@ -483,22 +492,58 @@ void SixDOFMouseDriver::ReadMouse(const double* bounds_)
             SixDOFMouseDriver::cameraVectors_[i+6];
       }
       temp_trans.translation(pos);
-      double ori[3][3]; // orientation
-      dhdGetOrientationFrame(ori);
-      se3::SE3::Matrix3 Rot;
-      Rot  << (float)ori[0][0], (float)ori[0][1], (float)ori[0][2], (float)ori[1][0], 
-        (float)ori[1][1], (float)ori[1][2], (float)ori[2][0],
-        (float)ori[2][1], (float)ori[2][2];
-      Eigen::Matrix3f mat = Rot;
-      Eigen::Quaternionf q(mat);
-      q.normalize();
-        
-      float3 r;
-      r = quat2Euler(q.w(),q.x(),q.y(),q.z());
-      cout << "les angles " << r[0]<<endl;//<<" "<<r[1]<<" "<<r[2]<<endl; 
-      //Rot.setZero();
-      Eigen::Matrix3f temp =quat2Mat(q.x(), 0,0,/*q.y(), q.z(),*/ 10*q.w());
+      //double ori[3][3]; // orientation
+      //dhdGetOrientationFrame(ori);
+      //se3::SE3::Matrix3 Rot;
+      //Rot  << (float)ori[0][0], (float)ori[0][1], (float)ori[0][2], (float)ori[1][0], 
+        //(float)ori[1][1], (float)ori[1][2], (float)ori[2][0],
+        //(float)ori[2][1], (float)ori[2][2];
+      //Eigen::Matrix3f mat = Rot;
+      //mat = 20*mat;
+      //Eigen::Quaternionf q(mat);
+      //q.normalize();
+
+      double quat[4];
+
+      // TODO à déplacer au bon endroit
+
+      double bornes[3][2]; // limites du bras
+      double d[3]; // dynamique par axe
+      double angles[3]; // position lues en degrés
+      double val[3]; // valeur normalisée
+      double res[3]; // resultat : angles d'eulers adaptés
+      double k = 2; // nombre de révolutions
+      bornes[0][0]=-99.8687;
+      bornes[0][1]=135.75;
+      bornes[1][0]=-69.5698;
+      bornes[1][1]=69.8842;
+      bornes[2][0]=-17.0917;
+      bornes[2][1]=184.128;
+      dhdGetOrientationDeg(angles+0, angles+1, angles+2);
+      for (int i=0; i<3;i++){
+        d[i] = bornes[i][1]-bornes[i][0];
+        //if(angles[i]<0) val[i] = fabs(bornes[i][0])-fabs(angles[i]);
+        //else val[i] = angles[i] - fabs(bornes[i][0]);
+        val[i]=angles[i]-bornes[i][0];
+        //cout <<" "<<i<<"angles="<<angles[i]<<"borne "<< bornes[i][0]<< " val="<<val[i];
+        double aaa = val[i]/d[i];
+        res[i] = k * 2 * M_PI * ((val[i]/d[i])-(1/2)); 
+      }
+      //cout << endl;
+
+      //cout << "les angles " << res[0]<<" "<<res[1]<<" "<<res[2]<<endl; 
+      euler2Quat(res[0], res[1], res[2], quat);
+      
+      //float3 r;
+      //r = quat2Euler(q.w(),q.x(),q.y(),q.z());
+      //r = quat2Euler(quat[0], quat[1], quat[2], quat[3]);
+  
+      //cout << " re les angles " << angles[0]<<" "<<angles[1]<<" "<<angles[2]<<endl; 
+      Eigen::Quaternionf qq(quat[0], quat[1], quat[2], quat[3]);
+      qq.normalize();
+      Eigen::Matrix3f temp =quat2Mat(qq.x(),qq.y(),qq.z(),qq.w());
       temp_trans.rotation(temp);
+      //Rot.setZero();
       //temp_trans.rotation(Rot);
     } 
 
