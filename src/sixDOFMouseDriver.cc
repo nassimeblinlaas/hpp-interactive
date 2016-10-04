@@ -437,6 +437,7 @@ void SixDOFMouseDriver::ReadMouse(const double* bounds_)
     if (std::abs(rot[2]) > threshold)
       v_local[2] = (float)(rot[2]-threshold)/(float)divideFactor;
     Eigen::Matrix3f matrot;
+
     //*
     matrot <<
       (abs(SixDOFMouseDriver::cameraVectors_[3]) < 1e-7 ? 0 : SixDOFMouseDriver::cameraVectors_[3]) ,
@@ -449,9 +450,10 @@ void SixDOFMouseDriver::ReadMouse(const double* bounds_)
       (abs(SixDOFMouseDriver::cameraVectors_[1]) < 1e-7 ? 0 : SixDOFMouseDriver::cameraVectors_[1]) ,
       (abs(SixDOFMouseDriver::cameraVectors_[2]) < 1e-7 ? 0 : SixDOFMouseDriver::cameraVectors_[2]) ;
     //*/
+
     /*
        matrot << SixDOFMouseDriver::cameraVectors_[0] ,
-       SixDOFMouseDriver::cameraVectors_[1] ,
+         SixDOFMouseDriver::cameraVectors_[1] ,
        SixDOFMouseDriver::cameraVectors_[2] ,
        SixDOFMouseDriver::cameraVectors_[3] ,
        SixDOFMouseDriver::cameraVectors_[4] ,

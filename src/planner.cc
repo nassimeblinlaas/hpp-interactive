@@ -40,6 +40,7 @@
 #include <hpp/interactive/gram-schmidt.hh>
 #include <math.h>
 #include <pthread.h>
+#include <Eigen/Geometry>
 
 typedef se3::SE3::Vector3 Vector3;
 typedef se3::SE3::Matrix3 Matrix3;
@@ -75,25 +76,26 @@ namespace hpp {
 
 
 
-
-
-
-
-
 void* ForceFeedback(void*){
-
-  //clock_t begin, end, end2 ;
-  Eigen::Vector3f temp, pos, force_vec, obst, normale;//, signes;
+  double dnn[7];
+  Eigen::Vector3f temp, pos, force_vec, prev_force_vec, obst, normale, signes;
   Eigen::Vector3d obst_d;
-  double err, prev_err, force, gain, D, kP, kD;
-  double angles[3]; 
+  Eigen::Matrix3d center;
+  double err, force, gain, D, kP;
   bool force_feed = false;
-  long int iteration = 0;
-  dhdGetOrientationRad(angles+0, angles+1, angles+2);
-  gain = 50;
-  //double max=15;max++;
-    
+  gain = 100;
+  double max=5;
+  drdStart(); 
+  bool base, wrist, grip;
+  base = wrist = grip = false;
+
+  drdRegulatePos  (false);
+  drdRegulateGrip (false);
+  drdRegulateRot  (false);
+
+  bool prev_ff = false;
   sleep(3);
+  long int iteration = 0;
   while(1){
     obst.setZero();
     pos.setZero();
@@ -101,12 +103,9 @@ void* ForceFeedback(void*){
     normal_mutex.lock();
     normale = normal;
     normal_mutex.unlock();
-    iteration++;
     pos = SixDOFMouseDriver::getTransformationNoMutex().translation();
     for (int i=0; i<3; i++){
-      //signes[i]=signe(org_temp[i]-pos[i]);
       obst[i]=(float)org_temp[i];
-      obst_d[i] = org_temp[i]; 
     }
     // départ du plan P
     temp=obst-d_*normale;
@@ -116,101 +115,79 @@ void* ForceFeedback(void*){
     err = (pos[0]+d_com_near_point_[0])*normale[0]+
       (pos[1]+d_com_near_point_[1])*normale[1]+
       (pos[2]+d_com_near_point_[2])*normale[2]+D;
-    //end = clock();
-    //dt = double(end - begin) / CLOCKS_PER_SEC;
-    //begin = clock();
     kP = err * gain;
-    //kD = 0.250*gain*(err-prev_err);
-    //prev_err = err;
-    force = kP;//+kD;
+    force = kP;
     force_feed = err > 0;
-    force_vec = normale*(float)force;
+
+
+    if (force_feed != prev_ff)
+    {
+      drdRegulateRot(force_feed);
+      prev_ff = force_feed;
+    }
+  
     
     if (force_feed){
-    //cout << "pos="<<pos.transpose()<<" obst="<<obst.transpose()<<" temp="<<temp.transpose()<<" D="<<D<<" err="<< err <<" force="<<force_vec.transpose()<<endl; 
-    cout << "angles "<<angles[0]<<" "<<angles[1]<<" "<<angles[2]<<endl;
-    drdMoveToRot(angles[0], angles[1], angles[2]);
-    //force_vec.setZero();
+      force_vec = normale*(float)force;
+      for (int i = 0 ;i<3; i++) if (force_vec[i]>max){force_vec[i]=signes[i]*max; cout<<"max dépassé sur "<<i<<endl;}
+      // protection 1 : lissage
+      // bah ça fait pas grand chose
+      for (int i=0; i<3;i++){
+        double diff = force_vec(i)-prev_force_vec(i);
+        if(fabs(diff)>1){
+          //cout << " diff sur "<<i << " force "<<force_vec.transpose()<<" prevf "<<prev_force_vec.transpose(); 
+          force_vec[i] = prev_force_vec(i)+0.02*signe(diff);
+          //cout << " change " <<force_vec.transpose()<<endl; 
+        }
+        if (fabs(force_vec(i))<1e-5) force_vec[i]=0;
+      }
+      prev_force_vec = force_vec;
+      if (change_obst_) iteration = 0; 
     }
     else{
-      //dhdGetOrientationRad(angles+0, angles+1, angles+2);
       force_vec.setZero();
+      for (int i=0; i<3; i++) signes[i]=signe(org_temp[i]-pos[i]);
     }
-    //force_vec[1] = force_vec[0] = 0;
-
-    /////// cout /////////////////////////////////////////////////////////////////////
-    //cout << endl;
-    //double aa = temp[0]*normale[0];
-    //double ab = temp[1]*normale[1];
-    //double ac = temp[2]*normale[2];
-    //D = aa + ab + ac;
-    //cout <<" aa "<<aa<<"="<<temp[0]<<"*"<<normale[0];
-    //cout <<" ab "<<ab<<"="<<temp[1]<<"*"<<normale[1];
-    //cout <<" ac "<<ac<<"="<<temp[2]<<"*"<<normale[2];
-    //D = -D;
-      //cout <<"zero\n";
-    //cout << "pos="<<pos.transpose()<<" obst="<<obst.transpose()<<" n="<<normal.transpose()<<" temp="<<temp.transpose()<<" D="<<D<<" err="<< err <<" force="<<force_vec.transpose()<<"!!!!!!!!!!!!!"<<endl; 
-      //cout << "force="<<force<<"=kP:"<<kP<<"+kD:"<<kD<<"\n";
-      //t = clock();
-      //cout << "!!!!!!!!!!!!!!!!!!!!\n";
-    //FILE * pFile;
-    //pFile = fopen ("log.csv","w");
-    //double t;
-    //double dt; 
-    //clock_t begin, end;
-    //fprintf (pFile, "t;pos[0];pos[1];pos[2];obst[0];obst[1];obst[2];normale[0];normale[1];normale[2];temp[0];temp[1];temp[2];D;err;force_vec[0];force_vec[1];force_vec[2]\n");
-    //cout << normal.transpose()<< endl;
-    //cout << " err="<< err <<" force="<<force_vec.transpose()<<endl; 
-    //t = clock();
-    //cout << "t="<<elapsed_secs<<endl;
-    //if(iteration%10==1)
-    //cout << "err="<<err<<"=Somme des pos="<<pos.transpose()<<"*normale="<<normale.transpose()<<"+D="<<D<<endl;
-    //cout <<"pos "<<pos.transpose()<< " sgn " << signes[0]<<" "<<signes[1]<<" "<<signes[2] << " longs "<< d_com_near_point_.transpose()<< " d " << d_<< " errv1 " << err;
-    //err = pos[0]*normal[0]+pos[1]*normal[1]+pos[2]*normal[2]+D;
-    //cout <<"\terrv2 " << err;
-    //err = (pos[0]+d_com_near_point_[0]*signes[0])*normal[0]+
-      //(pos[1]+d_com_near_point_[1]*signes[1])*normal[1]+
-      //(pos[2]+d_com_near_point_[2]*signes[2])*normal[2]+D;
-    //cout <<"\terrv3 " << err<<endl;
-      //cout << "obst="<<obst[1]<<" temp="<<temp[1]<<" pos="<<pos[1]<<" err"<<err<<" force="<<force_vec.transpose()<<" n "<<normal.transpose()<<endl;
-    //fprintf (pFile, "%f;%f;%f;%f\n",t,pos[1],err*100,force_vec[1]);
-    //fprintf (pFile, "%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f\n",t,pos[0],pos[1],pos[2],obst[0],obst[1],obst[2],normal[0],normal[1],normal[2],temp[0],temp[1],temp[2],D,err*100,force_vec[0],force_vec[1],force_vec[2]);
-    ////////////////////////////////////////////////////////////////////////////////////
-
-
-    /*    //// couples ///////////////////
-    double TorqueGain =0.10;
-    double   r[3][3];
-    double   posX, posY, posZ;
-    Eigen::Vector3d devicePos;
-    Eigen::Matrix3d localRotTrans, deviceRot;
-    Eigen::Vector3d localPos, force_vec_d, localTorque;
-    dhdGetOrientationFrame (r);
-    deviceRot << r[0][0], r[0][1], r[0][2],
-                 r[1][0], r[1][1], r[1][2],
-                 r[2][0], r[2][1], r[2][2];
-  
-    localRotTrans =   deviceRot.transpose ();
-    dhdGetPosition (&posX, &posY, &posZ);
-    devicePos << posX,  posY,  posZ;
-    localPos      = - localRotTrans * (obst_d-devicePos);
-    force_vec_d << (double)force_vec[0], (double)force_vec[1], (double)force_vec[2];
-    localTorque = TorqueGain * localPos.cross (force_vec_d);
+    dnn[0] = force_vec(0);
+    dnn[1] = force_vec(1);
+    dnn[2] = -force_vec(2);
+    drdSetForceAndTorqueAndGripperForce (dnn);  // avec blocage des rots
     
-    //localTorque[1] = localTorque[2] = 0;
-    ////////////////////////////////*/
-
-
-    //if(iteration%10==1)
-    //cout << localTorque.transpose()<<endl;
-    //localTorque.setZero(); 
-    //dhdSetForceAndTorqueAndGripperForce (force_vec(0), force_vec(1), force_vec(2), localTorque(0), localTorque(1), localTorque(2), 0.0);
-    //dhdSetForceAndTorqueAndGripperForce (force_vec(0), force_vec(1), force_vec(2), -localTorque(0), 0, 0, 0.0);
-    //force_vec.setZero();
-    //dhdSetForce(force_vec[0], force_vec[1], -force_vec[2]);
   }
   return NULL;
+
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -225,7 +202,7 @@ void* ForceFeedback(void*){
       nb_launchs++;
       type_ = 2; //device type 1 mouse 2 sigma7
       random_prob_ = 0; // 0 all human  1 all machine
-      d_ = 0.10; // distance entrée mode contact
+      d_ = 0.01; // distance entrée mode contact
       Planner::mode_contact_ = false;
       change_obst_ = false;
       //force_feedback_=false;
@@ -622,7 +599,7 @@ void* ForceFeedback(void*){
 
     void Planner::oneStep ()
     {
-        //cout << "one step\n";
+      //cout << "one step\n";
       robot_mutex_.lock();
       //cout << "robot_mutex_lock one step\n";
       typedef boost::tuple <NodePtr_t, ConfigurationPtr_t, PathPtr_t>
@@ -662,9 +639,7 @@ void* ForceFeedback(void*){
           //std::cout << "one step distance centre/surf " << distance_ << std::endl;
           //cout << "org " << org_[1] << " obj " << obj_[1]
           //     << " signe org-obj " << signe(org_[1]-obj_[1]) << endl;
-          //cout << "will distancemutex try lock\n";
           distance_mutex_.try_lock();
-          //cout << "trylock ok\n";
           Vector3 org(
               (float)org_[0]+signe(obj_[0]-org_[0])*distances_[0],
               (float)org_[1]+signe(obj_[1]-org_[1])*distances_[1],
@@ -700,7 +675,6 @@ void* ForceFeedback(void*){
             }
           }
           distance_mutex_.unlock();
-          //cout <<"fin hack wile 1\n";
 
           (*q_rand)[0] = val[0];
           (*q_rand)[1] = val[1];
@@ -1154,3 +1128,224 @@ void* ForceFeedback(void*){
     condi = cond[0] || cond[1] || cond[2];
   }
 }*/
+/*
+
+void* ForceFeedback_(void*){
+
+  //clock_t begin, end, end2 ;
+  double dnn[7];
+  dnn[3] = 0;//force_vec(0);
+  dnn[4] = 0;//force_vec(0);
+  dnn[5] = 0;//force_vec(0);
+  dnn[6] = 0;//force_vec(0);
+  Eigen::Vector3f temp, pos, force_vec, prev_force_vec, obst, normale, signes;
+  Eigen::Vector3d obst_d;
+  double err, prev_err, force, gain, D, kP, kD, dt, begin, end;
+  double angles[3]; 
+  bool force_feed = false;
+  long int iteration = 0;
+  dhdGetOrientationRad(angles+0, angles+1, angles+2);
+  gain = 100;
+  double max=5;//max++;
+  drdStart(); 
+  drdRegulatePos  (false);
+  drdRegulateRot  (true);
+  drdRegulateGrip (false);
+
+  sleep(2);
+  Eigen::Matrix3d center;
+  while(1){
+    obst.setZero();
+    pos.setZero();
+    temp.setZero();
+    normal_mutex.lock();
+    normale = normal;
+    normal_mutex.unlock();
+    iteration++;
+    pos = SixDOFMouseDriver::getTransformationNoMutex().translation();
+    for (int i=0; i<3; i++){
+      obst[i]=(float)org_temp[i];
+      obst_d[i] = org_temp[i]; 
+    }
+    // départ du plan P
+    temp=obst-d_*normale;
+    // équation du plan P: Ax+By+Cz+D=0;
+    D=-(temp[0]*normale[0]+temp[1]*normale[1]+temp[2]*normale[2]);
+    // position du point proche de l'objet par rapport à P
+    err = (pos[0]+d_com_near_point_[0])*normale[0]+
+      (pos[1]+d_com_near_point_[1])*normale[1]+
+      (pos[2]+d_com_near_point_[2])*normale[2]+D;
+    end = clock();
+    dt = double(end - begin) / CLOCKS_PER_SEC;
+    //cout << "dt "<<dt<<endl;
+    begin = clock();
+    kP = err * gain;
+    kD = 0.002*gain*(err-prev_err)/dt;
+    prev_err = err;
+    force = kP;//+kD;
+    force_feed = err > 0;
+  
+  Eigen::Map<Eigen::Vector3d> torque  (&dnn[3], 3);
+  //Eigen::Map<Eigen::Vector3d> center  (&c[3], 3);
+    double r[3][3];
+    double c[3][3];
+    double KR = 0.3;
+    Eigen::Matrix3d rotation;
+      center.setIdentity ();
+      drdRegulateRot  (true);
+  
+    if (force_feed){
+      //cout<<"err "<<err<<" kP "<<kP<<" kD "<<kD<<endl;
+      force_vec = normale*(float)force;
+
+      // protection 1 : lissage
+      for (int i=0; i<3;i++){
+        double diff = force_vec(i)-prev_force_vec(i);
+        if(fabs(diff)>1){
+          //cout << " diff sur "<<i << " force "<<force_vec.transpose()<<" prevf "<<prev_force_vec.transpose(); 
+          force_vec[i] = prev_force_vec(i)+0.02*signe(diff);
+          //cout << " change " <<force_vec.transpose()<<endl; 
+        }
+        if (fabs(force_vec(i))<1e-5) force_vec[i]=0;
+      }
+      // protection 2 : limite
+      for (int i = 0 ;i<3; i++) if (force_vec[i]>max){force_vec[i]=signes[i]*max; cout<<"max dépassé sur "<<i<<endl;}
+      prev_force_vec = force_vec;
+      // protection 3 : blocage des rotations
+      //drdStop();
+      drdGetPositionAndOrientation(dnn, r);
+      for (int i=0; i<3; i++) rotation.row(i) = Eigen::Vector3d::Map(&r[i][0], 3);
+      Eigen::AngleAxisd deltaRotation (rotation.transpose() * center);
+      torque = rotation * (KR * deltaRotation.angle() * deltaRotation.axis());
+      //drdStart(); 
+      //drdMoveToRot(angles[0], angles[1], angles[2], false);
+      //double rien;
+      //dhdGetForceAndTorque(&rien, &rien, &rien, dnn+3, dnn+4, dnn+5);
+      //cout << "les couples "<<dnn[3]<<" "<<dnn[4]<<" "<<dnn[5]<<endl;
+      //force_vec.setZero();
+      //drdRegulateRot  (true);
+      //cout<<"pos="<<pos.transpose()<<" obst="<<obst.transpose()<<" D="<<D<<" err="<< err <<" n "<<normale.transpose()<<" sgn "<<signes.transpose()<<" force="<<force_vec.transpose()<<endl; 
+      //cout << "pos="<<pos.transpose()<<" obst="<<obst.transpose()<<" err="<< err <<" force="<<force_vec.transpose()<<endl; 
+    //dnn[3]=torque(0);
+    //dnn[4]=torque(1);
+    //dnn[5]=torque(2);
+    }
+    else{
+    // compute wrist centering torque
+    //torque = rotation * (KR * deltaRotation.angle() * deltaRotation.axis());
+ 
+
+      //drdRegulateRot  (false);
+      // les signes ne doivent pas changer en cours de route si l'utilisateur pousse trop fort et dépasse le repère initial
+      drdGetPositionAndOrientation(dnn, c);
+      for (int i=0; i<3; i++) center.row(i) = Eigen::Vector3d::Map(&c[i][0], 3);
+      for (int i=0; i<3; i++){
+        signes[i]=signe(org_temp[i]-pos[i]);
+      }
+      //drdStop();
+      force = 0;
+      force_vec.setZero();
+      torque.setZero();
+      //dnn[3]=0;
+      //dnn[4]=0;
+      //dnn[5]=0;
+      dhdGetOrientationRad(angles+0, angles+1, angles+2);
+      //cout << "angles "<<angles[0]<<" "<<angles[1]<<" "<<angles[2]<<endl;
+    }
+
+
+    dnn[0] = force_vec(0);
+    dnn[1] = force_vec(1);
+    dnn[2] = -force_vec(2);
+    //if (force_feed) 
+    cout <<"dnn345 "<< dnn[3] << " " << dnn[4] << " " << dnn[5]<< endl;
+    //cout << "torques " << torque.transpose()<<endl;
+    //dhdSetForce(force_vec[0], force_vec[1], -force_vec[2]); // sans blocage des rots
+    //drdSetForceAndTorqueAndGripperForce (dnn);  // avec blocage des rots
+    
+    //force_vec[1] = force_vec[0] = 0;
+    //if(drdIsRunning()) {
+    //drdStop();
+    //cout <<"stop\n";
+    //}
+    //if(iteration%10==1)
+    //cout << localTorque.transpose()<<endl;
+    //localTorque.setZero(); 
+   //force_vec.setZero();
+
+
+  }
+
+    /////// cout /////////////////////////////////////////////////////////////////////
+    //cout << endl;
+    //double aa = temp[0]*normale[0];
+    //double ab = temp[1]*normale[1];
+    //double ac = temp[2]*normale[2];
+    //D = aa + ab + ac;
+    //cout <<" aa "<<aa<<"="<<temp[0]<<"*"<<normale[0];
+    //cout <<" ab "<<ab<<"="<<temp[1]<<"*"<<normale[1];
+    //cout <<" ac "<<ac<<"="<<temp[2]<<"*"<<normale[2];
+    //D = -D;
+      //cout <<"zero\n";
+    //cout << "pos="<<pos.transpose()<<" obst="<<obst.transpose()<<" n="<<normal.transpose()<<" temp="<<temp.transpose()<<" D="<<D<<" err="<< err <<" force="<<force_vec.transpose()<<"!!!!!!!!!!!!!"<<endl; 
+      //cout << "force="<<force<<"=kP:"<<kP<<"+kD:"<<kD<<"\n";
+      //t = clock();
+      //cout << "!!!!!!!!!!!!!!!!!!!!\n";
+    //FILE * pFile;
+    //pFile = fopen ("log.csv","w");
+    //double t;
+    //double dt; 
+    //clock_t begin, end;
+    //fprintf (pFile, "t;pos[0];pos[1];pos[2];obst[0];obst[1];obst[2];normale[0];normale[1];normale[2];temp[0];temp[1];temp[2];D;err;force_vec[0];force_vec[1];force_vec[2]\n");
+    //cout << normal.transpose()<< endl;
+  //cout << " err="<< err <<" force="<<force_vec.transpose()<<endl; 
+  //t = clock();
+    //cout << "t="<<elapsed_secs<<endl;
+    //if(iteration%10==1)
+    //cout << "err="<<err<<"=Somme des pos="<<pos.transpose()<<"*normale="<<normale.transpose()<<"+D="<<D<<endl;
+    //cout <<"pos "<<pos.transpose()<< " sgn " << signes[0]<<" "<<signes[1]<<" "<<signes[2] << " longs "<< d_com_near_point_.transpose()<< " d " << d_<< " errv1 " << err;
+    //err = pos[0]*normal[0]+pos[1]*normal[1]+pos[2]*normal[2]+D;
+    //cout <<"\terrv2 " << err;
+    //err = (pos[0]+d_com_near_point_[0]*signes[0])*normal[0]+
+      //(pos[1]+d_com_near_point_[1]*signes[1])*normal[1]+
+      //(pos[2]+d_com_near_point_[2]*signes[2])*normal[2]+D;
+    //cout <<"\terrv3 " << err<<endl;
+      //cout << "obst="<<obst[1]<<" temp="<<temp[1]<<" pos="<<pos[1]<<" err"<<err<<" force="<<force_vec.transpose()<<" n "<<normal.transpose()<<endl;
+    //fprintf (pFile, "%f;%f;%f;%f\n",t,pos[1],err*100,force_vec[1]);
+    //fprintf (pFile, "%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f\n",t,pos[0],pos[1],pos[2],obst[0],obst[1],obst[2],normal[0],normal[1],normal[2],temp[0],temp[1],temp[2],D,err*100,force_vec[0],force_vec[1],force_vec[2]);
+    ////////////////////////////////////////////////////////////////////////////////////
+  return NULL;
+}
+//*/
+
+    /*    //// couples ///////////////////
+    double TorqueGain =0.002;
+    double   r[3][3];
+    double   posX, posY, posZ;
+    Eigen::Vector3d devicePos;
+    Eigen::Matrix3d localRotTrans, deviceRot;
+    Eigen::Vector3d localPos, force_vec_d, localTorque, proche, v1, v2;
+    dhdGetOrientationFrame (r);
+    deviceRot << r[0][0], r[0][1], r[0][2],
+                 r[1][0], r[1][1], r[1][2],
+                 r[2][0], r[2][1], r[2][2];
+  
+    localRotTrans =   deviceRot.transpose ();
+    dhdGetPosition (&posX, &posY, &posZ);
+    devicePos << posX,  posY,  posZ;
+    proche << pos[0]+d_com_near_point_[0], pos[1]+d_com_near_point_[1], pos[2]+d_com_near_point_[2];
+    localPos      =  localRotTrans * (obst_d-devicePos);
+    localPos      =  localRotTrans * (proche-devicePos);
+    v1 << 0, 0, force;
+    v2 << localPos(0), localPos(1), 0;
+
+    force_vec_d << (double)force_vec[0], (double)force_vec[1], (double)force_vec[2];
+    localTorque = TorqueGain * localPos.cross (force_vec_d);
+    //if(force) cout <<"A "<< localTorque.transpose();
+    localTorque = -TorqueGain * v1.cross (v2);
+    //if(force) cout << " \tB " << localTorque.transpose()<<endl;
+    
+    //localTorque[1] = localTorque[2] = 0;
+    //dhdSetForceAndTorqueAndGripperForce(force_vec[0], force_vec[1], -force_vec[2], localTorque(0), localTorque(0), localTorque(0), 0); // sans blocage des rots
+    dhdSetForceAndTorqueAndGripperForce(force_vec[0], force_vec[1], -force_vec[2], 0, -localTorque(0), 0, 0); // sans blocage des rots
+    ////////////////////////////////*/
