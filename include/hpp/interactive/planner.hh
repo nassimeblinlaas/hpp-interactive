@@ -19,6 +19,7 @@
 #define HPP_INTERACTIVE_PLANNER_HH
 
 # include <vector>
+#include <list>
 # include <boost/tuple/tuple.hpp>
 # include <boost/thread/thread.hpp>
 # include <hpp/interactive/fwd.hh>
@@ -51,8 +52,9 @@ namespace hpp {
 
       void InteractiveDeviceThread();
       void ActuateArm();
-      fcl::DistanceResult FindNearestObstacle();
+      bool FindNearestObstacle(std::vector<fcl::DistanceResult>& vect);
       void ShowBounds();
+      void AfficherReperes(bool contact[3], std::vector<fcl::DistanceResult>);
       //void ForceFeedback();
     protected:
       /// Constructor

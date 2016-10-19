@@ -41,6 +41,8 @@
 #include <math.h>
 #include <pthread.h>
 #include <Eigen/Geometry>
+#include <algorithm>
+
 
 typedef se3::SE3::Vector3 Vector3;
 typedef se3::SE3::Matrix3 Matrix3;
@@ -59,129 +61,171 @@ namespace hpp {
     using model::displayConfig;
     using namespace std;
     short int nb_launchs = 0;
-
+//////////// var glob
     fcl::Vec3f org_temp;
     fcl::Vec3f prev_org_temp;
     fcl::Vec3f obj_temp;
-    Eigen::Vector3f d_com_near_point_;
+    Eigen::Vector3f d_com_near_point_[3];
     double d_;      
     bool change_obst_;
-
+    bool collision_[3];
     Eigen::Matrix3f camMat;
-    Eigen::Vector3d deviceForce;
-    Eigen::Vector3d deviceTorque;
-    Eigen::Vector3f normal;
-    
+    Eigen::Vector3f normal[3];
+
     boost::mutex normal_mutex;
+    boost::mutex results_mutex;
 
+    graphics::corbaServer::Client* client_ptr;
 
+    vector<fcl::DistanceResult> results;
+    vector<fcl::DistanceResult> results_cpy;
+    vector<fcl::DistanceResult> prev_results;
+//////////// var glob
 
-void* ForceFeedback(void*){
-  double dnn[7];
-  Eigen::Vector3f temp, pos, force_vec, prev_force_vec, obst, normale, signes;
-  Eigen::Vector3d obst_d;
-  Eigen::Matrix3d center;
-  double err, force, gain, D, kP;
-  bool force_feed = false;
-  gain = 100;
-  double max=5;
-  drdStart(); 
-  bool base, wrist, grip;
-  base = wrist = grip = false;
+    void* ForceFeedback(void*){
+      graphics::corbaServer::Client& client_ref(*client_ptr);
+      double dnn[7];
+      Eigen::Vector3f temp, pos, force_vec, prev_force_vec, obst, obst2, normale, normale2, signes;
+      Eigen::Vector3d obst_d;
+      Eigen::Matrix3d center;
+      double err, err2, force, gain, D, D2, kP;
+      bool force_feed = false;
+      gain = 100;
+      double max=5;
+      drdStart(); 
+      bool base, wrist, grip;
+      base = wrist = grip = false;
 
-  drdRegulatePos  (false);
-  drdRegulateGrip (false);
-  drdRegulateRot  (false);
+      drdRegulatePos  (false);
+      drdRegulateGrip (false);
+      drdRegulateRot  (false);
 
-  bool prev_ff = false;
-  sleep(3);
-  long int iteration = 0;
-  while(1){
-    obst.setZero();
-    pos.setZero();
-    temp.setZero();
-    normal_mutex.lock();
-    normale = normal;
-    normal_mutex.unlock();
-    pos = SixDOFMouseDriver::getTransformationNoMutex().translation();
-    for (int i=0; i<3; i++){
-      obst[i]=(float)org_temp[i];
-    }
-    // départ du plan P
-    temp=obst-d_*normale;
-    // équation du plan P: Ax+By+Cz+D=0;
-    D=-(temp[0]*normale[0]+temp[1]*normale[1]+temp[2]*normale[2]);
-    // position du point proche de l'objet par rapport à P
-    err = (pos[0]+d_com_near_point_[0])*normale[0]+
-      (pos[1]+d_com_near_point_[1])*normale[1]+
-      (pos[2]+d_com_near_point_[2])*normale[2]+D;
-    kP = err * gain;
-    force = kP;
-    force_feed = err > 0;
+      bool prev_ff = false;
+      sleep(3);
+      long int iteration = 0;
+      Eigen::Vector3f d_com_near_point;
+      d_com_near_point.setZero();
+      obst.setZero();
+      pos.setZero();
+      temp.setZero();
+      while(1){
+        iteration++;
 
-
-    if (force_feed != prev_ff)
-    {
-      drdRegulateRot(force_feed);
-      prev_ff = force_feed;
-    }
-  
-    
-    if (force_feed){
-      force_vec = normale*(float)force;
-      for (int i = 0 ;i<3; i++) if (force_vec[i]>max){force_vec[i]=signes[i]*max; cout<<"max dépassé sur "<<i<<endl;}
-      // protection 1 : lissage
-      // bah ça fait pas grand chose
-      for (int i=0; i<3;i++){
-        double diff = force_vec(i)-prev_force_vec(i);
-        if(fabs(diff)>1){
-          //cout << " diff sur "<<i << " force "<<force_vec.transpose()<<" prevf "<<prev_force_vec.transpose(); 
-          force_vec[i] = prev_force_vec(i)+0.02*signe(diff);
-          //cout << " change " <<force_vec.transpose()<<endl; 
+        results_mutex.lock();
+        results_cpy = results;
+        results_mutex.unlock();
+        pos = SixDOFMouseDriver::getTransformationNoMutex().translation();
+        for (int i=0; i<3; i++){
+          obst[i]=(float)results_cpy[0].nearest_points[0][i];//(float)org_temp[i];
+          obst2[i]=(float)results_cpy[1].nearest_points[0][i];
         }
-        if (fabs(force_vec(i))<1e-5) force_vec[i]=0;
+        normal_mutex.lock();
+        normale = normal[0];
+        normale2 = normal[1];
+        normal_mutex.unlock();
+        // départ du plan P
+        temp=obst-d_*normale;
+        // équation du plan P: Ax+By+Cz+D=0;
+        D=-(temp[0]*normale[0]+temp[1]*normale[1]+temp[2]*normale[2]);
+        // départ du plan P2
+        temp=obst2-d_*normale2;
+        // équation du plan P: Ax+By+Cz+D=0;
+        D2=-(temp[0]*normale2[0]+temp[1]*normale2[1]+temp[2]*normale2[2]);
+        // position du point proche de l'objet par rapport à P
+        //cout << "ffd " << (float)results_cpy[0].nearest_points[1][0]<< " " <<(float)results_cpy[0].nearest_points[1][1]<<" " << (float)results_cpy[0].nearest_points[1][2]<< " dcom " << d_com_near_point.transpose()<<endl;
+ 
+       err = (pos[0]+d_com_near_point_[0][0])*normale[0]+
+          (pos[1]+d_com_near_point_[0][1])*normale[1]+
+          (pos[2]+d_com_near_point_[0][2])*normale[2]+D;
+       err2 = (pos[0]+d_com_near_point_[0][0])*normale2[0]+
+          (pos[1]+d_com_near_point_[0][1])*normale2[1]+
+          (pos[2]+d_com_near_point_[0][2])*normale2[2]+D;
+        //cout << "ffd1 " << pos[0]<< " " <<pos[1]<<" " << pos[2]<< " dcom " << d_com_near_point_.transpose()<<" err " << err << endl;
+  
+       //err = (pos[0]+d_com_near_point[0])*normale[0]+
+          //(pos[1]+d_com_near_point[1])*normale[1]+
+          //(pos[2]+d_com_near_point[2])*normale[2]+D;
+        //cout << " dcom_ " << d_com_near_point_[0].transpose() << " dcom " << err << endl;
+        //if (iteration%200==0)cout << "ffd2 near point" << (float)results_cpy[0].nearest_points[1][0]<< " " <<(float)results_cpy[0].nearest_points[1][1]<<" " << (float)results_cpy[0].nearest_points[1][2]<< " dcom " << d_com_near_point.transpose()<< " err "<<err<<endl;
+        kP = err * gain;
+        force = kP;
+        force_feed = err > 0;
+        //cout << "obst="<<obst.transpose()<<" pos="<<pos.transpose()<<" D="<<D<<" err="<<err<<" force="<<force<<" n "<<normale.transpose()<<" f_vec"<<force_vec.transpose()<<endl; 
+        //cout << force_feed<<endl;
+
+        if (force_feed != prev_ff)
+        {
+          drdRegulateRot(force_feed);
+          prev_ff = force_feed;
+          //if (prev_ff){
+            //string nom_ligne = "0_scene_hpp_/ligne_force";
+            //string ind = boost::lexical_cast<std::string>(iteration);
+            //nom_ligne += ind;
+            //client_ref.gui()->setVisibility(nom_ligne.c_str(), "OFF");
+          //} 
+        }
+
+
+        if (force_feed){
+          /////
+          //string nom_ligne = "0_scene_hpp_/ligne_force";
+          //string ind = boost::lexical_cast<std::string>(iteration);
+          //nom_ligne += ind;
+          //if (iteration > 0){
+          //cout << "index " << iteration << " obj à cacher " << nom_ligne << endl;
+          //client_ref.gui()->setVisibility(nom_ligne.c_str(), "OFF");
+          //}
+          //iteration++;
+          //nom_ligne = "0_scene_hpp_/ligne_force";
+          //ind = boost::lexical_cast<std::string>(iteration);
+          //nom_ligne += ind;
+          //gepetto::corbaserver::Color color;
+          //color[0] = 0.3; color[1] = 0.7; color[2] = 0.2; color[3] = 1.;
+          //gepetto::corbaserver::Position v = {obst[0], obst[1], obst[2]};
+          //Eigen::Vector3f t = normal * kP*10;
+          //gepetto::corbaserver::Position w = {t[0], t[1], t[2]};
+          //client_ref.gui()->addLine(nom_ligne.c_str(), v, w, &color[0]);
+
+          force_vec = normale*(float)force;
+
+          // protection 1 : seuillage
+          for (int i = 0 ;i<3; i++) if (force_vec[i]>max){force_vec[i]=signes[i]*max; /*cout<<"max dépassé sur "<<i<<endl;*/}
+          // protection 2 : lissage
+          // bah ça fait pas grand chose
+          for (int i=0; i<3;i++){
+            double diff = force_vec(i)-prev_force_vec(i);
+            if(fabs(diff)>1){
+              //cout << " diff sur "<<i << " force "<<force_vec.transpose()<<" prevf "<<prev_force_vec.transpose(); 
+              force_vec[i] = prev_force_vec(i)+0.02*signe(diff);
+              //cout << " change " <<force_vec.transpose()<<endl; 
+            }
+            if (fabs(force_vec(i))<1e-5) force_vec[i]=0;
+          }
+          /////////////////////////////////////////////////////
+
+          prev_force_vec = force_vec;
+          //if (change_obst_) iteration = 0; 
+        }
+        else{
+        if(collision_[0])d_com_near_point = {
+          (float)results_cpy[0].nearest_points[1][0] - pos[0],
+          (float)results_cpy[0].nearest_points[1][1] - pos[1],
+          (float)results_cpy[0].nearest_points[1][2] - pos[2]};
+          //iteration = 0;
+          force_vec.setZero();
+          for (int i=0; i<3; i++) signes[i]=signe((float)results_cpy[0].nearest_points[0][i]//org_temp[i]
+            -pos[i]);
+        }
+
+        dnn[0] = force_vec(0);
+        dnn[1] = force_vec(1);
+        dnn[2] = -force_vec(2);
+        drdSetForceAndTorqueAndGripperForce (dnn);  // avec blocage des rots
+
       }
-      prev_force_vec = force_vec;
-      if (change_obst_) iteration = 0; 
+      return NULL;
+
     }
-    else{
-      force_vec.setZero();
-      for (int i=0; i<3; i++) signes[i]=signe(org_temp[i]-pos[i]);
-    }
-    dnn[0] = force_vec(0);
-    dnn[1] = force_vec(1);
-    dnn[2] = -force_vec(2);
-    drdSetForceAndTorqueAndGripperForce (dnn);  // avec blocage des rots
-    
-  }
-  return NULL;
-
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -192,17 +236,17 @@ void* ForceFeedback(void*){
 
 
     Planner::Planner (const Problem& problem,
-					const RoadmapPtr_t& roadmap) :
+        const RoadmapPtr_t& roadmap) :
       PathPlanner (problem, roadmap),
       configurationShooter_ (problem.configurationShooter()),
       qProj_ (problem.robot ()->configSize ()),
       client_(0, NULL)
     {
-
+      client_ptr = &client_;
       nb_launchs++;
-      type_ = 2; //device type 1 mouse 2 sigma7
+      type_ = 1; //device type 1 mouse 2 sigma7
       random_prob_ = 0; // 0 all human  1 all machine
-      d_ = 0.01; // distance entrée mode contact
+      d_ = 0.31; // distance entrée mode contact
       Planner::mode_contact_ = false;
       change_obst_ = false;
       //force_feedback_=false;
@@ -247,18 +291,19 @@ void* ForceFeedback(void*){
       (*config)[6] = 0;
       actual_configuration_ptr_ = config;
       // launch interactive thread 
-      
+
       // using solveanddisplay relaunches planner -> anti core dump protection
       if (nb_launchs<2){
         boost::thread th1(boost::bind( &Planner::InteractiveDeviceThread,this));
         //boost::thread th2(boost::bind( &Planner::ActuateArm,this));
-        pthread_t          handle;
-        pthread_create (&handle, NULL, ForceFeedback, NULL);
-        struct sched_param sp; 
-        memset (&sp, 0, sizeof(struct sched_param));
-        sp.sched_priority = 10; 
-        pthread_setschedparam (handle, SCHED_RR, &sp);
-
+        if (type_==2){
+          pthread_t          handle;
+          pthread_create (&handle, NULL, ForceFeedback, NULL);
+          struct sched_param sp; 
+          memset (&sp, 0, sizeof(struct sched_param));
+          sp.sched_priority = 10; 
+          pthread_setschedparam (handle, SCHED_RR, &sp);
+        }
       }
     }
 
@@ -267,6 +312,7 @@ void* ForceFeedback(void*){
       gepetto::corbaserver::Color color;
       color[0] = 1; color[1] = 1; color[2] = 1; color[3] = 1.;
       int index_lignes = 0;
+      int index_lignes2 = 0;
       sleep(1);//TODO ceci pour régler le pb init curseur viteuf, à changer
       bool init = false;
       cout << "InteractiveDevice thread...\n";
@@ -297,27 +343,19 @@ void* ForceFeedback(void*){
           tr[2] = trans_temp.translation()[2];
         }
         if (type_==2){
-          Eigen::Vector3f translate;
-          translate << trans_temp.translation()[0], 
-                    trans_temp.translation()[1],
-                    trans_temp.translation()[2];
-          Eigen::Matrix3f rot90x;
-          Eigen::Matrix3f rot90y;
-          Eigen::Matrix3f rot90z;
-          //double angle = 3.14159265/2;
-          //rot90z << cos(angle), -sin(angle), 0, 
-          //sin(angle), cos(angle),  0,
-          //0,          0,           1;
-          //rot90x << 1, 0, 0,
-          //0, cos(angle), -sin(angle),
-          //0, sin(angle), cos(angle);
-          //rot90y << cos(angle), 0, sin(angle),
-          //0, 1, 0,
-          //-sin(angle), 0, cos(angle);  
-          //translate = translate.transpose() * rot90y;
-          tr[0] = translate[0]; // version sigma7
-          tr[1] = translate[1];
-          tr[2] = translate[2];
+          //Eigen::Vector3f translate;
+          //translate << trans_temp.translation()[0], 
+                    //trans_temp.translation()[1],
+                    //trans_temp.translation()[2];
+          //Eigen::Matrix3f rot90x;
+          //Eigen::Matrix3f rot90y;
+          //Eigen::Matrix3f rot90z;
+          //tr[0] = translate[0]; // version sigma7
+          //tr[1] = translate[1];
+          //tr[2] = translate[2];
+          tr[0] = trans_temp.translation()[0];
+          tr[1] = trans_temp.translation()[1];
+          tr[2] = trans_temp.translation()[2];
         }
         tr[3] = (float)quat.w()/(float)mag;
         tr[4] = (float)quat.x()/(float)mag;
@@ -395,28 +433,39 @@ void* ForceFeedback(void*){
            << endl;
         //*/
 
-        // méthode de recherche du plus proche obst par itération
-        fcl::DistanceResult result;
-        result.min_distance = 999;
-        bool collision = false;
-        result = FindNearestObstacle();
-        collision = result.min_distance == -1 ? true : false;
+        collision_[0] = false;
+        vector<fcl::DistanceResult> results_temp;
+        FindNearestObstacle(results_temp);
+        results_mutex.lock();
+        results.clear();
+        results = results_temp;
+        fcl::DistanceResult result = results[0];
+        results_mutex.unlock();
+        //result.min_distance = 999;
+        collision_[0] = result.min_distance == -1 ? true : false;
+        collision_[1] = results[1].min_distance == -1 ? true : false;
         //cout << "result.min_distance " << result.min_distance << endl;
         org_temp = result.nearest_points[0];
         change_obst_ = (org_temp-prev_org_temp).norm()>0.001;
         //change_obst_ = org_temp!=prev_org_temp;
         if(result.min_distance==-1)org_temp=prev_org_temp;
+        if(results[0].min_distance==-1)results[0]=prev_results[0];
+        if(results[1].min_distance==-1)results[1]=prev_results[1];
         prev_org_temp=org_temp;
-        
+        prev_results = results; 
         obj_temp = result.nearest_points[1];
         dist_cont_ = result.min_distance;
         robot_mutex_.unlock();
         //cout << "robot_mutex_unlock device thread\n";
+        bool contact[3];
+        for (int i=0; i<3; i++)contact[i] = results_temp[i].min_distance<d_;
+        AfficherReperes(contact, results_temp); 
         
-        //cout << "ligne 365  " << org_temp << "\t" << obj_temp << endl;
+
         //*
         // //////////////////////////////////////////////////////////////////
-        if (contact_activated_ && !collision && !Planner::mode_contact_){
+        if (contact_activated_ && !collision_[0] && !Planner::mode_contact_){
+          index_lignes2 = 0;
 
           //cout << " dist obstacle " << result.min_distance << std::endl;
 
@@ -443,38 +492,46 @@ void* ForceFeedback(void*){
             if (distance_mutex_.try_lock()) // TODO mutex inoptimal
             {
               normal_mutex.lock();
-              normal={
-                  (float)(result.nearest_points[0][0] - result.nearest_points[1][0]),
-                  (float)(result.nearest_points[0][1] - result.nearest_points[1][1]),
-                  (float)(result.nearest_points[0][2] - result.nearest_points[1][2])
-                  };
-              normal.normalize();
+              normal[0]={
+                (float)(result.nearest_points[0][0] - result.nearest_points[1][0]),
+                (float)(result.nearest_points[0][1] - result.nearest_points[1][1]),
+                (float)(result.nearest_points[0][2] - result.nearest_points[1][2])
+              };
+              normal[0].normalize();
+              normal[1]={
+                (float)(results[1].nearest_points[0][0] - results[1].nearest_points[1][0]),
+                (float)(results[1].nearest_points[0][1] - results[1].nearest_points[1][1]),
+                (float)(results[1].nearest_points[0][2] - results[1].nearest_points[1][2])
+              };
+              normal[1].normalize();
               normal_mutex.unlock();
               //cout << "normale " << normal(0)<< " " << normal(1) << " "<< normal(2) << endl;
               //for (int i=0; i< 3; i++)
-                //if (abs(normal(i))<(1e-10)) normal(i) = 0;
+              //if (abs(normal(i))<(1e-10)) normal(i) = 0;
               //cout << "normale " << normal(0)<< " " << normal(1) << " "<< normal(2) << endl;
               //double norm_of_normal = sqrt( pow(normal(0), 2) +
-                  //pow(normal(1), 2) +
-                  //pow(normal(2), 2) );
+              //pow(normal(1), 2) +
+              //pow(normal(2), 2) );
               //cout << "norm of normale " << norm_of_normal << endl;
               //normal(0) = normal(0)/(float)norm_of_normal;
               //normal(1) = normal(1)/(float)norm_of_normal;
               //normal(2) = normal(2)/(float)norm_of_normal;
               //cout << "normale " << normal(0)<< " " << normal(1) << " "<< normal(2) << endl;
-              d_com_near_point_ = {
-                  (float)result.nearest_points[1][0] - trans_temp.translation()[0],
-                  (float)result.nearest_points[1][1] - trans_temp.translation()[1],
-                  (float)result.nearest_points[1][2] - trans_temp.translation()[2]};
+              //cout <<"là. near point "<<(float)result.nearest_points[1][0]<<"."<<(float)result.nearest_points[1][1]<<"."<<(float)result.nearest_points[1][2]<<".pos "<< trans_temp.translation()[0]<<"."<<trans_temp.translation()[1]<<trans_temp.translation()[2]<<" dcom "<<d_com_near_point_[0].transpose()<<endl;
+
+              d_com_near_point_[0] = {
+                (float)results[0].nearest_points[1][0] - trans_temp.translation()[0],
+                (float)results[0].nearest_points[1][1] - trans_temp.translation()[1],
+                (float)results[0].nearest_points[1][2] - trans_temp.translation()[2]};
               //cout << "d_com_near_point " << d_com_near_point(0)<< " " << d_com_near_point(1) << " "<< d_com_near_point(2) << endl;
-              distances_[0] = (float) (0.0 + normal(0) * d_com_near_point_(0));
-              distances_[1] = (float) (0.0 + normal(1) * d_com_near_point_(1));
-              distances_[2] = (float) (0.0 + normal(2) * d_com_near_point_(2));
+              distances_[0] = (float) (0.0 + normal[0](0) * d_com_near_point_[0](0));
+              distances_[1] = (float) (0.0 + normal[0](1) * d_com_near_point_[0](1));
+              distances_[2] = (float) (0.0 + normal[0](2) * d_com_near_point_[0](2));
               //cout<<"distances_ "<<distances_[0]<<" "<<distances_[1]<<" "<<distances_[2]<<endl;
               distance_ = (float)sqrt(
-                pow((float)result.nearest_points[1][0] - trans_temp.translation()[0], 2) +
-                pow((float)result.nearest_points[1][1] - trans_temp.translation()[1], 2) +
-                pow((float)result.nearest_points[1][2] - trans_temp.translation()[2], 2));
+                  pow((float)result.nearest_points[1][0] - trans_temp.translation()[0], 2) +
+                  pow((float)result.nearest_points[1][1] - trans_temp.translation()[1], 2) +
+                  pow((float)result.nearest_points[1][2] - trans_temp.translation()[2], 2));
               //distance_ = 0.05;
               distance_mutex_.unlock();
             }
@@ -492,6 +549,8 @@ void* ForceFeedback(void*){
             if (!Planner::mode_contact_)
               modified_gram_schmidt(MGS, A);
 
+
+            /*
             // afficher le repère local // //////////////////////////////////////////
             string nom_ligne = "0_scene_hpp_/ligne";
             string ind = boost::lexical_cast<std::string>(index_lignes);
@@ -503,6 +562,8 @@ void* ForceFeedback(void*){
               client_.gui()->setVisibility(axe.c_str(), "OFF");
               axe = nom_ligne +='b';
               client_.gui()->setVisibility(axe.c_str(), "OFF");
+              //axe = nom_ligne +='c';
+              //client_.gui()->setVisibility(axe.c_str(), "OFF");
             }
             index_lignes++;
             nom_ligne = "0_scene_hpp_/ligne";
@@ -515,25 +576,29 @@ void* ForceFeedback(void*){
             w[2] = v[2] + MGS.col[1].v[2];
             string axe = nom_ligne +='a';
             client_.gui()->addLine(axe.c_str(), v, w, &color[0]);
+
             w[0] = v[0] + MGS.col[2].v[0];
             w[1] = v[1] + MGS.col[2].v[1];
             w[2] = v[2] + MGS.col[2].v[2];
             axe = nom_ligne +='b';
             client_.gui()->addLine(axe.c_str(), v, w, &color[0]);
+            //axe = nom_ligne +='c';
+            //client_.gui()->addLine(axe.c_str(), v2, w2, &color[0]);
             // //////////////////////////////////////////////////////////////
+            //*/
 
-            ::Eigen::Matrix3f MGS_;
-            MGS_ << MGS.col[0].v[0],
-                 MGS.col[1].v[0],
-                 MGS.col[2].v[0],
-                 MGS.col[0].v[1],
-                 MGS.col[1].v[1],
-                 MGS.col[2].v[1],
-                 MGS.col[0].v[2],
-                 MGS.col[1].v[2],
-                 MGS.col[2].v[2];
-            NewMinBounds = MGS_*min;
-            NewMaxBounds = MGS_*max;
+            //::Eigen::Matrix3f MGS_;
+            //MGS_ << MGS.col[0].v[0],
+                 //MGS.col[1].v[0],
+                 //MGS.col[2].v[0],
+                 //MGS.col[0].v[1],
+                 //MGS.col[1].v[1],
+                 //MGS.col[2].v[1],
+                 //MGS.col[0].v[2],
+                 //MGS.col[1].v[2],
+                 //MGS.col[2].v[2];
+            //NewMinBounds = MGS_*min;
+            //NewMaxBounds = MGS_*max;
 
             //cout << "d=" << result.min_distance << " \n";//<< std::endl;
             if (result.min_distance<d_){
@@ -554,11 +619,122 @@ void* ForceFeedback(void*){
             //else force_feedback_ = false; // TODO rechanger la condition
           }// fin gram schmidt
         }// fin activation contact
+        
         // show modifications on screen
         client_.gui()->refresh();
       }// fin while(1) 
 
     }
+//*
+    void Planner::AfficherReperes(bool contact[3], vector<fcl::DistanceResult> results){
+      se3::SE3 trans_temp = SixDOFMouseDriver::getTransformation();
+      gepetto::corbaserver::Color color;
+      color[0] = 1; color[1] = 1; color[2] = 1; color[3] = 1.;
+      static int index_lignes=0;
+      static int index_lignes2=0;
+      // point sur le robot
+      gepetto::corbaserver::Position v = {
+        (float)results[0].nearest_points[0][0],
+        (float)results[0].nearest_points[0][1],
+        (float)results[0].nearest_points[0][2]};
+      // point sur l'obstacle
+      gepetto::corbaserver::Position w = {
+        (float)results[0].nearest_points[1][0],
+        (float)results[0].nearest_points[1][1],
+        (float)results[0].nearest_points[1][2]};
+      cout << index_lignes<<endl;
+      //cout << "index " << index_lignes << " obj à cacher " << nom_ligne << endl;
+
+      // toujours tenter d'effacer le repère 2
+      string nom_ligne = "0_scene_hpp_/ligne";
+      string ind = boost::lexical_cast<std::string>(index_lignes);
+      nom_ligne += ind;
+      ind = boost::lexical_cast<std::string>(index_lignes2);
+      nom_ligne += ind ;
+      nom_ligne +='c';
+      cout << " obj à cacher " << nom_ligne << endl;
+      client_.gui()->setVisibility(nom_ligne.c_str(), "OFF");
+      //}
+      if (!contact [0])
+      {
+        // effacer l'ancien repère 1 si pas de contact sinon, le garder
+        nom_ligne = "0_scene_hpp_/ligne";
+        ind = boost::lexical_cast<std::string>(index_lignes);
+        nom_ligne += ind;
+        client_.gui()->setVisibility(nom_ligne.c_str(), "OFF");
+        string axe = nom_ligne +='a';
+        client_.gui()->setVisibility(axe.c_str(), "OFF");
+        axe = nom_ligne +='b';
+        client_.gui()->setVisibility(axe.c_str(), "OFF");
+
+        index_lignes++;
+        // afficher le repère local // //////////////////////////////////////////
+        nom_ligne = "0_scene_hpp_/ligne";
+        ind = boost::lexical_cast<std::string>(index_lignes);
+        nom_ligne += ind;
+        client_.gui()->addLine(nom_ligne.c_str(), v, w, &color[0]);
+        // afficher les deux axes manquants du repère
+        w[0] = v[0] + MGS.col[1].v[0];
+        w[1] = v[1] + MGS.col[1].v[1];
+        w[2] = v[2] + MGS.col[1].v[2];
+        axe = nom_ligne +='a';
+        client_.gui()->addLine(axe.c_str(), v, w, &color[0]);
+
+        w[0] = v[0] + MGS.col[2].v[0];
+        w[1] = v[1] + MGS.col[2].v[1];
+        w[2] = v[2] + MGS.col[2].v[2];
+        axe = nom_ligne +='b';
+        client_.gui()->addLine(axe.c_str(), v, w, &color[0]);
+        //axe = nom_ligne +='c';
+        //client_.gui()->addLine(axe.c_str(), v2, w2, &color[0]);
+        // //////////////////////////////////////////////////////////////
+
+      } 
+      if (contact[0] && !contact[1]){
+        d_com_near_point_[0] = {
+          (float)results[0].nearest_points[1][0] - trans_temp.translation()[0],
+          (float)results[0].nearest_points[1][1] - trans_temp.translation()[1],
+          (float)results[0].nearest_points[1][2] - trans_temp.translation()[2]};
+        gepetto::corbaserver::Position v2 = {
+          (float)results[1].nearest_points[0][0],
+          (float)results[1].nearest_points[0][1],
+          (float)results[1].nearest_points[0][2]};
+        gepetto::corbaserver::Position w2 = {
+          (float)results[1].nearest_points[1][0],
+          (float)results[1].nearest_points[1][1],
+          (float)results[1].nearest_points[1][2]};
+        d_com_near_point_[1] = {
+          (float)results[1].nearest_points[1][0] - trans_temp.translation()[0],
+          (float)results[1].nearest_points[1][1] - trans_temp.translation()[1],
+          (float)results[1].nearest_points[1][2] - trans_temp.translation()[2]};
+        // afficher le repère local // //////////////////////////////////////////
+        nom_ligne = "0_scene_hpp_/ligne";
+        ind = boost::lexical_cast<std::string>(index_lignes);
+        nom_ligne += ind;
+        client_.gui()->addLine(nom_ligne.c_str(), v, w, &color[0]);
+        nom_ligne = "0_scene_hpp_/ligne";
+        ind = boost::lexical_cast<std::string>(index_lignes);
+        nom_ligne += ind ;
+        ind = boost::lexical_cast<std::string>(index_lignes2);
+        nom_ligne += ind ;
+        nom_ligne +='c';
+        client_.gui()->setVisibility(nom_ligne.c_str(), "OFF");
+        //if (index_lignes > 0){
+        //}
+        index_lignes2++;
+        nom_ligne = "0_scene_hpp_/ligne";
+        ind = boost::lexical_cast<std::string>(index_lignes);
+        nom_ligne += ind;
+        ind = boost::lexical_cast<std::string>(index_lignes2);
+        nom_ligne += ind ;
+        nom_ligne +='c';
+        cout << " obj à afficher " << nom_ligne << endl;
+        //if (index_lignes > 0){
+        client_.gui()->addLine(nom_ligne.c_str(), v2, w2, &color[0]);
+        //// //////////////////////////////////////////////////////////////
+
+      }
+    }//*/
 
     void Planner::init (const PlannerWkPtr_t& weak)
     {
@@ -569,30 +745,30 @@ void* ForceFeedback(void*){
     bool belongs (const ConfigurationPtr_t& q, const Nodes_t& nodes)
     {
       for (Nodes_t::const_iterator itNode = nodes.begin ();
-	   itNode != nodes.end (); ++itNode) {
-	if (*((*itNode)->configuration ()) == *q) return true;
+          itNode != nodes.end (); ++itNode) {
+        if (*((*itNode)->configuration ()) == *q) return true;
       }
       return false;
     }
 
     PathPtr_t Planner::extend (const NodePtr_t& near,
-					const ConfigurationPtr_t& target)
+        const ConfigurationPtr_t& target)
     {
       const SteeringMethodPtr_t& sm (problem ().steeringMethod ());
       const ConstraintSetPtr_t& constraints (sm->constraints ());
       if (constraints) {
-	ConfigProjectorPtr_t configProjector (constraints->configProjector ());
-	if (configProjector) {
-	  configProjector->projectOnKernel (*(near->configuration ()), *target,
-					    qProj_);
-	} else {
-	  qProj_ = *target;
-	}
-	if (constraints->apply (qProj_)) {
-	  return (*sm) (*(near->configuration ()), qProj_);
-	} else {
-	  return PathPtr_t ();
-	}
+        ConfigProjectorPtr_t configProjector (constraints->configProjector ());
+        if (configProjector) {
+          configProjector->projectOnKernel (*(near->configuration ()), *target,
+              qProj_);
+        } else {
+          qProj_ = *target;
+        }
+        if (constraints->apply (qProj_)) {
+          return (*sm) (*(near->configuration ()), qProj_);
+        } else {
+          return PathPtr_t ();
+        }
       }
       return (*sm) (*(near->configuration ()), *target);
     }
@@ -698,45 +874,45 @@ void* ForceFeedback(void*){
       }
 
       for (ConnectedComponents_t::const_iterator itcc =
-	     roadmap ()->connectedComponents ().begin ();
-	   itcc != roadmap ()->connectedComponents ().end (); ++itcc) {
-	// Find nearest node in roadmap
-	value_type distance;
-	NodePtr_t near = roadmap ()->nearestNode (q_rand, *itcc, distance);
-	path = extend (near, q_rand);
-	if (path) {
-	  core::PathValidationReportPtr_t report;
-	  bool pathValid = pathValidation->validate (path, false, validPath,
-						     report);
-	  // Insert new path to q_near in roadmap
-	  value_type t_final = validPath->timeRange ().second;
-	  if (t_final != path->timeRange ().first) {
-	    ConfigurationPtr_t q_new (new Configuration_t
-				      (validPath->end ()));
-	    if (!pathValid || !belongs (q_new, newNodes)) {
-	      newNodes.push_back (roadmap ()->addNodeAndEdges
-				  (near, q_new, validPath));
-	    } else {
-	      // Store edges to add for later insertion.
-	      // Adding edges while looping on connected components is indeed
-	      // not recommended.
-	      delayedEdges.push_back (DelayedEdge_t (near, q_new, validPath));
-	    }
-	  }
-	}
+          roadmap ()->connectedComponents ().begin ();
+          itcc != roadmap ()->connectedComponents ().end (); ++itcc) {
+        // Find nearest node in roadmap
+        value_type distance;
+        NodePtr_t near = roadmap ()->nearestNode (q_rand, *itcc, distance);
+        path = extend (near, q_rand);
+        if (path) {
+          core::PathValidationReportPtr_t report;
+          bool pathValid = pathValidation->validate (path, false, validPath,
+              report);
+          // Insert new path to q_near in roadmap
+          value_type t_final = validPath->timeRange ().second;
+          if (t_final != path->timeRange ().first) {
+            ConfigurationPtr_t q_new (new Configuration_t
+                (validPath->end ()));
+            if (!pathValid || !belongs (q_new, newNodes)) {
+              newNodes.push_back (roadmap ()->addNodeAndEdges
+                  (near, q_new, validPath));
+            } else {
+              // Store edges to add for later insertion.
+              // Adding edges while looping on connected components is indeed
+              // not recommended.
+              delayedEdges.push_back (DelayedEdge_t (near, q_new, validPath));
+            }
+          }
+        }
       }
       // Insert delayed edges
       for (DelayedEdges_t::const_iterator itEdge = delayedEdges.begin ();
-	   itEdge != delayedEdges.end (); ++itEdge) {
-	const NodePtr_t& near = itEdge-> get <0> ();
-	const ConfigurationPtr_t& q_new = itEdge-> get <1> ();
-	const PathPtr_t& validPath = itEdge-> get <2> ();
-	NodePtr_t newNode = roadmap ()->addNode (q_new);
-	roadmap ()->addEdge (near, newNode, validPath);
-	interval_t timeRange = validPath->timeRange ();
-	roadmap ()->addEdge (newNode, near, validPath->extract
-			     (interval_t (timeRange.second ,
-					  timeRange.first)));
+          itEdge != delayedEdges.end (); ++itEdge) {
+        const NodePtr_t& near = itEdge-> get <0> ();
+        const ConfigurationPtr_t& q_new = itEdge-> get <1> ();
+        const PathPtr_t& validPath = itEdge-> get <2> ();
+        NodePtr_t newNode = roadmap ()->addNode (q_new);
+        roadmap ()->addEdge (near, newNode, validPath);
+        interval_t timeRange = validPath->timeRange ();
+        roadmap ()->addEdge (newNode, near, validPath->extract
+            (interval_t (timeRange.second ,
+                         timeRange.first)));
       }
 
       //
@@ -744,87 +920,95 @@ void* ForceFeedback(void*){
       //
       const SteeringMethodPtr_t& sm (problem ().steeringMethod ());
       for (Nodes_t::const_iterator itn1 = newNodes.begin ();
-	   itn1 != newNodes.end (); ++itn1) {
-	for (Nodes_t::const_iterator itn2 = boost::next (itn1);
-	     itn2 != newNodes.end (); ++itn2) {
-	  ConfigurationPtr_t q1 ((*itn1)->configuration ());
-	  ConfigurationPtr_t q2 ((*itn2)->configuration ());
-	  assert (*q1 != *q2);
-	  path = (*sm) (*q1, *q2);
-	  core::PathValidationReportPtr_t report;
-	  if (path && pathValidation->validate (path, false, validPath,
-						report)) {
-	    roadmap ()->addEdge (*itn1, *itn2, path);
-	    interval_t timeRange = path->timeRange ();
-	    roadmap ()->addEdge (*itn2, *itn1, path->extract
-				 (interval_t (timeRange.second,
-					      timeRange.first)));
-	  }
-	}
+          itn1 != newNodes.end (); ++itn1) {
+        for (Nodes_t::const_iterator itn2 = boost::next (itn1);
+            itn2 != newNodes.end (); ++itn2) {
+          ConfigurationPtr_t q1 ((*itn1)->configuration ());
+          ConfigurationPtr_t q2 ((*itn2)->configuration ());
+          assert (*q1 != *q2);
+          path = (*sm) (*q1, *q2);
+          core::PathValidationReportPtr_t report;
+          if (path && pathValidation->validate (path, false, validPath,
+                report)) {
+            roadmap ()->addEdge (*itn1, *itn2, path);
+            interval_t timeRange = path->timeRange ();
+            roadmap ()->addEdge (*itn2, *itn1, path->extract
+                (interval_t (timeRange.second,
+                             timeRange.first)));
+          }
+        }
       }
-    robot_mutex_.unlock();
-    //cout << "robot_mutex_unlock one step\n";
+      robot_mutex_.unlock();
+      //cout << "robot_mutex_unlock one step\n";
     }
 
     void Planner::configurationShooter
-    (const ConfigurationShooterPtr_t& shooter)
-    {
-      configurationShooter_ = shooter;
-    }
+      (const ConfigurationShooterPtr_t& shooter)
+      {
+        configurationShooter_ = shooter;
+      }
 
     // afficher bornes du problème
     void Planner::ShowBounds(){
-        gepetto::corbaserver::Color color_rouge;
-        color_rouge[0]=(float)1;color_rouge[1]=(float)0.2;
-        color_rouge[2]=(float)0;color_rouge[3]=(float)1;
-        std::cout << "joint bounds " <<
-                     this->problem().robot()->rootJoint()->lowerBound(0) << " " <<
-                     this->problem().robot()->rootJoint()->upperBound(0) << " " <<
-                     this->problem().robot()->rootJoint()->lowerBound(1) << " " <<
-                     this->problem().robot()->rootJoint()->upperBound(1) << " " <<
-                     this->problem().robot()->rootJoint()->lowerBound(2) << " " <<
-                     this->problem().robot()->rootJoint()->upperBound(2) << " " <<
+      gepetto::corbaserver::Color color_rouge;
+      color_rouge[0]=(float)1;color_rouge[1]=(float)0.2;
+      color_rouge[2]=(float)0;color_rouge[3]=(float)1;
+      std::cout << "joint bounds " <<
+        this->problem().robot()->rootJoint()->lowerBound(0) << " " <<
+        this->problem().robot()->rootJoint()->upperBound(0) << " " <<
+        this->problem().robot()->rootJoint()->lowerBound(1) << " " <<
+        this->problem().robot()->rootJoint()->upperBound(1) << " " <<
+        this->problem().robot()->rootJoint()->lowerBound(2) << " " <<
+        this->problem().robot()->rootJoint()->upperBound(2) << " " <<
         std::endl;
 
-        float mx = (float)this->problem().robot()->rootJoint()->lowerBound(0);
-        float my = (float)this->problem().robot()->rootJoint()->lowerBound(1);
-        float mz = (float)this->problem().robot()->rootJoint()->lowerBound(2);
-        float Mx = (float)this->problem().robot()->rootJoint()->upperBound(0);
-        float My = (float)this->problem().robot()->rootJoint()->upperBound(1);
-        float Mz = (float)this->problem().robot()->rootJoint()->upperBound(2);
+      float mx = (float)this->problem().robot()->rootJoint()->lowerBound(0);
+      float my = (float)this->problem().robot()->rootJoint()->lowerBound(1);
+      float mz = (float)this->problem().robot()->rootJoint()->lowerBound(2);
+      float Mx = (float)this->problem().robot()->rootJoint()->upperBound(0);
+      float My = (float)this->problem().robot()->rootJoint()->upperBound(1);
+      float Mz = (float)this->problem().robot()->rootJoint()->upperBound(2);
 
-        min << mx, my, mz;
-        max << Mx, My, Mz;
+      min << mx, my, mz;
+      max << Mx, My, Mz;
 
-        const gepetto::corbaserver::Position A = {(float)mx, (float)my, (float)mz};
-        const gepetto::corbaserver::Position B = {(float)Mx, (float)my, (float)mz};
-        const gepetto::corbaserver::Position C = {(float)Mx, (float)My, (float)mz};
-        const gepetto::corbaserver::Position D = {(float)mx, (float)My, (float)mz};
-        const gepetto::corbaserver::Position E = {(float)mx, (float)my, (float)Mz};
-        const gepetto::corbaserver::Position F = {(float)Mx, (float)my, (float)Mz};
-        const gepetto::corbaserver::Position G = {(float)Mx, (float)My, (float)Mz};
-        const gepetto::corbaserver::Position H = {(float)mx, (float)My, (float)Mz};
+      const gepetto::corbaserver::Position A = {(float)mx, (float)my, (float)mz};
+      const gepetto::corbaserver::Position B = {(float)Mx, (float)my, (float)mz};
+      const gepetto::corbaserver::Position C = {(float)Mx, (float)My, (float)mz};
+      const gepetto::corbaserver::Position D = {(float)mx, (float)My, (float)mz};
+      const gepetto::corbaserver::Position E = {(float)mx, (float)my, (float)Mz};
+      const gepetto::corbaserver::Position F = {(float)Mx, (float)my, (float)Mz};
+      const gepetto::corbaserver::Position G = {(float)Mx, (float)My, (float)Mz};
+      const gepetto::corbaserver::Position H = {(float)mx, (float)My, (float)Mz};
 
-        string borne = "0_scene_hpp_/borne";
-        borne +="i";
-        client_.gui()->addLine(borne.c_str(), A, B, &color_rouge[0]);borne +="i";
-        client_.gui()->addLine(borne.c_str(), B, C, &color_rouge[0]);borne +="i";
-        client_.gui()->addLine(borne.c_str(), C, D, &color_rouge[0]);borne +="i";
-        client_.gui()->addLine(borne.c_str(), D, A, &color_rouge[0]);borne +="i";
-        client_.gui()->addLine(borne.c_str(), E, F, &color_rouge[0]);borne +="i";
-        client_.gui()->addLine(borne.c_str(), F, G, &color_rouge[0]);borne +="i";
-        client_.gui()->addLine(borne.c_str(), G, H, &color_rouge[0]);borne +="i";
-        client_.gui()->addLine(borne.c_str(), H, E, &color_rouge[0]);borne +="i";
-        client_.gui()->addLine(borne.c_str(), A, E, &color_rouge[0]);borne +="i";
-        client_.gui()->addLine(borne.c_str(), B, F, &color_rouge[0]);borne +="i";
-        client_.gui()->addLine(borne.c_str(), C, G, &color_rouge[0]);borne +="i";
-        client_.gui()->addLine(borne.c_str(), D, H, &color_rouge[0]);
+      string borne = "0_scene_hpp_/borne";
+      borne +="i";
+      client_.gui()->addLine(borne.c_str(), A, B, &color_rouge[0]);borne +="i";
+      client_.gui()->addLine(borne.c_str(), B, C, &color_rouge[0]);borne +="i";
+      client_.gui()->addLine(borne.c_str(), C, D, &color_rouge[0]);borne +="i";
+      client_.gui()->addLine(borne.c_str(), D, A, &color_rouge[0]);borne +="i";
+      client_.gui()->addLine(borne.c_str(), E, F, &color_rouge[0]);borne +="i";
+      client_.gui()->addLine(borne.c_str(), F, G, &color_rouge[0]);borne +="i";
+      client_.gui()->addLine(borne.c_str(), G, H, &color_rouge[0]);borne +="i";
+      client_.gui()->addLine(borne.c_str(), H, E, &color_rouge[0]);borne +="i";
+      client_.gui()->addLine(borne.c_str(), A, E, &color_rouge[0]);borne +="i";
+      client_.gui()->addLine(borne.c_str(), B, F, &color_rouge[0]);borne +="i";
+      client_.gui()->addLine(borne.c_str(), C, G, &color_rouge[0]);borne +="i";
+      client_.gui()->addLine(borne.c_str(), D, H, &color_rouge[0]);
 
-        client_.gui()->refresh();
-}
+      client_.gui()->refresh();
+    }
+
+
+    bool sortDistances (fcl::DistanceResult i,fcl::DistanceResult j) {
+      return (i.min_distance<j.min_distance); 
+    }
 
     // returns an fcl distance request structure
-    fcl::DistanceResult Planner::FindNearestObstacle(){
+    bool Planner::FindNearestObstacle(vector<fcl::DistanceResult>&vect){
+      // méthode de recherche du plus proche obst par itération
+      //std::vector<std::pair<fcl::DistanceResult, std::pair<fcl::CollisionObject*, fcl::CollisionObject*> > vect;
+      //std::vector<fcl::DistanceResult> vect;
       fcl::DistanceRequest request(true, 0, 0, fcl::GST_INDEP);
       fcl::DistanceResult result;
       result.clear();
@@ -832,8 +1016,10 @@ void* ForceFeedback(void*){
       fcl::CollisionObject* obstacle_proche=0;
       fcl::CollisionObject* obst_temp=0;
       fcl::CollisionObject* robot_temp=0;
+      fcl::DistanceResult res[3];
       hpp::core::ObjectVector_t liste = this->problem().collisionObstacles();
       double min_dist = 999;
+      string impr="";
       for (hpp::core::ObjectVector_t::iterator it_obst = liste.begin();it_obst!=liste.end();++it_obst){
         obst_temp = &*(*it_obst)->fcl();
         for (hpp::model::ObjectIterator it_rob = this->problem().robot()->objectIterator(hpp::model::COLLISION);
@@ -841,34 +1027,46 @@ void* ForceFeedback(void*){
           robot_temp = &*(*it_rob)->fcl();
           result.clear();
           fcl::distance(obst_temp, robot_temp, request, result);
-          //cout << (*it_obst)->name() << "/" << (*it_rob)->name() << " " << result.min_distance << endl;
-          if (floor(1000*result.min_distance)/1000<min_dist){
-            if(result.min_distance==-1){
-              1;//collision = true; TODO vérifier que tout va bien
-            }
+          //if(result.min_distance<5)
+          result.min_distance=(floor(1000*result.min_distance)/1000);
+          impr+=(*it_obst)->name() + "/" + (*it_rob)->name() + " " + boost::lexical_cast<std::string>(result.min_distance)+"\n";
+          //if (floor(1000*result.min_distance)/1000<min_dist){
+          //if (1){ // TODO attention ceci enlève la correctio du bug ci dessous
+                    // je crois que c'est re-bon
+            //if(result.min_distance!=-1){
+            //}
+            vect.push_back(result); 
 
-            // TODO grave : un problème sur l'itération, les point objet change problème résolu : istance calculée depuis l'un ou l'autre corps de l'objet
-            robot_proche = robot_temp;
-            obstacle_proche = obst_temp;
-            min_dist = result.min_distance;
-          }
+            // TODO grave : un problème sur l'itération, le point objet change problème résolu : distance calculée depuis l'un ou l'autre corps de l'objet
+            //robot_proche = robot_temp;
+            //obstacle_proche = obst_temp;
+            //min_dist = result.min_distance;
+          //}
         }
       }
-
-      fcl::distance(obstacle_proche, robot_proche, request, result);
-      if (result.min_distance <d_&&result.min_distance!=-1) {
-        force_feedback_ = true;
-        //obj_ffb_ = result.nearest_points[1];
-      }
+      std::sort (vect.begin(), vect.end(), sortDistances);
+      //cout << impr<<endl;
+      //for (int i=0;i<vect.size();i++) cout << vect[i].min_distance<<endl;
+      //cout << endl;
+      //fcl::distance(obstacle_proche, robot_proche, request, result);
+      //cout << "vect";
+      //for (int i = 0; i< vect.size(); i++) cout << " " << vect[i].min_distance;
+      //cout << endl;
+      //if (result.min_distance <d_&&result.min_distance!=-1) {
+      //force_feedback_ = true;
+      //obj_ffb_ = result.nearest_points[1];
+      //}
       //cout << result.nearest_points[0] << " " << result.nearest_points[1] << endl;
-      return result;
+      //vect[0]=result;
+      return true;
     }
+
     PlannerPtr_t Planner::createWithRoadmap
-    (const Problem& problem, const RoadmapPtr_t& roadmap)
-    {
-      Planner* ptr = new Planner (problem, roadmap);
-      return PlannerPtr_t (ptr);
-    }
+      (const Problem& problem, const RoadmapPtr_t& roadmap)
+      {
+        Planner* ptr = new Planner (problem, roadmap);
+        return PlannerPtr_t (ptr);
+      }
 
     PlannerPtr_t Planner::create (const Problem& problem)
     {
@@ -886,466 +1084,3 @@ void* ForceFeedback(void*){
 
   } // namespace core
 } // namespace hpp
-
-
-          /*
-             cout << "config curseur        " <<
-          //    trans_temp << endl;
-          //    //  (*actual_configuration_ptr_)[0] =
-          trans_temp.translation()[0] << " " <<
-          //    (*actual_configuration_ptr_)[1] =
-          trans_temp.translation()[1] << " " <<
-          //    (*actual_configuration_ptr_)[2] =
-          trans_temp.translation()[2] << endl;
-          //*/
-
-
-
-
-
-
-//void* ForceFeedback_n(void*){
-//
-  ////clock_t begin, end, end2 ;
-  //Eigen::Vector3f signes, pos, force_vec, obst, normale;
-  //double err, obj, force, gain, max;
-  //gain = 100;
-  //obj = 0.3;
-  //max=15;max++;
-  //sleep(3);
-  //while(1){
-    //pos = SixDOFMouseDriver::getTransformationNoMutex().translation();
-    //for (int i=0; i<3; i++){
-      //signes[i]=signe(org_temp[i]-pos[i]);
-      //obst[i]=(float)org_temp[i]-signes[i]*(d_com_near_point_[i]+(float)d_); 
-     // 
-    //}
-    //err = (pos-obst).norm();
-    //if(err>0) force = err*gain;
-    //else force=0;
-   // 
-    //normale = (pos-obst) / (float)err;
-    //force_vec = (float)force * normale;
-    ////if (force>max)force=max*signe(force);
-    ////else force = 0;
-    //cout << "obj="<<obj<<" pos="<<pos.transpose()<<" err="<<err<<" force="<<force<<" n"<<normale<<" f_vec"<<force_vec<<endl; 
-    ////force_fd[0] = force;
-    ////force_fd.setZero();
-    //force_vec[0]=force_vec[2]=0;
-    //dhdSetForce(force_vec[0], force_vec[1], -force_vec[2]);
-   // 
-//
-  //}
-  //return NULL;
-//}
-
-
-
-
-
-
-//void* _ForceFeedback(void*){
-//
-  //clock_t begin, end, end2 ;
-  //Eigen::Vector3f signes, pos, force_fd;
-  //double tmps, err, obj, force, gain, max;
-  //gain = 100;
-  //obj = 0.3;
-  //max=15;
-  //sleep(3);
-  //while(1){
-    //for (int i=0; i<3; i++) signes[i]=signe(org_temp[i]-pos[i]);
-    //obj=org_temp[0]+signe[0]*(d_com_near_point_[0]+d_); 
-    //pos = SixDOFMouseDriver::getTransformationNoMutex().translation();
-    //err = pos[0]-obj;
-    //if (err>0){
-      //force = err*gain;
-      //if (force>max)force=max*signe(force);
-    //}
-    //else force = 0;
-    //cout << "obj="<<obj<<" pos="<<pos.transpose()<<" err="<<err<<" force="<<force<<endl; 
-    //force_fd[0] = force;
-    ////force_fd.setZero();
-    //dhdSetForce(force_fd[0], force_fd[1], force_fd[2]);
-   // 
-//
-  //}
-//}
-
-
-
-
-
-
-
-
-
-
-
-////void Planner::ForceFeedback(){
-//void* ForceFeedback_(void*){
-  //cout << "ForceFeedback thread...\n";
-  //sleep(1);
-//
-  //Eigen::Vector3d force_fd, prev_force_fd, torque_fd;
-  //Eigen::Vector3f pos;
-  //fcl::Vec3f obj_ffb, signes, normale, force_vec, p_0;
-  //double force, prev_force;
-  //double gain=3000;
-  //double force_max = 15;
-  //bool force_feed = false;
-  //double pen, pen_prev, pen_diff, delta_t;
-  //FILE * pFile;
-  //pFile = fopen ("log.csv","w");
-  //clock_t begin, end, end2 ;
-  //clock_t e1, e2;
- // 
-  //double elapsed_secs;
-  //long int iteration=0;
-  ////double a, b, c;
-  //e1=e2= clock();
-  //pen_prev = 0;
-  //fprintf (pFile, "t;posx;posy;posz;1000*p;1000*dp/dt;P;D;f\n");
-  //while(1){
-    //iteration++;
-    //begin = clock();
-    //pos = SixDOFMouseDriver::getTransformationNoMutex().translation();
-    ////end = clock();
-    ////double elapsed_secs = double(end - begin) / CLOCKS_PER_SEC;
-    ////if (force_feed) cout << "temps get=\t\t" <<elapsed_secs<<endl; 
-    //for (int i=0; i<3; i++) signes[i]=signe(org_temp[i]-pos[i]);
-    //obj_ffb= {pos[0]+d_com_near_point_[0], pos[1]+d_com_near_point_[1], pos[2]+d_com_near_point_[2]}; 
-    //p_0 = org_temp - obj_ffb; // vecteur obj->robot
-    //double p_0_norm = p_0.norm();
-    //force_feed = p_0_norm < d_ ? true : false;
-    ////if (!force_feed&&iteration%15==1) cout <<"pos "<<pos.transpose()<<"+dist " << d_com_near_point_[0]<<" "<< d_com_near_point_[1]<<" "<< d_com_near_point_[2]<<" " << "* sgn " << signes << "=obj "<<obj_ffb<< " obj-obst " << org_temp << "=p_0 "<<p_0<<" p_0_norm "<<p_0_norm<<endl;
-//
-    //cout << "obst"<<org_temp<<" obj"<<obj_ffb<<" obst-obj"<<p_0<<" norme"<<p_0_norm<<"\t\tFFB"<<force_feed<<endl;
-    ////end2 = clock();
-    ////elapsed_secs = double(end2 - end) / CLOCKS_PER_SEC;
-    ////if (force_feed) cout << "temps dist=\t\t" <<elapsed_secs<<endl; 
-    //if(force_feed){
-      //// terme proportionnel
-      //pen = d_ - p_0_norm;
-      //// derme dérivatif
-      //pen_diff = (pen-pen_prev);
-      //pen_prev = pen;
-      //e2 = clock();
-      //delta_t = e2 - e1;
-      //e1 = e2;
-      //double P = pen*gain;
-      //double D = pen_diff/delta_t*300*gain;
-      //// total 
-      //force = P;// + D;
-      //// normalisé 
-      //normale = p_0 / p_0_norm;
-      //force_vec = force * normale;
-     // 
-      ////end = clock();
-      ////elapsed_secs = double(end - end2) / CLOCKS_PER_SEC;
-      ////cout << "temps force=\t\t" <<elapsed_secs<<endl; 
-      ////cout << setprecision(5) << setw(5) << "pen (" << pen << "*"<<gain<<") *n " <<normale<<"="<<force_vec<<endl;
-     // 
-      ////if(iteration%1==1)fprintf (pFile, "obst;%f;%f;%f;obj;%f;%f;%f;p_0;%f;%f;%f;p0norm;%f;pen;%f;force;%f;%f;%f;\n",org_[0],org_[1],org_[2],obj_ffb[0],obj_ffb[1],obj_ffb[2],p_0[0],p_0[1],p_0[2],p_0.norm(),pen,force_vec[0],force_vec[1],force_vec[2]);
-      //double t = clock();
-      ////cout <<"t="<<t<<"\tpos="<<pos.transpose()<<"\tpen="<<pen<<"\tdpen"<<pen_diff<<"\tdt"<<delta_t<<"\tpen_der/dt="<<pen_diff/delta_t<<"\tP="<<P<<"\tD="<<D<<"\tforce="<<force<<endl;
-      ////if(iteration%10==1)
-      //fprintf (pFile, "%lf;%lf;%lf;%lf;%lf;%lf;%lf,%f,%f\n",t,pos[0],pos[1],pos[2],pen,pen_diff/delta_t,P,D,force);
-      ////force_fd.setZero();
-//
-      //// 0 avant arrière x rouge // 1 droite gauche y vert // 2 bas haut z bleu 
-      //force_fd[0] = force_vec[0];
-      //if (fabs(force_fd[0])>force_max)
-      //force_fd[0]=force_max*signes[0];
-      //if(force_fd[0]==-prev_force_fd[0])force_fd[0]=prev_force_fd[0];
-////
-      //force_fd[1] = force_vec[1];
-      //if (fabs(force_fd[1])>force_max)
-      //force_fd[1]=force_max*signes[0];
-      //if(force_fd[1]==-prev_force_fd[1])force_fd[1]=prev_force_fd[1];
-////
-      //force_fd[2] = -force_vec[2];
-      //if (fabs(force_fd[2])>force_max)
-      //force_fd[2]=force_max*signes[0];
-      //if(force_fd[2]==-prev_force_fd[2])force_fd[2]=prev_force_fd[2];
-    //}
-    //else{
-      //force_fd.setZero();
-      //torque_fd.setZero();
-      ////a=b=c=0;
-    //}
-    //torque_fd.setZero();
-    ////force_fd.setZero();
-    ////end2 = clock();
-    ////elapsed_secs = double(end2 - end) / CLOCKS_PER_SEC;
-    ////if (force_feed) cout << "temps save=\t\t" <<elapsed_secs<<endl; 
-    //for (int i=0; i<3; i++)force_fd[i]=(force_fd[i]+prev_force_fd[i])/2; 
-    ////deviceForce = force_fd;
-    ////deviceTorque = torque_fd;  
-    //double ff[7];
-    //ff[0] = force_fd[0]; 
-    //ff[1] = force_fd[1]; 
-    //ff[2] = force_fd[2]; 
-    //ff[3] = torque_fd[3];
-    //ff[4] = torque_fd[4];
-    //ff[5] = torque_fd[5];
-    //ff[6] = 0;
-    //end = clock();
-    //dhdSetForce(force_fd[0], force_fd[1], force_fd[2]);
-    //end2 = clock();
-    //elapsed_secs = double(end2 - end) / CLOCKS_PER_SEC;
-    ////if (force_feed) cout << "temps envoi=\t\t" <<elapsed_secs<<endl; 
-    ////dhdSetForceAndTorqueAndGripperForce (force_fd[0], force_fd[1], force_fd[2], torque_fd[0], torque_fd[1], torque_fd[2], 0.0);
-    ////SixDOFMouseDriver::setForceAndTorque(force_fd, torque_fd);
-    ////dhdSleep(0.1);
-    //prev_force_fd=force_fd;
-    ////end = clock();
-    ////elapsed_secs = double(end - end2) / CLOCKS_PER_SEC;
-    ////if (force_feed) cout << "temps envoi=\t\t" <<elapsed_secs<<endl; 
-    ////elapsed_secs = double(end - begin) / CLOCKS_PER_SEC;
-    ////if (force_feed) cout << "temps total=\t\t" <<elapsed_secs<<endl<<endl; 
-  //} 
-  //fclose (pFile);
-  //return 0;
-//}
-
-/*void lisser(Eigen::Vector3d force_fd, Eigen::Vector3d prev, Eigen::Vector3d torque_fd){
-  bool condi = false;
-  bool cond[3];
-  //double f[3];
-  short int signei[3];
-  for (int i=0;i<3;i++){
-    cond[i] = false;
-    //f[i]=prev[i];
-    signei[i] = signe(force_fd[i]-prev[i]);
-  }
-  while(!condi){
-    for (int i=0;i<3;i++){
-      cond[i]=(prev[i]!=force_fd[i]);
-      prev[i]+=signei[i];
-    }
-    SixDOFMouseDriver::setForceAndTorque(prev, torque_fd);
-    condi = cond[0] || cond[1] || cond[2];
-  }
-}*/
-/*
-
-void* ForceFeedback_(void*){
-
-  //clock_t begin, end, end2 ;
-  double dnn[7];
-  dnn[3] = 0;//force_vec(0);
-  dnn[4] = 0;//force_vec(0);
-  dnn[5] = 0;//force_vec(0);
-  dnn[6] = 0;//force_vec(0);
-  Eigen::Vector3f temp, pos, force_vec, prev_force_vec, obst, normale, signes;
-  Eigen::Vector3d obst_d;
-  double err, prev_err, force, gain, D, kP, kD, dt, begin, end;
-  double angles[3]; 
-  bool force_feed = false;
-  long int iteration = 0;
-  dhdGetOrientationRad(angles+0, angles+1, angles+2);
-  gain = 100;
-  double max=5;//max++;
-  drdStart(); 
-  drdRegulatePos  (false);
-  drdRegulateRot  (true);
-  drdRegulateGrip (false);
-
-  sleep(2);
-  Eigen::Matrix3d center;
-  while(1){
-    obst.setZero();
-    pos.setZero();
-    temp.setZero();
-    normal_mutex.lock();
-    normale = normal;
-    normal_mutex.unlock();
-    iteration++;
-    pos = SixDOFMouseDriver::getTransformationNoMutex().translation();
-    for (int i=0; i<3; i++){
-      obst[i]=(float)org_temp[i];
-      obst_d[i] = org_temp[i]; 
-    }
-    // départ du plan P
-    temp=obst-d_*normale;
-    // équation du plan P: Ax+By+Cz+D=0;
-    D=-(temp[0]*normale[0]+temp[1]*normale[1]+temp[2]*normale[2]);
-    // position du point proche de l'objet par rapport à P
-    err = (pos[0]+d_com_near_point_[0])*normale[0]+
-      (pos[1]+d_com_near_point_[1])*normale[1]+
-      (pos[2]+d_com_near_point_[2])*normale[2]+D;
-    end = clock();
-    dt = double(end - begin) / CLOCKS_PER_SEC;
-    //cout << "dt "<<dt<<endl;
-    begin = clock();
-    kP = err * gain;
-    kD = 0.002*gain*(err-prev_err)/dt;
-    prev_err = err;
-    force = kP;//+kD;
-    force_feed = err > 0;
-  
-  Eigen::Map<Eigen::Vector3d> torque  (&dnn[3], 3);
-  //Eigen::Map<Eigen::Vector3d> center  (&c[3], 3);
-    double r[3][3];
-    double c[3][3];
-    double KR = 0.3;
-    Eigen::Matrix3d rotation;
-      center.setIdentity ();
-      drdRegulateRot  (true);
-  
-    if (force_feed){
-      //cout<<"err "<<err<<" kP "<<kP<<" kD "<<kD<<endl;
-      force_vec = normale*(float)force;
-
-      // protection 1 : lissage
-      for (int i=0; i<3;i++){
-        double diff = force_vec(i)-prev_force_vec(i);
-        if(fabs(diff)>1){
-          //cout << " diff sur "<<i << " force "<<force_vec.transpose()<<" prevf "<<prev_force_vec.transpose(); 
-          force_vec[i] = prev_force_vec(i)+0.02*signe(diff);
-          //cout << " change " <<force_vec.transpose()<<endl; 
-        }
-        if (fabs(force_vec(i))<1e-5) force_vec[i]=0;
-      }
-      // protection 2 : limite
-      for (int i = 0 ;i<3; i++) if (force_vec[i]>max){force_vec[i]=signes[i]*max; cout<<"max dépassé sur "<<i<<endl;}
-      prev_force_vec = force_vec;
-      // protection 3 : blocage des rotations
-      //drdStop();
-      drdGetPositionAndOrientation(dnn, r);
-      for (int i=0; i<3; i++) rotation.row(i) = Eigen::Vector3d::Map(&r[i][0], 3);
-      Eigen::AngleAxisd deltaRotation (rotation.transpose() * center);
-      torque = rotation * (KR * deltaRotation.angle() * deltaRotation.axis());
-      //drdStart(); 
-      //drdMoveToRot(angles[0], angles[1], angles[2], false);
-      //double rien;
-      //dhdGetForceAndTorque(&rien, &rien, &rien, dnn+3, dnn+4, dnn+5);
-      //cout << "les couples "<<dnn[3]<<" "<<dnn[4]<<" "<<dnn[5]<<endl;
-      //force_vec.setZero();
-      //drdRegulateRot  (true);
-      //cout<<"pos="<<pos.transpose()<<" obst="<<obst.transpose()<<" D="<<D<<" err="<< err <<" n "<<normale.transpose()<<" sgn "<<signes.transpose()<<" force="<<force_vec.transpose()<<endl; 
-      //cout << "pos="<<pos.transpose()<<" obst="<<obst.transpose()<<" err="<< err <<" force="<<force_vec.transpose()<<endl; 
-    //dnn[3]=torque(0);
-    //dnn[4]=torque(1);
-    //dnn[5]=torque(2);
-    }
-    else{
-    // compute wrist centering torque
-    //torque = rotation * (KR * deltaRotation.angle() * deltaRotation.axis());
- 
-
-      //drdRegulateRot  (false);
-      // les signes ne doivent pas changer en cours de route si l'utilisateur pousse trop fort et dépasse le repère initial
-      drdGetPositionAndOrientation(dnn, c);
-      for (int i=0; i<3; i++) center.row(i) = Eigen::Vector3d::Map(&c[i][0], 3);
-      for (int i=0; i<3; i++){
-        signes[i]=signe(org_temp[i]-pos[i]);
-      }
-      //drdStop();
-      force = 0;
-      force_vec.setZero();
-      torque.setZero();
-      //dnn[3]=0;
-      //dnn[4]=0;
-      //dnn[5]=0;
-      dhdGetOrientationRad(angles+0, angles+1, angles+2);
-      //cout << "angles "<<angles[0]<<" "<<angles[1]<<" "<<angles[2]<<endl;
-    }
-
-
-    dnn[0] = force_vec(0);
-    dnn[1] = force_vec(1);
-    dnn[2] = -force_vec(2);
-    //if (force_feed) 
-    cout <<"dnn345 "<< dnn[3] << " " << dnn[4] << " " << dnn[5]<< endl;
-    //cout << "torques " << torque.transpose()<<endl;
-    //dhdSetForce(force_vec[0], force_vec[1], -force_vec[2]); // sans blocage des rots
-    //drdSetForceAndTorqueAndGripperForce (dnn);  // avec blocage des rots
-    
-    //force_vec[1] = force_vec[0] = 0;
-    //if(drdIsRunning()) {
-    //drdStop();
-    //cout <<"stop\n";
-    //}
-    //if(iteration%10==1)
-    //cout << localTorque.transpose()<<endl;
-    //localTorque.setZero(); 
-   //force_vec.setZero();
-
-
-  }
-
-    /////// cout /////////////////////////////////////////////////////////////////////
-    //cout << endl;
-    //double aa = temp[0]*normale[0];
-    //double ab = temp[1]*normale[1];
-    //double ac = temp[2]*normale[2];
-    //D = aa + ab + ac;
-    //cout <<" aa "<<aa<<"="<<temp[0]<<"*"<<normale[0];
-    //cout <<" ab "<<ab<<"="<<temp[1]<<"*"<<normale[1];
-    //cout <<" ac "<<ac<<"="<<temp[2]<<"*"<<normale[2];
-    //D = -D;
-      //cout <<"zero\n";
-    //cout << "pos="<<pos.transpose()<<" obst="<<obst.transpose()<<" n="<<normal.transpose()<<" temp="<<temp.transpose()<<" D="<<D<<" err="<< err <<" force="<<force_vec.transpose()<<"!!!!!!!!!!!!!"<<endl; 
-      //cout << "force="<<force<<"=kP:"<<kP<<"+kD:"<<kD<<"\n";
-      //t = clock();
-      //cout << "!!!!!!!!!!!!!!!!!!!!\n";
-    //FILE * pFile;
-    //pFile = fopen ("log.csv","w");
-    //double t;
-    //double dt; 
-    //clock_t begin, end;
-    //fprintf (pFile, "t;pos[0];pos[1];pos[2];obst[0];obst[1];obst[2];normale[0];normale[1];normale[2];temp[0];temp[1];temp[2];D;err;force_vec[0];force_vec[1];force_vec[2]\n");
-    //cout << normal.transpose()<< endl;
-  //cout << " err="<< err <<" force="<<force_vec.transpose()<<endl; 
-  //t = clock();
-    //cout << "t="<<elapsed_secs<<endl;
-    //if(iteration%10==1)
-    //cout << "err="<<err<<"=Somme des pos="<<pos.transpose()<<"*normale="<<normale.transpose()<<"+D="<<D<<endl;
-    //cout <<"pos "<<pos.transpose()<< " sgn " << signes[0]<<" "<<signes[1]<<" "<<signes[2] << " longs "<< d_com_near_point_.transpose()<< " d " << d_<< " errv1 " << err;
-    //err = pos[0]*normal[0]+pos[1]*normal[1]+pos[2]*normal[2]+D;
-    //cout <<"\terrv2 " << err;
-    //err = (pos[0]+d_com_near_point_[0]*signes[0])*normal[0]+
-      //(pos[1]+d_com_near_point_[1]*signes[1])*normal[1]+
-      //(pos[2]+d_com_near_point_[2]*signes[2])*normal[2]+D;
-    //cout <<"\terrv3 " << err<<endl;
-      //cout << "obst="<<obst[1]<<" temp="<<temp[1]<<" pos="<<pos[1]<<" err"<<err<<" force="<<force_vec.transpose()<<" n "<<normal.transpose()<<endl;
-    //fprintf (pFile, "%f;%f;%f;%f\n",t,pos[1],err*100,force_vec[1]);
-    //fprintf (pFile, "%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f\n",t,pos[0],pos[1],pos[2],obst[0],obst[1],obst[2],normal[0],normal[1],normal[2],temp[0],temp[1],temp[2],D,err*100,force_vec[0],force_vec[1],force_vec[2]);
-    ////////////////////////////////////////////////////////////////////////////////////
-  return NULL;
-}
-//*/
-
-    /*    //// couples ///////////////////
-    double TorqueGain =0.002;
-    double   r[3][3];
-    double   posX, posY, posZ;
-    Eigen::Vector3d devicePos;
-    Eigen::Matrix3d localRotTrans, deviceRot;
-    Eigen::Vector3d localPos, force_vec_d, localTorque, proche, v1, v2;
-    dhdGetOrientationFrame (r);
-    deviceRot << r[0][0], r[0][1], r[0][2],
-                 r[1][0], r[1][1], r[1][2],
-                 r[2][0], r[2][1], r[2][2];
-  
-    localRotTrans =   deviceRot.transpose ();
-    dhdGetPosition (&posX, &posY, &posZ);
-    devicePos << posX,  posY,  posZ;
-    proche << pos[0]+d_com_near_point_[0], pos[1]+d_com_near_point_[1], pos[2]+d_com_near_point_[2];
-    localPos      =  localRotTrans * (obst_d-devicePos);
-    localPos      =  localRotTrans * (proche-devicePos);
-    v1 << 0, 0, force;
-    v2 << localPos(0), localPos(1), 0;
-
-    force_vec_d << (double)force_vec[0], (double)force_vec[1], (double)force_vec[2];
-    localTorque = TorqueGain * localPos.cross (force_vec_d);
-    //if(force) cout <<"A "<< localTorque.transpose();
-    localTorque = -TorqueGain * v1.cross (v2);
-    //if(force) cout << " \tB " << localTorque.transpose()<<endl;
-    
-    //localTorque[1] = localTorque[2] = 0;
-    //dhdSetForceAndTorqueAndGripperForce(force_vec[0], force_vec[1], -force_vec[2], localTorque(0), localTorque(0), localTorque(0), 0); // sans blocage des rots
-    dhdSetForceAndTorqueAndGripperForce(force_vec[0], force_vec[1], -force_vec[2], 0, -localTorque(0), 0, 0); // sans blocage des rots
-    ////////////////////////////////*/

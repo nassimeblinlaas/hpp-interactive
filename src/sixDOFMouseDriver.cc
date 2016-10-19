@@ -177,7 +177,7 @@ void SixDOFMouseDriver::MouseInit(short int type, const double* bounds)
   type_=type;
   if (type_==1)
   {
-    fd_ = open("/dev/hidraw1", O_RDONLY);
+    fd_ = open("/dev/hidraw2", O_RDONLY);
     if (fd_ < 0) {
       perror("Unable to open interactive device");
       abort();
