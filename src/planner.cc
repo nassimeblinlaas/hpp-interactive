@@ -60,8 +60,9 @@ namespace hpp {
   namespace interactive {
     using model::displayConfig;
     using namespace std;
+
+    //////////// var glob
     short int nb_launchs = 0;
-//////////// var glob
     fcl::Vec3f org_temp;
     fcl::Vec3f prev_org_temp;
     fcl::Vec3f obj_temp;
@@ -80,17 +81,18 @@ namespace hpp {
     vector<fcl::DistanceResult> results;
     vector<fcl::DistanceResult> results_cpy;
     vector<fcl::DistanceResult> prev_results;
-//////////// var glob
+    //////////// var glob
 
     void* ForceFeedback(void*){
       graphics::corbaServer::Client& client_ref(*client_ptr);
       double dnn[7];
-      Eigen::Vector3f temp, pos, force_vec, prev_force_vec, obst, obst2, normale, normale2, signes;
+      Eigen::Vector3f temp, pos, force_vec, prev_force_vec, obst, obst2, normale, normale2, signes, signes2;
       Eigen::Vector3d obst_d;
       Eigen::Matrix3d center;
-      double err, err2, force, gain, D, D2, kP;
+      double err, err2, force, force2, gain, D, D2, kP;
       bool force_feed = false;
-      gain = 100;
+      bool force_feed2 = false;
+      gain = 10;
       double max=5;
       drdStart(); 
       bool base, wrist, grip;
@@ -134,12 +136,12 @@ namespace hpp {
         // position du point proche de l'objet par rapport à P
         //cout << "ffd " << (float)results_cpy[0].nearest_points[1][0]<< " " <<(float)results_cpy[0].nearest_points[1][1]<<" " << (float)results_cpy[0].nearest_points[1][2]<< " dcom " << d_com_near_point.transpose()<<endl;
  
-       err = (pos[0]+d_com_near_point_[0][0])*normale[0]+
+        err = (pos[0]+d_com_near_point_[0][0])*normale[0]+
           (pos[1]+d_com_near_point_[0][1])*normale[1]+
           (pos[2]+d_com_near_point_[0][2])*normale[2]+D;
-       err2 = (pos[0]+d_com_near_point_[0][0])*normale2[0]+
-          (pos[1]+d_com_near_point_[0][1])*normale2[1]+
-          (pos[2]+d_com_near_point_[0][2])*normale2[2]+D;
+        err2 = (pos[0]+d_com_near_point_[1][0])*normale2[0]+
+          (pos[1]+d_com_near_point_[1][1])*normale2[1]+
+          (pos[2]+d_com_near_point_[1][2])*normale2[2]+D2;
         //cout << "ffd1 " << pos[0]<< " " <<pos[1]<<" " << pos[2]<< " dcom " << d_com_near_point_.transpose()<<" err " << err << endl;
   
        //err = (pos[0]+d_com_near_point[0])*normale[0]+
@@ -150,6 +152,10 @@ namespace hpp {
         kP = err * gain;
         force = kP;
         force_feed = err > 0;
+        force2 = err2 * gain;
+        force_feed2 = err2 > 0;
+        cout << "obst1 " << obst.transpose() << " obst2 " << obst2.transpose() << endl;
+        cout << "err1 " << err << " err2 " << err2 << " ffd1 " << force_feed << " ffd2 " << force_feed2 << endl;
         //cout << "obst="<<obst.transpose()<<" pos="<<pos.transpose()<<" D="<<D<<" err="<<err<<" force="<<force<<" n "<<normale.transpose()<<" f_vec"<<force_vec.transpose()<<endl; 
         //cout << force_feed<<endl;
 
@@ -167,6 +173,7 @@ namespace hpp {
 
 
         if (force_feed){
+          
           /////
           //string nom_ligne = "0_scene_hpp_/ligne_force";
           //string ind = boost::lexical_cast<std::string>(iteration);
@@ -186,35 +193,46 @@ namespace hpp {
           //gepetto::corbaserver::Position w = {t[0], t[1], t[2]};
           //client_ref.gui()->addLine(nom_ligne.c_str(), v, w, &color[0]);
 
+          force_vec.setZero();
           force_vec = normale*(float)force;
 
+          //cout << "ffb " << force_vec.transpose();
+          //if (change_obst_) iteration = 0; 
+          if (force_feed2){
+            force_vec += normale2*(float)force2;
+            //cout << " ffb2 " << force_vec.transpose();
+          }
+          
+          // résultante
+          normale +=normale2;
+          normale.normalize();
+          //cout << endl;
+          //force_vec.setZero();
           // protection 1 : seuillage
-          for (int i = 0 ;i<3; i++) if (force_vec[i]>max){force_vec[i]=signes[i]*max; /*cout<<"max dépassé sur "<<i<<endl;*/}
+          //for (int i = 0 ;i<3; i++) if (force_vec[i]>max){force_vec[i]=signes[i]*max; /*cout<<"max dépassé sur "<<i<<endl;*/}
           // protection 2 : lissage
           // bah ça fait pas grand chose
-          for (int i=0; i<3;i++){
-            double diff = force_vec(i)-prev_force_vec(i);
-            if(fabs(diff)>1){
-              //cout << " diff sur "<<i << " force "<<force_vec.transpose()<<" prevf "<<prev_force_vec.transpose(); 
-              force_vec[i] = prev_force_vec(i)+0.02*signe(diff);
-              //cout << " change " <<force_vec.transpose()<<endl; 
-            }
-            if (fabs(force_vec(i))<1e-5) force_vec[i]=0;
-          }
+          //for (int i=0; i<3;i++){
+            //double diff = force_vec(i)-prev_force_vec(i);
+            //if(fabs(diff)>1){
+              ////cout << " diff sur "<<i << " force "<<force_vec.transpose()<<" prevf "<<prev_force_vec.transpose(); 
+              //force_vec[i] = prev_force_vec(i)+0.02*signe(diff);
+              ////cout << " change " <<force_vec.transpose()<<endl; 
+            //}
+            //if (fabs(force_vec(i))<1e-5) force_vec[i]=0;
+          //}
+          //prev_force_vec = force_vec;
           /////////////////////////////////////////////////////
-
-          prev_force_vec = force_vec;
-          //if (change_obst_) iteration = 0; 
         }
         else{
-        if(collision_[0])d_com_near_point = {
-          (float)results_cpy[0].nearest_points[1][0] - pos[0],
-          (float)results_cpy[0].nearest_points[1][1] - pos[1],
-          (float)results_cpy[0].nearest_points[1][2] - pos[2]};
+        //if(collision_[0])d_com_near_point = {
+          //(float)results_cpy[0].nearest_points[1][0] - pos[0],
+          //(float)results_cpy[0].nearest_points[1][1] - pos[1],
+          //(float)results_cpy[0].nearest_points[1][2] - pos[2]};
           //iteration = 0;
           force_vec.setZero();
-          for (int i=0; i<3; i++) signes[i]=signe((float)results_cpy[0].nearest_points[0][i]//org_temp[i]
-            -pos[i]);
+          for (int i=0; i<3; i++) signes[i]=signe((float)results_cpy[0].nearest_points[0][i]-pos[i]);
+          for (int i=0; i<3; i++) signes2[i]=signe((float)results_cpy[1].nearest_points[0][i]-pos[i]);
         }
 
         dnn[0] = force_vec(0);
@@ -244,9 +262,9 @@ namespace hpp {
     {
       client_ptr = &client_;
       nb_launchs++;
-      type_ = 1; //device type 1 mouse 2 sigma7
+      type_ = 2; //device type 1 mouse 2 sigma7
       random_prob_ = 0; // 0 all human  1 all machine
-      d_ = 0.31; // distance entrée mode contact
+      d_ = 0.11; // distance entrée mode contact
       Planner::mode_contact_ = false;
       change_obst_ = false;
       //force_feedback_=false;
@@ -296,7 +314,8 @@ namespace hpp {
       if (nb_launchs<2){
         boost::thread th1(boost::bind( &Planner::InteractiveDeviceThread,this));
         //boost::thread th2(boost::bind( &Planner::ActuateArm,this));
-        if (type_==2){
+        //if (type_==2){
+        if (1){
           pthread_t          handle;
           pthread_create (&handle, NULL, ForceFeedback, NULL);
           struct sched_param sp; 
@@ -313,6 +332,7 @@ namespace hpp {
       color[0] = 1; color[1] = 1; color[2] = 1; color[3] = 1.;
       int index_lignes = 0;
       int index_lignes2 = 0;
+      bool double_contact = true; 
       sleep(1);//TODO ceci pour régler le pb init curseur viteuf, à changer
       bool init = false;
       cout << "InteractiveDevice thread...\n";
@@ -459,6 +479,8 @@ namespace hpp {
         //cout << "robot_mutex_unlock device thread\n";
         bool contact[3];
         for (int i=0; i<3; i++)contact[i] = results_temp[i].min_distance<d_;
+
+
         AfficherReperes(contact, results_temp); 
         
 
@@ -549,43 +571,11 @@ namespace hpp {
             if (!Planner::mode_contact_)
               modified_gram_schmidt(MGS, A);
 
+            if (double_contact){
+              
 
-            /*
-            // afficher le repère local // //////////////////////////////////////////
-            string nom_ligne = "0_scene_hpp_/ligne";
-            string ind = boost::lexical_cast<std::string>(index_lignes);
-            nom_ligne += ind;
-            if (index_lignes > 0){
-              //cout << "index " << index_lignes << " obj à cacher " << nom_ligne << endl;
-              client_.gui()->setVisibility(nom_ligne.c_str(), "OFF");
-              string axe = nom_ligne +='a';
-              client_.gui()->setVisibility(axe.c_str(), "OFF");
-              axe = nom_ligne +='b';
-              client_.gui()->setVisibility(axe.c_str(), "OFF");
-              //axe = nom_ligne +='c';
-              //client_.gui()->setVisibility(axe.c_str(), "OFF");
             }
-            index_lignes++;
-            nom_ligne = "0_scene_hpp_/ligne";
-            ind = boost::lexical_cast<std::string>(index_lignes);
-            nom_ligne += ind;
-            client_.gui()->addLine(nom_ligne.c_str(), v, w, &color[0]);
-            // afficher les deux axes manquants du repère
-            w[0] = v[0] + MGS.col[1].v[0];
-            w[1] = v[1] + MGS.col[1].v[1];
-            w[2] = v[2] + MGS.col[1].v[2];
-            string axe = nom_ligne +='a';
-            client_.gui()->addLine(axe.c_str(), v, w, &color[0]);
 
-            w[0] = v[0] + MGS.col[2].v[0];
-            w[1] = v[1] + MGS.col[2].v[1];
-            w[2] = v[2] + MGS.col[2].v[2];
-            axe = nom_ligne +='b';
-            client_.gui()->addLine(axe.c_str(), v, w, &color[0]);
-            //axe = nom_ligne +='c';
-            //client_.gui()->addLine(axe.c_str(), v2, w2, &color[0]);
-            // //////////////////////////////////////////////////////////////
-            //*/
 
             //::Eigen::Matrix3f MGS_;
             //MGS_ << MGS.col[0].v[0],
@@ -642,7 +632,7 @@ namespace hpp {
         (float)results[0].nearest_points[1][0],
         (float)results[0].nearest_points[1][1],
         (float)results[0].nearest_points[1][2]};
-      cout << index_lignes<<endl;
+      //cout << index_lignes<<endl;
       //cout << "index " << index_lignes << " obj à cacher " << nom_ligne << endl;
 
       // toujours tenter d'effacer le repère 2
@@ -652,7 +642,7 @@ namespace hpp {
       ind = boost::lexical_cast<std::string>(index_lignes2);
       nom_ligne += ind ;
       nom_ligne +='c';
-      cout << " obj à cacher " << nom_ligne << endl;
+      //cout << " obj à cacher " << nom_ligne << endl;
       client_.gui()->setVisibility(nom_ligne.c_str(), "OFF");
       //}
       if (!contact [0])
@@ -691,10 +681,10 @@ namespace hpp {
 
       } 
       if (contact[0] && !contact[1]){
-        d_com_near_point_[0] = {
-          (float)results[0].nearest_points[1][0] - trans_temp.translation()[0],
-          (float)results[0].nearest_points[1][1] - trans_temp.translation()[1],
-          (float)results[0].nearest_points[1][2] - trans_temp.translation()[2]};
+        //d_com_near_point_[0] = {
+          //(float)results[0].nearest_points[1][0] - trans_temp.translation()[0],
+          //(float)results[0].nearest_points[1][1] - trans_temp.translation()[1],
+          //(float)results[0].nearest_points[1][2] - trans_temp.translation()[2]};
         gepetto::corbaserver::Position v2 = {
           (float)results[1].nearest_points[0][0],
           (float)results[1].nearest_points[0][1],
@@ -728,7 +718,7 @@ namespace hpp {
         ind = boost::lexical_cast<std::string>(index_lignes2);
         nom_ligne += ind ;
         nom_ligne +='c';
-        cout << " obj à afficher " << nom_ligne << endl;
+        //cout << " obj à afficher " << nom_ligne << endl;
         //if (index_lignes > 0){
         client_.gui()->addLine(nom_ligne.c_str(), v2, w2, &color[0]);
         //// //////////////////////////////////////////////////////////////
@@ -1084,3 +1074,42 @@ namespace hpp {
 
   } // namespace core
 } // namespace hpp
+
+
+
+            /*
+            // afficher le repère local // //////////////////////////////////////////
+            string nom_ligne = "0_scene_hpp_/ligne";
+            string ind = boost::lexical_cast<std::string>(index_lignes);
+            nom_ligne += ind;
+            if (index_lignes > 0){
+              //cout << "index " << index_lignes << " obj à cacher " << nom_ligne << endl;
+              client_.gui()->setVisibility(nom_ligne.c_str(), "OFF");
+              string axe = nom_ligne +='a';
+              client_.gui()->setVisibility(axe.c_str(), "OFF");
+              axe = nom_ligne +='b';
+              client_.gui()->setVisibility(axe.c_str(), "OFF");
+              //axe = nom_ligne +='c';
+              //client_.gui()->setVisibility(axe.c_str(), "OFF");
+            }
+            index_lignes++;
+            nom_ligne = "0_scene_hpp_/ligne";
+            ind = boost::lexical_cast<std::string>(index_lignes);
+            nom_ligne += ind;
+            client_.gui()->addLine(nom_ligne.c_str(), v, w, &color[0]);
+            // afficher les deux axes manquants du repère
+            w[0] = v[0] + MGS.col[1].v[0];
+            w[1] = v[1] + MGS.col[1].v[1];
+            w[2] = v[2] + MGS.col[1].v[2];
+            string axe = nom_ligne +='a';
+            client_.gui()->addLine(axe.c_str(), v, w, &color[0]);
+
+            w[0] = v[0] + MGS.col[2].v[0];
+            w[1] = v[1] + MGS.col[2].v[1];
+            w[2] = v[2] + MGS.col[2].v[2];
+            axe = nom_ligne +='b';
+            client_.gui()->addLine(axe.c_str(), v, w, &color[0]);
+            //axe = nom_ligne +='c';
+            //client_.gui()->addLine(axe.c_str(), v2, w2, &color[0]);
+            // //////////////////////////////////////////////////////////////
+            //*/
