@@ -41,6 +41,7 @@
 #include <math.h>
 #include <pthread.h>
 #include <Eigen/Geometry>
+#include <Eigen/Core>
 #include <algorithm>
 
 
@@ -60,7 +61,7 @@ namespace hpp {
   namespace interactive {
     using model::displayConfig;
     using namespace std;
-
+    using namespace Eigen;
     //////////// var glob
     short int nb_launchs = 0;
     fcl::Vec3f org_temp;
@@ -83,20 +84,31 @@ namespace hpp {
     vector<fcl::DistanceResult> prev_results;
     //////////// var glob
 
+    double dnn[7];
+    void* ForceFeedback2(void*){
+      memset(dnn, sizeof(double)*7, 0);
+      while(1)
+        drdSetForceAndTorqueAndGripperForce (dnn);  // avec blocage des rots
+    }
+
     void* ForceFeedback(void*){
+      clock_t begin, end, end2 ;
       graphics::corbaServer::Client& client_ref(*client_ptr);
-      double dnn[7];
-      Eigen::Vector3f temp, pos, force_vec, prev_force_vec, obst, obst2, normale, normale2, signes, signes2;
-      Eigen::Vector3d obst_d;
+      Vector3f posf;
+      Eigen::Vector3d pos, temp, prev_force_vec, signes, signes2, signes3;
+      Eigen::Vector3d obst_d, normale, normale2, normale3, obst, obst2, obst3;
       Eigen::Matrix3d center;
-      double err, err2, force, force2, gain, D, D2, kP;
+      double err, err2, err3, force, force2, force3, gain, D, D2, D3, kP, dt;
       bool force_feed = false;
       bool force_feed2 = false;
+      bool force_feed3 = false;
       gain = 10;
       double max=5;
       drdStart(); 
-      bool base, wrist, grip;
-      base = wrist = grip = false;
+      //bool base, wrist, grip;
+      //base = wrist = grip = false;
+      //Vector3d force_vec;
+      Map<Vector3d> force_vec(&dnn[0], 3);
 
       drdRegulatePos  (false);
       drdRegulateGrip (false);
@@ -111,28 +123,35 @@ namespace hpp {
       pos.setZero();
       temp.setZero();
       while(1){
-        iteration++;
+        begin = clock();
 
-        results_mutex.lock();
-        results_cpy = results;
-        results_mutex.unlock();
-        pos = SixDOFMouseDriver::getTransformationNoMutex().translation();
+        if(results_mutex.try_lock()){
+          results_cpy = results;
+          results_mutex.unlock();
+        }
+        pos = SixDOFMouseDriver::getTransformationNoMutex().translation().cast<double>();
         for (int i=0; i<3; i++){
           obst[i]=(float)results_cpy[0].nearest_points[0][i];//(float)org_temp[i];
           obst2[i]=(float)results_cpy[1].nearest_points[0][i];
+          obst3[i]=(float)results_cpy[2].nearest_points[0][i];
         }
         normal_mutex.lock();
-        normale = normal[0];
-        normale2 = normal[1];
+        normale = normal[0].cast<double>();
+        normale2 = normal[1].cast<double>();
+        normale3 = normal[2].cast<double>();
         normal_mutex.unlock();
         // départ du plan P
-        temp=obst-d_*normale;
+        temp=obst-(float)d_*normale;
         // équation du plan P: Ax+By+Cz+D=0;
         D=-(temp[0]*normale[0]+temp[1]*normale[1]+temp[2]*normale[2]);
         // départ du plan P2
-        temp=obst2-d_*normale2;
+        temp=obst2-(float)d_*normale2;
         // équation du plan P: Ax+By+Cz+D=0;
         D2=-(temp[0]*normale2[0]+temp[1]*normale2[1]+temp[2]*normale2[2]);
+        // départ du plan P3
+        temp=obst3-(float)d_*normale3;
+        // équation du plan P: Ax+By+Cz+D=0;
+        D3=-(temp[0]*normale3[0]+temp[1]*normale3[1]+temp[2]*normale3[2]);
         // position du point proche de l'objet par rapport à P
         //cout << "ffd " << (float)results_cpy[0].nearest_points[1][0]<< " " <<(float)results_cpy[0].nearest_points[1][1]<<" " << (float)results_cpy[0].nearest_points[1][2]<< " dcom " << d_com_near_point.transpose()<<endl;
  
@@ -142,20 +161,29 @@ namespace hpp {
         err2 = (pos[0]+d_com_near_point_[1][0])*normale2[0]+
           (pos[1]+d_com_near_point_[1][1])*normale2[1]+
           (pos[2]+d_com_near_point_[1][2])*normale2[2]+D2;
+        err3 = (pos[0]+d_com_near_point_[1][0])*normale2[0]+
+          (pos[1]+d_com_near_point_[1][1])*normale2[1]+
+          (pos[2]+d_com_near_point_[1][2])*normale2[2]+D2;
+        //cout << "obst1="<<obst.transpose()<<" pos="<<pos.transpose()<<" D="<<D<<" err="<<err<<" force="<<force<<" n "<<normale.transpose()<<" f_vec"<<force_vec.transpose()<<endl; 
+        cout << "obst1="<<obst.transpose()<<" pos="<<pos.transpose()<<" err="<<err<<" force="<<force<<" f_vec"<<force_vec.transpose()<<endl; 
+        //cout << "obst2="<<obst2.transpose()<<" pos="<<pos.transpose()<<" D2="<<D2<<" err2="<<err2<<" force2="<<force2<<" n2 "<<normale2.transpose()<<" f_vec"<<force_vec.transpose()<<endl; 
+        //cout << "obst3="<<obst3.transpose()<<" pos="<<pos.transpose()<<" D3="<<D3<<" err3="<<err3<<" force3="<<force3<<" n3 "<<normale3.transpose()<<" f_vec"<<force_vec.transpose()<<endl; 
+
+        //cout << results_cpy[1].nearest_points[0] << endl;
         //cout << "ffd1 " << pos[0]<< " " <<pos[1]<<" " << pos[2]<< " dcom " << d_com_near_point_.transpose()<<" err " << err << endl;
   
-       //err = (pos[0]+d_com_near_point[0])*normale[0]+
-          //(pos[1]+d_com_near_point[1])*normale[1]+
-          //(pos[2]+d_com_near_point[2])*normale[2]+D;
-        //cout << " dcom_ " << d_com_near_point_[0].transpose() << " dcom " << err << endl;
         //if (iteration%200==0)cout << "ffd2 near point" << (float)results_cpy[0].nearest_points[1][0]<< " " <<(float)results_cpy[0].nearest_points[1][1]<<" " << (float)results_cpy[0].nearest_points[1][2]<< " dcom " << d_com_near_point.transpose()<< " err "<<err<<endl;
+        //string bool_conts = "";
         kP = err * gain;
         force = kP;
         force_feed = err > 0;
         force2 = err2 * gain;
         force_feed2 = err2 > 0;
-        cout << "obst1 " << obst.transpose() << " obst2 " << obst2.transpose() << endl;
-        cout << "err1 " << err << " err2 " << err2 << " ffd1 " << force_feed << " ffd2 " << force_feed2 << endl;
+        force3 = err3 * gain;
+        force_feed3 = err3 > 0;
+        //bool_conts=boost::lexical_cast<std::string>(force_feed)+boost::lexical_cast<std::string>(force_feed2)+boost::lexical_cast<std::string>(force_feed3)+"\n";
+        //for (int i=0; i<3; i++) cout <<  setprecision(3)<< results_cpy[0].nearest_points[0][i] <<"\t\t\t\t" << results_cpy[1].nearest_points[0][i] << "\t\t\t\t" << results_cpy[2].nearest_points[0][i] << endl;
+        //cout << "obst1 " << obst.transpose() << " obst2 " << obst2.transpose() << endl;
         //cout << "obst="<<obst.transpose()<<" pos="<<pos.transpose()<<" D="<<D<<" err="<<err<<" force="<<force<<" n "<<normale.transpose()<<" f_vec"<<force_vec.transpose()<<endl; 
         //cout << force_feed<<endl;
 
@@ -170,43 +198,17 @@ namespace hpp {
             //client_ref.gui()->setVisibility(nom_ligne.c_str(), "OFF");
           //} 
         }
+        end2 = clock();
+        dt = double(end2 - begin) / CLOCKS_PER_SEC;
+        cout << "avant if=" << dt<<endl;
+        
 
+
+        force_vec.setZero();
 
         if (force_feed){
-          
-          /////
-          //string nom_ligne = "0_scene_hpp_/ligne_force";
-          //string ind = boost::lexical_cast<std::string>(iteration);
-          //nom_ligne += ind;
-          //if (iteration > 0){
-          //cout << "index " << iteration << " obj à cacher " << nom_ligne << endl;
-          //client_ref.gui()->setVisibility(nom_ligne.c_str(), "OFF");
-          //}
-          //iteration++;
-          //nom_ligne = "0_scene_hpp_/ligne_force";
-          //ind = boost::lexical_cast<std::string>(iteration);
-          //nom_ligne += ind;
-          //gepetto::corbaserver::Color color;
-          //color[0] = 0.3; color[1] = 0.7; color[2] = 0.2; color[3] = 1.;
-          //gepetto::corbaserver::Position v = {obst[0], obst[1], obst[2]};
-          //Eigen::Vector3f t = normal * kP*10;
-          //gepetto::corbaserver::Position w = {t[0], t[1], t[2]};
-          //client_ref.gui()->addLine(nom_ligne.c_str(), v, w, &color[0]);
-
-          force_vec.setZero();
+          normale[2] = -normale[2];
           force_vec = normale*(float)force;
-
-          //cout << "ffb " << force_vec.transpose();
-          //if (change_obst_) iteration = 0; 
-          if (force_feed2){
-            force_vec += normale2*(float)force2;
-            //cout << " ffb2 " << force_vec.transpose();
-          }
-          
-          // résultante
-          normale +=normale2;
-          normale.normalize();
-          //cout << endl;
           //force_vec.setZero();
           // protection 1 : seuillage
           //for (int i = 0 ;i<3; i++) if (force_vec[i]>max){force_vec[i]=signes[i]*max; /*cout<<"max dépassé sur "<<i<<endl;*/}
@@ -225,27 +227,106 @@ namespace hpp {
           /////////////////////////////////////////////////////
         }
         else{
-        //if(collision_[0])d_com_near_point = {
-          //(float)results_cpy[0].nearest_points[1][0] - pos[0],
-          //(float)results_cpy[0].nearest_points[1][1] - pos[1],
-          //(float)results_cpy[0].nearest_points[1][2] - pos[2]};
-          //iteration = 0;
-          force_vec.setZero();
           for (int i=0; i<3; i++) signes[i]=signe((float)results_cpy[0].nearest_points[0][i]-pos[i]);
+        }
+
+        if (force_feed2){
+          normale2[2] = -normale2[2];
+          //force_vec += normale2*(float)force2;
+        }
+        else{
           for (int i=0; i<3; i++) signes2[i]=signe((float)results_cpy[1].nearest_points[0][i]-pos[i]);
         }
 
-        dnn[0] = force_vec(0);
-        dnn[1] = force_vec(1);
-        dnn[2] = -force_vec(2);
-        drdSetForceAndTorqueAndGripperForce (dnn);  // avec blocage des rots
+        if (force_feed3){
+          normale3[2] = -normale3[2];
+          //force_vec += normale3*(float)force3;
+        }
+        else{
+          for (int i=0; i<3; i++) signes3[i]=signe((float)results_cpy[2].nearest_points[0][i]-pos[i]);
+        }
 
+        //clock_t ici = clock();
+        //dt = double(ici - end2) / CLOCKS_PER_SEC;
+        //cout << "avant impr=" << dt<<endl<<bool_conts;
+
+        //dnn[0] = force_vec(0);
+        //dnn[1] = force_vec(1);
+        //dnn[2] = -force_vec(2);
+        //end = clock();
+        //dt = double(end - ici) / CLOCKS_PER_SEC;
+        //cout << "avant envoi=" << dt<<endl;
+
+        //drdSetForceAndTorqueAndGripperForce (dnn);  // avec blocage des rots
+        //end = clock();
+        //dt = double(end - end2) / CLOCKS_PER_SEC;
+        //cout << "t envoi=" << dt<<endl;
+        end = clock();
+        dt = double(end - begin) / CLOCKS_PER_SEC;
+        if(dt>0.005)cout << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!total=" << dt<<endl<<endl;
+        else cout << "total=" << dt<<endl<<endl;
       }
       return NULL;
 
     }
 
 
+/*
+          ///
+        string nom_ligne = "0_scene_hpp_/ligne_force";
+        string ind = boost::lexical_cast<std::string>(iteration);
+        nom_ligne += ind;
+        //if (iteration > 0){
+          //cout << "index " << iteration << " obj à cacher " << nom_ligne << endl;
+          client_ref.gui()->setVisibility(nom_ligne.c_str(), "OFF");
+        nom_ligne += 'b';
+          client_ref.gui()->setVisibility(nom_ligne.c_str(), "OFF");
+        //}
+        iteration++;
+        nom_ligne = "0_scene_hpp_/ligne_force";
+        ind = boost::lexical_cast<std::string>(iteration);
+        nom_ligne += ind;
+        gepetto::corbaserver::Color color;
+        color[0] =(float) 0.3; color[1] = (float) 0.7; color[2] = (float) 0.2; color[3] = (float) 1.;
+        gepetto::corbaserver::Color color2;
+        color2[0] =(float) 0.83; color2[1] = (float) 0.3; color2[2] = (float) 0.2; color2[3] = (float) 1.;
+        Eigen::Vector3f t;
+        Eigen::Vector3f t2;
+
+
+        t <<(float)results_cpy[0].nearest_points[1][0], 
+            (float)results_cpy[0].nearest_points[1][1],
+            (float)results_cpy[0].nearest_points[1][2];
+        t2 <<(float)results_cpy[0].nearest_points[1][0]-obst[0], 
+             (float)results_cpy[0].nearest_points[1][1]-obst[1],
+             (float)results_cpy[0].nearest_points[1][2]-obst[2];
+        t2.normalize();
+        t2=t2*force*3;
+        t2+=t;
+
+        {
+        gepetto::corbaserver::Position v = {obst[0], obst[1], obst[2]};
+        gepetto::corbaserver::Position tt = {t2[0], t2[1], t2[2]};
+        client_ref.gui()->addLine(nom_ligne.c_str(), v, tt, &color[0]);
+        }
+
+        nom_ligne += 'b';
+        t <<(float)results_cpy[1].nearest_points[1][0], 
+            (float)results_cpy[1].nearest_points[1][1],
+            (float)results_cpy[1].nearest_points[1][2];
+        t2 <<(float)results_cpy[1].nearest_points[1][0]-obst2[0], 
+             (float)results_cpy[1].nearest_points[1][1]-obst2[1],
+             (float)results_cpy[1].nearest_points[1][2]-obst2[2];
+        t2.normalize();
+        t2=t2*force*10;
+        t2+=t;
+
+        {
+        gepetto::corbaserver::Position v = {obst2[0], obst2[1], obst2[2]};
+        gepetto::corbaserver::Position tt = {t2[0], t2[1], t2[2]};
+        client_ref.gui()->addLine(nom_ligne.c_str(), v, tt, &color2[0]);
+        }
+        //*/
 
 
 
@@ -264,7 +345,7 @@ namespace hpp {
       nb_launchs++;
       type_ = 2; //device type 1 mouse 2 sigma7
       random_prob_ = 0; // 0 all human  1 all machine
-      d_ = 0.11; // distance entrée mode contact
+      d_ = 0.05; // distance entrée mode contact
       Planner::mode_contact_ = false;
       change_obst_ = false;
       //force_feedback_=false;
@@ -312,24 +393,28 @@ namespace hpp {
 
       // using solveanddisplay relaunches planner -> anti core dump protection
       if (nb_launchs<2){
-        boost::thread th1(boost::bind( &Planner::InteractiveDeviceThread,this));
-        //boost::thread th2(boost::bind( &Planner::ActuateArm,this));
         //if (type_==2){
         if (1){
           pthread_t          handle;
           pthread_create (&handle, NULL, ForceFeedback, NULL);
+          pthread_t          handle2;
+          pthread_create (&handle2, NULL, ForceFeedback2, NULL);
           struct sched_param sp; 
           memset (&sp, 0, sizeof(struct sched_param));
-          sp.sched_priority = 10; 
+          sp.sched_priority = 99; 
           pthread_setschedparam (handle, SCHED_RR, &sp);
         }
+        boost::thread th1(boost::bind( &Planner::InteractiveDeviceThread,this));
       }
     }
 
 
+
+
+
     void Planner::InteractiveDeviceThread(){
-      gepetto::corbaserver::Color color;
-      color[0] = 1; color[1] = 1; color[2] = 1; color[3] = 1.;
+      //gepetto::corbaserver::Color color;
+      //color[0] = 1; color[1] = 1; color[2] = 1; color[3] = 1.;
       int index_lignes = 0;
       int index_lignes2 = 0;
       bool double_contact = true; 
@@ -357,26 +442,9 @@ namespace hpp {
         Eigen::Quaternionf quat(mat);
         double mag = sqrt(pow(quat.w(),2)+pow(quat.x(),2)+pow(quat.y(),2)+pow(quat.z(),2));
         ::gepetto::corbaserver::Transform tr;
-        if(type_==1){
-          tr[0] = trans_temp.translation()[0];
-          tr[1] = trans_temp.translation()[1];
-          tr[2] = trans_temp.translation()[2];
-        }
-        if (type_==2){
-          //Eigen::Vector3f translate;
-          //translate << trans_temp.translation()[0], 
-                    //trans_temp.translation()[1],
-                    //trans_temp.translation()[2];
-          //Eigen::Matrix3f rot90x;
-          //Eigen::Matrix3f rot90y;
-          //Eigen::Matrix3f rot90z;
-          //tr[0] = translate[0]; // version sigma7
-          //tr[1] = translate[1];
-          //tr[2] = translate[2];
-          tr[0] = trans_temp.translation()[0];
-          tr[1] = trans_temp.translation()[1];
-          tr[2] = trans_temp.translation()[2];
-        }
+        tr[0] = trans_temp.translation()[0];
+        tr[1] = trans_temp.translation()[1];
+        tr[2] = trans_temp.translation()[2];
         tr[3] = (float)quat.w()/(float)mag;
         tr[4] = (float)quat.x()/(float)mag;
         tr[5] = (float)quat.y()/(float)mag;
@@ -390,16 +458,6 @@ namespace hpp {
         (*Planner::actual_configuration_ptr_)[4] = tr[4];
         (*Planner::actual_configuration_ptr_)[5] = tr[5];
         (*Planner::actual_configuration_ptr_)[6] = tr[6];
-        /*
-           cout << "config curseur        " <<
-        //    trans_temp << endl;
-        //    //  (*actual_configuration_ptr_)[0] =
-        tr[0] << " " <<
-        //    (*actual_configuration_ptr_)[1] =
-        tr[1] << " " <<
-        //    (*actual_configuration_ptr_)[2] =
-        tr[2] << endl;
-        //*/
 
         // afficher le robot
         client_.gui()->applyConfiguration("0_scene_hpp_/robot_interactif", tr);
@@ -456,33 +514,71 @@ namespace hpp {
         collision_[0] = false;
         vector<fcl::DistanceResult> results_temp;
         FindNearestObstacle(results_temp);
+
         results_mutex.lock();
         results.clear();
         results = results_temp;
         fcl::DistanceResult result = results[0];
         results_mutex.unlock();
+
         //result.min_distance = 999;
         collision_[0] = result.min_distance == -1 ? true : false;
         collision_[1] = results[1].min_distance == -1 ? true : false;
-        //cout << "result.min_distance " << result.min_distance << endl;
+
         org_temp = result.nearest_points[0];
         change_obst_ = (org_temp-prev_org_temp).norm()>0.001;
         //change_obst_ = org_temp!=prev_org_temp;
         if(result.min_distance==-1)org_temp=prev_org_temp;
         if(results[0].min_distance==-1)results[0]=prev_results[0];
         if(results[1].min_distance==-1)results[1]=prev_results[1];
+        if(results[2].min_distance==-1)results[2]=prev_results[2];
+        //cout << "result.min_distance0 " << results[0].min_distance << endl;
+        //cout << "result.min_distance1 " << results[1].min_distance << endl;
         prev_org_temp=org_temp;
         prev_results = results; 
         obj_temp = result.nearest_points[1];
         dist_cont_ = result.min_distance;
         robot_mutex_.unlock();
-        //cout << "robot_mutex_unlock device thread\n";
+        
         bool contact[3];
         for (int i=0; i<3; i++)contact[i] = results_temp[i].min_distance<d_;
+        //cout << "contacts " << contact[0] << " " << contact[1] << " " << contact[2] << endl;
+        //for (int i=0; i<3; i++) cout <<  setprecision(3)<< results[0].nearest_points[0][i] <<"\t\t\t\t" << results[1].nearest_points[0][i] << "\t\t\t\t" << results[2].nearest_points[0][i] << endl;
+        
+              
+        if (contact_activated_ && contact[0] && !contact[1]){
+          normal_mutex.lock();
+          normal[1]={
+            (float)(results[1].nearest_points[0][0] - results[1].nearest_points[1][0]),
+            (float)(results[1].nearest_points[0][1] - results[1].nearest_points[1][1]),
+            (float)(results[1].nearest_points[0][2] - results[1].nearest_points[1][2])
+          };
+          normal[1].normalize();
+          normal_mutex.unlock();
 
+          d_com_near_point_[1] = {
+            (float)results[1].nearest_points[1][0] - trans_temp.translation()[0],
+            (float)results[1].nearest_points[1][1] - trans_temp.translation()[1],
+            (float)results[1].nearest_points[1][2] - trans_temp.translation()[2]};
+        }
+
+        if (contact_activated_ && contact[0] && contact[1] && !contact[2]){
+          normal_mutex.lock();
+          normal[2]={
+            (float)(results[2].nearest_points[0][0] - results[2].nearest_points[1][0]),
+            (float)(results[2].nearest_points[0][1] - results[2].nearest_points[1][1]),
+            (float)(results[2].nearest_points[0][2] - results[2].nearest_points[1][2])
+          };
+          normal[2].normalize();
+          normal_mutex.unlock();
+
+          d_com_near_point_[2] = {
+            (float)results[2].nearest_points[1][0] - trans_temp.translation()[0],
+            (float)results[2].nearest_points[1][1] - trans_temp.translation()[1],
+            (float)results[2].nearest_points[1][2] - trans_temp.translation()[2]};
+        }
 
         AfficherReperes(contact, results_temp); 
-        
 
         //*
         // //////////////////////////////////////////////////////////////////
@@ -520,12 +616,6 @@ namespace hpp {
                 (float)(result.nearest_points[0][2] - result.nearest_points[1][2])
               };
               normal[0].normalize();
-              normal[1]={
-                (float)(results[1].nearest_points[0][0] - results[1].nearest_points[1][0]),
-                (float)(results[1].nearest_points[0][1] - results[1].nearest_points[1][1]),
-                (float)(results[1].nearest_points[0][2] - results[1].nearest_points[1][2])
-              };
-              normal[1].normalize();
               normal_mutex.unlock();
               //cout << "normale " << normal(0)<< " " << normal(1) << " "<< normal(2) << endl;
               //for (int i=0; i< 3; i++)
@@ -550,10 +640,10 @@ namespace hpp {
               distances_[1] = (float) (0.0 + normal[0](1) * d_com_near_point_[0](1));
               distances_[2] = (float) (0.0 + normal[0](2) * d_com_near_point_[0](2));
               //cout<<"distances_ "<<distances_[0]<<" "<<distances_[1]<<" "<<distances_[2]<<endl;
-              distance_ = (float)sqrt(
-                  pow((float)result.nearest_points[1][0] - trans_temp.translation()[0], 2) +
-                  pow((float)result.nearest_points[1][1] - trans_temp.translation()[1], 2) +
-                  pow((float)result.nearest_points[1][2] - trans_temp.translation()[2], 2));
+              //distance_ = (float)sqrt(
+                  //pow((float)result.nearest_points[1][0] - trans_temp.translation()[0], 2) +
+                  //pow((float)result.nearest_points[1][1] - trans_temp.translation()[1], 2) +
+                  //pow((float)result.nearest_points[1][2] - trans_temp.translation()[2], 2));
               //distance_ = 0.05;
               distance_mutex_.unlock();
             }
@@ -619,9 +709,14 @@ namespace hpp {
     void Planner::AfficherReperes(bool contact[3], vector<fcl::DistanceResult> results){
       se3::SE3 trans_temp = SixDOFMouseDriver::getTransformation();
       gepetto::corbaserver::Color color;
-      color[0] = 1; color[1] = 1; color[2] = 1; color[3] = 1.;
+      color[0] = 1; color[1] = 1; color[2] = 1; color[3] = 1;
+      gepetto::corbaserver::Color color2;
+      color2[0] = 0; color2[1] = 1; color2[2] = 1; color2[3] = 1;
+      gepetto::corbaserver::Color color3;
+      color3[0] =(float) 0.8; color3[1] =(float) 0.3; color3[2] =(float) 0.2; color3[3] = 1;
       static int index_lignes=0;
       static int index_lignes2=0;
+      static int index_lignes3=0;
       // point sur le robot
       gepetto::corbaserver::Position v = {
         (float)results[0].nearest_points[0][0],
@@ -632,30 +727,57 @@ namespace hpp {
         (float)results[0].nearest_points[1][0],
         (float)results[0].nearest_points[1][1],
         (float)results[0].nearest_points[1][2]};
+        gepetto::corbaserver::Position v2 = {
+          (float)results[1].nearest_points[0][0],
+          (float)results[1].nearest_points[0][1],
+          (float)results[1].nearest_points[0][2]};
+        gepetto::corbaserver::Position w2 = {
+          (float)results[1].nearest_points[1][0],
+          (float)results[1].nearest_points[1][1],
+          (float)results[1].nearest_points[1][2]};
+        gepetto::corbaserver::Position v3 = {
+          (float)results[2].nearest_points[0][0],
+          (float)results[2].nearest_points[0][1],
+          (float)results[2].nearest_points[0][2]};
+        gepetto::corbaserver::Position w3 = {
+          (float)results[2].nearest_points[1][0],
+          (float)results[2].nearest_points[1][1],
+          (float)results[2].nearest_points[1][2]};
       //cout << index_lignes<<endl;
       //cout << "index " << index_lignes << " obj à cacher " << nom_ligne << endl;
 
-      // toujours tenter d'effacer le repère 2
-      string nom_ligne = "0_scene_hpp_/ligne";
-      string ind = boost::lexical_cast<std::string>(index_lignes);
-      nom_ligne += ind;
-      ind = boost::lexical_cast<std::string>(index_lignes2);
-      nom_ligne += ind ;
-      nom_ligne +='c';
-      //cout << " obj à cacher " << nom_ligne << endl;
-      client_.gui()->setVisibility(nom_ligne.c_str(), "OFF");
       //}
       if (!contact [0])
       {
         // effacer l'ancien repère 1 si pas de contact sinon, le garder
-        nom_ligne = "0_scene_hpp_/ligne";
-        ind = boost::lexical_cast<std::string>(index_lignes);
+        string nom_ligne = "0_scene_hpp_/ligne";
+        string ind = boost::lexical_cast<std::string>(index_lignes);
         nom_ligne += ind;
         client_.gui()->setVisibility(nom_ligne.c_str(), "OFF");
         string axe = nom_ligne +='a';
         client_.gui()->setVisibility(axe.c_str(), "OFF");
         axe = nom_ligne +='b';
         client_.gui()->setVisibility(axe.c_str(), "OFF");
+      // toujours tenter d'effacer le repère 2
+      nom_ligne = "0_scene_hpp_/ligne";
+      ind = boost::lexical_cast<std::string>(index_lignes);
+      nom_ligne += ind;
+      ind = boost::lexical_cast<std::string>(index_lignes2);
+      nom_ligne += ind ;
+      nom_ligne +='c';
+      //cout << " obj à cacher " << nom_ligne << endl;
+      client_.gui()->setVisibility(nom_ligne.c_str(), "OFF");
+      // toujours tenter d'effacer le repère 3
+      nom_ligne = "0_scene_hpp_/ligne";
+      ind = boost::lexical_cast<std::string>(index_lignes);
+      nom_ligne += ind;
+      ind = boost::lexical_cast<std::string>(index_lignes2);
+      nom_ligne += ind ;
+      ind = boost::lexical_cast<std::string>(index_lignes3);
+      nom_ligne += ind ;
+      nom_ligne +='d';
+      //cout << " obj à cacher " << nom_ligne << endl;
+      client_.gui()->setVisibility(nom_ligne.c_str(), "OFF");
 
         index_lignes++;
         // afficher le repère local // //////////////////////////////////////////
@@ -675,42 +797,59 @@ namespace hpp {
         w[2] = v[2] + MGS.col[2].v[2];
         axe = nom_ligne +='b';
         client_.gui()->addLine(axe.c_str(), v, w, &color[0]);
-        //axe = nom_ligne +='c';
-        //client_.gui()->addLine(axe.c_str(), v2, w2, &color[0]);
+        index_lignes2++;
+        nom_ligne = "0_scene_hpp_/ligne";
+        ind = boost::lexical_cast<std::string>(index_lignes);
+        nom_ligne += ind;
+        ind = boost::lexical_cast<std::string>(index_lignes2);
+        nom_ligne += ind ;
+        nom_ligne +='c';
+        //cout << " obj à afficher " << nom_ligne << endl;
+        client_.gui()->addLine(nom_ligne.c_str(), v2, w2, &color2[0]);
+        index_lignes3++;
+        nom_ligne = "0_scene_hpp_/ligne";
+        ind = boost::lexical_cast<std::string>(index_lignes);
+        nom_ligne += ind;
+        ind = boost::lexical_cast<std::string>(index_lignes2);
+        nom_ligne += ind ;
+        ind = boost::lexical_cast<std::string>(index_lignes3);
+        nom_ligne += ind ;
+        nom_ligne +='d';
+        //cout << " obj à afficher " << nom_ligne << endl;
+        client_.gui()->addLine(nom_ligne.c_str(), v3, w3, &color3[0]);
         // //////////////////////////////////////////////////////////////
 
       } 
       if (contact[0] && !contact[1]){
         //d_com_near_point_[0] = {
-          //(float)results[0].nearest_points[1][0] - trans_temp.translation()[0],
-          //(float)results[0].nearest_points[1][1] - trans_temp.translation()[1],
-          //(float)results[0].nearest_points[1][2] - trans_temp.translation()[2]};
-        gepetto::corbaserver::Position v2 = {
-          (float)results[1].nearest_points[0][0],
-          (float)results[1].nearest_points[0][1],
-          (float)results[1].nearest_points[0][2]};
-        gepetto::corbaserver::Position w2 = {
-          (float)results[1].nearest_points[1][0],
-          (float)results[1].nearest_points[1][1],
-          (float)results[1].nearest_points[1][2]};
+        //(float)results[0].nearest_points[1][0] - trans_temp.translation()[0],
+        //(float)results[0].nearest_points[1][1] - trans_temp.translation()[1],
+        //(float)results[0].nearest_points[1][2] - trans_temp.translation()[2]};
         d_com_near_point_[1] = {
           (float)results[1].nearest_points[1][0] - trans_temp.translation()[0],
           (float)results[1].nearest_points[1][1] - trans_temp.translation()[1],
           (float)results[1].nearest_points[1][2] - trans_temp.translation()[2]};
-        // afficher le repère local // //////////////////////////////////////////
-        nom_ligne = "0_scene_hpp_/ligne";
-        ind = boost::lexical_cast<std::string>(index_lignes);
+        // toujours tenter d'effacer le repère 2
+        string nom_ligne = "0_scene_hpp_/ligne";
+        string ind = boost::lexical_cast<std::string>(index_lignes);
         nom_ligne += ind;
-        client_.gui()->addLine(nom_ligne.c_str(), v, w, &color[0]);
-        nom_ligne = "0_scene_hpp_/ligne";
-        ind = boost::lexical_cast<std::string>(index_lignes);
-        nom_ligne += ind ;
         ind = boost::lexical_cast<std::string>(index_lignes2);
         nom_ligne += ind ;
         nom_ligne +='c';
+        //cout << " obj à cacher " << nom_ligne << endl;
         client_.gui()->setVisibility(nom_ligne.c_str(), "OFF");
-        //if (index_lignes > 0){
-        //}
+      // toujours tenter d'effacer le repère 3
+      nom_ligne = "0_scene_hpp_/ligne";
+      ind = boost::lexical_cast<std::string>(index_lignes);
+      nom_ligne += ind;
+      ind = boost::lexical_cast<std::string>(index_lignes2);
+      nom_ligne += ind ;
+      ind = boost::lexical_cast<std::string>(index_lignes3);
+      nom_ligne += ind ;
+      nom_ligne +='d';
+      //cout << " obj à cacher " << nom_ligne << endl;
+      client_.gui()->setVisibility(nom_ligne.c_str(), "OFF");
+
         index_lignes2++;
         nom_ligne = "0_scene_hpp_/ligne";
         ind = boost::lexical_cast<std::string>(index_lignes);
@@ -720,7 +859,53 @@ namespace hpp {
         nom_ligne +='c';
         //cout << " obj à afficher " << nom_ligne << endl;
         //if (index_lignes > 0){
-        client_.gui()->addLine(nom_ligne.c_str(), v2, w2, &color[0]);
+        client_.gui()->addLine(nom_ligne.c_str(), v2, w2, &color2[0]);
+        index_lignes3++;
+        nom_ligne = "0_scene_hpp_/ligne";
+        ind = boost::lexical_cast<std::string>(index_lignes);
+        nom_ligne += ind;
+        ind = boost::lexical_cast<std::string>(index_lignes2);
+        nom_ligne += ind ;
+        ind = boost::lexical_cast<std::string>(index_lignes3);
+        nom_ligne += ind ;
+        nom_ligne +='d';
+        //cout << " obj à afficher " << nom_ligne << endl;
+        client_.gui()->addLine(nom_ligne.c_str(), v3, w3, &color3[0]);
+        //// //////////////////////////////////////////////////////////////
+
+      }
+      if (contact[0] && contact[1] && !contact[2]){
+        //d_com_near_point_[0] = {
+        //(float)results[0].nearest_points[1][0] - trans_temp.translation()[0],
+        //(float)results[0].nearest_points[1][1] - trans_temp.translation()[1],
+        //(float)results[0].nearest_points[1][2] - trans_temp.translation()[2]};
+        d_com_near_point_[2] = {
+          (float)results[2].nearest_points[1][0] - trans_temp.translation()[0],
+          (float)results[2].nearest_points[1][1] - trans_temp.translation()[1],
+          (float)results[2].nearest_points[1][2] - trans_temp.translation()[2]};
+      // toujours tenter d'effacer le repère 3
+      string nom_ligne = "0_scene_hpp_/ligne";
+      string ind = boost::lexical_cast<std::string>(index_lignes);
+      nom_ligne += ind;
+      ind = boost::lexical_cast<std::string>(index_lignes2);
+      nom_ligne += ind ;
+      ind = boost::lexical_cast<std::string>(index_lignes3);
+      nom_ligne += ind ;
+      nom_ligne +='d';
+      //cout << " obj à cacher " << nom_ligne << endl;
+      client_.gui()->setVisibility(nom_ligne.c_str(), "OFF");
+
+        index_lignes3++;
+        nom_ligne = "0_scene_hpp_/ligne";
+        ind = boost::lexical_cast<std::string>(index_lignes);
+        nom_ligne += ind;
+        ind = boost::lexical_cast<std::string>(index_lignes2);
+        nom_ligne += ind ;
+        ind = boost::lexical_cast<std::string>(index_lignes3);
+        nom_ligne += ind ;
+        nom_ligne +='d';
+        //cout << " obj à afficher " << nom_ligne << endl;
+        client_.gui()->addLine(nom_ligne.c_str(), v3, w3, &color3[0]);
         //// //////////////////////////////////////////////////////////////
 
       }
@@ -805,7 +990,7 @@ namespace hpp {
           //std::cout << "one step distance centre/surf " << distance_ << std::endl;
           //cout << "org " << org_[1] << " obj " << obj_[1]
           //     << " signe org-obj " << signe(org_[1]-obj_[1]) << endl;
-          distance_mutex_.try_lock();
+          distance_mutex_.try_lock(); // TODO oulah c'est pas bon ça
           Vector3 org(
               (float)org_[0]+signe(obj_[0]-org_[0])*distances_[0],
               (float)org_[1]+signe(obj_[1]-org_[1])*distances_[1],
@@ -1002,13 +1187,13 @@ namespace hpp {
       fcl::DistanceRequest request(true, 0, 0, fcl::GST_INDEP);
       fcl::DistanceResult result;
       result.clear();
-      fcl::CollisionObject* robot_proche=0;
-      fcl::CollisionObject* obstacle_proche=0;
+      //fcl::CollisionObject* robot_proche=0;
+      //fcl::CollisionObject* obstacle_proche=0;
       fcl::CollisionObject* obst_temp=0;
       fcl::CollisionObject* robot_temp=0;
-      fcl::DistanceResult res[3];
+      //fcl::DistanceResult res[3];
       hpp::core::ObjectVector_t liste = this->problem().collisionObstacles();
-      double min_dist = 999;
+      //double min_dist = 999;
       string impr="";
       for (hpp::core::ObjectVector_t::iterator it_obst = liste.begin();it_obst!=liste.end();++it_obst){
         obst_temp = &*(*it_obst)->fcl();
@@ -1019,7 +1204,7 @@ namespace hpp {
           fcl::distance(obst_temp, robot_temp, request, result);
           //if(result.min_distance<5)
           result.min_distance=(floor(1000*result.min_distance)/1000);
-          impr+=(*it_obst)->name() + "/" + (*it_rob)->name() + " " + boost::lexical_cast<std::string>(result.min_distance)+"\n";
+          //impr+=(*it_obst)->name() + "/" + (*it_rob)->name() + " " + boost::lexical_cast<std::string>(result.min_distance)+"\n";
           //if (floor(1000*result.min_distance)/1000<min_dist){
           //if (1){ // TODO attention ceci enlève la correctio du bug ci dessous
                     // je crois que c'est re-bon
@@ -1035,6 +1220,12 @@ namespace hpp {
         }
       }
       std::sort (vect.begin(), vect.end(), sortDistances);
+
+      //string impr="";
+      for (int i=0; i<vect.size(); i++)
+          impr+=boost::lexical_cast<std::string>(vect[i].min_distance)+"\n";
+
+  
       //cout << impr<<endl;
       //for (int i=0;i<vect.size();i++) cout << vect[i].min_distance<<endl;
       //cout << endl;
