@@ -82,8 +82,9 @@ namespace hpp {
     vector<fcl::DistanceResult> results_cpy;
     vector<fcl::DistanceResult> prev_results;
     //////////// var glob
-
-    void* ForceFeedback(void*){
+//*
+    //void* ForceFeedback(void*){
+    void Planner::ActuateArm(){
       graphics::corbaServer::Client& client_ref(*client_ptr);
       double dnn[7];
       Eigen::Vector3f temp, pos, force_vec, prev_force_vec, obst, obst2, normale, normale2, signes, signes2;
@@ -110,7 +111,9 @@ namespace hpp {
       obst.setZero();
       pos.setZero();
       temp.setZero();
+  clock_t begin, end, end2 ;
       while(1){
+    begin = clock();
         iteration++;
 
         results_mutex.lock();
@@ -155,7 +158,7 @@ namespace hpp {
         force2 = err2 * gain;
         force_feed2 = err2 > 0;
         cout << "obst1 " << obst.transpose() << " obst2 " << obst2.transpose() << endl;
-        cout << "err1 " << err << " err2 " << err2 << " ffd1 " << force_feed << " ffd2 " << force_feed2 << endl;
+        cout << "err1 " << err << " err2 " << err2 << endl << " ffd1 " << force_feed << " ffd2 " << force_feed2 << endl;
         //cout << "obst="<<obst.transpose()<<" pos="<<pos.transpose()<<" D="<<D<<" err="<<err<<" force="<<force<<" n "<<normale.transpose()<<" f_vec"<<force_vec.transpose()<<endl; 
         //cout << force_feed<<endl;
 
@@ -209,7 +212,7 @@ namespace hpp {
           //cout << endl;
           //force_vec.setZero();
           // protection 1 : seuillage
-          //for (int i = 0 ;i<3; i++) if (force_vec[i]>max){force_vec[i]=signes[i]*max; /*cout<<"max dépassé sur "<<i<<endl;*/}
+          //for (int i = 0 ;i<3; i++) if (force_vec[i]>max){force_vec[i]=signes[i]*max; 
           // protection 2 : lissage
           // bah ça fait pas grand chose
           //for (int i=0; i<3;i++){
@@ -240,13 +243,19 @@ namespace hpp {
         dnn[2] = -force_vec(2);
         drdSetForceAndTorqueAndGripperForce (dnn);  // avec blocage des rots
 
+    end = clock();
+    double elapsed_secs = double(end - begin) / CLOCKS_PER_SEC;
+    if (force_feed&&elapsed_secs>0.001) cout << "temps total!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!=\t\t" <<elapsed_secs<<endl; 
+    if (force_feed) cout << "temps total=\t\t" <<elapsed_secs<<endl; 
+    cout << endl;
+
       }
-      return NULL;
+      //return NULL;
 
     }
 
 
-
+//*/
 
 
 
@@ -313,16 +322,16 @@ namespace hpp {
       // using solveanddisplay relaunches planner -> anti core dump protection
       if (nb_launchs<2){
         boost::thread th1(boost::bind( &Planner::InteractiveDeviceThread,this));
-        //boost::thread th2(boost::bind( &Planner::ActuateArm,this));
+        boost::thread th2(boost::bind( &Planner::ActuateArm,this));
         //if (type_==2){
-        if (1){
+        /*if (0){
           pthread_t          handle;
           pthread_create (&handle, NULL, ForceFeedback, NULL);
           struct sched_param sp; 
           memset (&sp, 0, sizeof(struct sched_param));
           sp.sched_priority = 10; 
           pthread_setschedparam (handle, SCHED_RR, &sp);
-        }
+        }*/
       }
     }
 
