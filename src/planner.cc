@@ -343,7 +343,7 @@ namespace hpp {
     {
       client_ptr = &client_;
       nb_launchs++;
-      type_ = 2; //device type 1 mouse 2 sigma7
+      type_ = 1; //device type 1 mouse 2 sigma7
       random_prob_ = 0; // 0 all human  1 all machine
       d_ = 0.05; // distance entrée mode contact
       Planner::mode_contact_ = false;
@@ -353,8 +353,8 @@ namespace hpp {
       client_.connect();
       cout << "adding landmark to viewer\n";
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_mesh.urdf"; contact_activated_ = true;
-      //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_3angles.urdf"; contact_activated_ = true;
-      string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_L.urdf"; contact_activated_ = true;
+      string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_3angles.urdf"; contact_activated_ = true;
+      //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_L.urdf"; contact_activated_ = true;
       float f = (float) 0.1;
       gepetto::corbaserver::Color color;
       color[0] = 1; color[1] = 1; color[2] = 1; color[3] = 1.;
@@ -393,8 +393,8 @@ namespace hpp {
 
       // using solveanddisplay relaunches planner -> anti core dump protection
       if (nb_launchs<2){
-        //if (type_==2){
-        if (1){
+        if (type_==2){
+        //if (1){
           pthread_t          handle;
           pthread_create (&handle, NULL, ForceFeedback, NULL);
           pthread_t          handle2;
@@ -983,8 +983,22 @@ namespace hpp {
           rot(2,0) = MGS.col[2].v[0];
           rot(2,1) = MGS.col[2].v[1];
           rot(2,2) = MGS.col[2].v[2];
+
+          // nouvelle méthode pour éviter le gros hack
+          double K = 2.5;
+          double ray = rand();
+          ray = ray / RAND_MAX;
+          double thet = rand();
+          thet = thet / RAND_MAX;
+          ray = sqrt(ray) * K;
+          thet = 2 * 3.141592653589 * thet;
+          double x, y;
+          x = ray * cos(thet);
+          y = ray * sin(thet); 
+
           // garder z à zéro
-          Vector3 val(0, (float)(*q_rand)[0], (float)(*q_rand)[2]);
+          //Vector3 val(0, (float)(*q_rand)[0], (float)(*q_rand)[2]);
+          Vector3 val(0, x, y);
           //cout << "rot " << rot << endl;
           //cout << "val " << val.transpose() << endl;
           //std::cout << "one step distance centre/surf " << distance_ << std::endl;
@@ -1000,7 +1014,9 @@ namespace hpp {
           val = rot.transpose()*val + org;
           //cout << "nouveau val " << val.transpose() << endl;
 
-          // gros hack
+          
+
+          /*// gros hack
           // bool proche = false;
           while(1){
             double dist;
@@ -1025,6 +1041,7 @@ namespace hpp {
               val = rot.transpose()*val + re_org;
             }
           }
+          //*/
           distance_mutex_.unlock();
 
           (*q_rand)[0] = val[0];
