@@ -85,15 +85,15 @@ namespace hpp {
     //////////// var glob
 
     double dnn[7];
-    void* ForceFeedback2(void*){
-      memset(dnn, sizeof(double)*7, 0);
-      while(1)
-        drdSetForceAndTorqueAndGripperForce (dnn);  // avec blocage des rots
-    }
+    //void* ForceFeedback2(void*){
+      //memset(dnn, (short int)sizeof(double)*7, 0);
+      //while(1)
+        //drdSetForceAndTorqueAndGripperForce (dnn);  // avec blocage des rots
+    //}
 
     void* ForceFeedback(void*){
       clock_t begin, end, end2 ;
-      graphics::corbaServer::Client& client_ref(*client_ptr);
+      //graphics::corbaServer::Client& client_ref(*client_ptr);
       Vector3f posf;
       Eigen::Vector3d pos, temp, prev_force_vec, signes, signes2, signes3;
       Eigen::Vector3d obst_d, normale, normale2, normale3, obst, obst2, obst3;
@@ -265,6 +265,9 @@ namespace hpp {
         dt = double(end - begin) / CLOCKS_PER_SEC;
         if(dt>0.005)cout << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!total=" << dt<<endl<<endl;
         else cout << "total=" << dt<<endl<<endl;
+
+        // pour éviter les warnings :
+        force2=force2+force3+D3+max+(double)iteration;
       }
       return NULL;
 
@@ -397,8 +400,8 @@ namespace hpp {
         //if (1){
           pthread_t          handle;
           pthread_create (&handle, NULL, ForceFeedback, NULL);
-          pthread_t          handle2;
-          pthread_create (&handle2, NULL, ForceFeedback2, NULL);
+          //pthread_t          handle2;
+          //pthread_create (&handle2, NULL, ForceFeedback2, NULL);
           struct sched_param sp; 
           memset (&sp, 0, sizeof(struct sched_param));
           sp.sched_priority = 99; 
@@ -417,6 +420,7 @@ namespace hpp {
       //color[0] = 1; color[1] = 1; color[2] = 1; color[3] = 1.;
       int index_lignes = 0;
       int index_lignes2 = 0;
+      index_lignes += index_lignes2; // pour éviter le warning
       bool double_contact = true; 
       sleep(1);//TODO ceci pour régler le pb init curseur viteuf, à changer
       bool init = false;
@@ -649,18 +653,21 @@ namespace hpp {
             }
 
             // vecteur aléatoire 1
-            double rando1 = rand(), rando2 = rand(), rando3 = rand();
-            rando1 = rando1 / RAND_MAX; rando2 = rando2 / RAND_MAX; rando3 = rando3 / RAND_MAX;
+            double rando1 = 0.6,/*rand()*/ rando2 =0.7/* rand()*/, rando3 = 0.8;//rand();
+            //rando1 = rando1 / RAND_MAX; rando2 = rando2 / RAND_MAX; rando3 = rando3 / RAND_MAX;
             A.col[1] = Vec3f((float)rando1,(float)rando2, (float)rando3);
             // vecteur aléatoire 2
-            rando1 = rand(); rando2 = rand(); rando3 = rand();
-            rando1 = rando1 / RAND_MAX; rando2 = rando2 / RAND_MAX; rando3 = rando3 / RAND_MAX;
+            rando1 = 0.3;/*rand()*/ rando2 =0.4;/* rand()*/ rando3 = 0.5;//rand();
+            //rando1 = rand(); rando2 = rand(); rando3 = rand();
+            //rando1 = rando1 / RAND_MAX; rando2 = rando2 / RAND_MAX; rando3 = rando3 / RAND_MAX;
             A.col[2] = Vec3f((float)rando1,(float)rando2, (float)rando3);
 
             // calcule la matrice de rotation MGS si on n'est pas déjà en mode contact
             if (!Planner::mode_contact_)
+            {
+              //cout<<"calcule nouv MGS\n";
               modified_gram_schmidt(MGS, A);
-
+            }
             if (double_contact){
               
 
@@ -983,6 +990,17 @@ namespace hpp {
           rot(2,0) = MGS.col[2].v[0];
           rot(2,1) = MGS.col[2].v[1];
           rot(2,2) = MGS.col[2].v[2];
+          //cout << "rot" << rot << endl;
+
+          //rot(0,0) = 1;
+          //rot(0,1) = 0;
+          //rot(0,2) = 0;
+          //rot(1,0) = 0;
+          //rot(1,1) = sqrt(3)/2;
+          //rot(1,2) = 0.5;
+          //rot(2,0) = 0;
+          //rot(2,1) = -0.5;
+          //rot(2,2) = sqrt(3)/2;
 
           // nouvelle méthode pour éviter le gros hack
           double K = 2.5;
@@ -993,12 +1011,12 @@ namespace hpp {
           ray = sqrt(ray) * K;
           thet = 2 * 3.141592653589 * thet;
           double x, y;
-          x = ray * cos(thet);
+          x = 0.4 * ray * cos(thet);
           y = ray * sin(thet); 
 
           // garder z à zéro
           //Vector3 val(0, (float)(*q_rand)[0], (float)(*q_rand)[2]);
-          Vector3 val(0, x, y);
+          Vector3 val(0, (float)x, (float)y);
           //cout << "rot " << rot << endl;
           //cout << "val " << val.transpose() << endl;
           //std::cout << "one step distance centre/surf " << distance_ << std::endl;
@@ -1006,15 +1024,21 @@ namespace hpp {
           //     << " signe org-obj " << signe(org_[1]-obj_[1]) << endl;
           distance_mutex_.try_lock(); // TODO oulah c'est pas bon ça
           Vector3 org(
-              (float)org_[0]+signe(obj_[0]-org_[0])*distances_[0],
-              (float)org_[1]+signe(obj_[1]-org_[1])*distances_[1],
-              (float)org_[2]+signe(obj_[2]-org_[2])*distances_[2]
+              (float)org_[0]+signe(obj_[0]-org_[0])*distances_[0]*1.1,
+              (float)org_[1]+signe(obj_[1]-org_[1])*distances_[1]*1.1,
+              (float)org_[2]+signe(obj_[2]-org_[2])*distances_[2]*1.1
               );
+          // TODO attention j'ai rajouté ci dessus un facteur 1.1
+          // car les échantillons ont tendance 
+          // à être en collision, c'est trop bas, à corriger
+
           //cout << "org " << org.transpose() << endl;
           val = rot.transpose()*val + org;
-          //cout << "nouveau val " << val.transpose() << endl;
 
-          
+          //val[0]=x;val[1]=y;val[2]=2;
+          //cout << "val " << val.transpose() << endl;
+          //val = val+org; 
+          //cout << "nouveau val " << val.transpose() << endl;
 
           /*// gros hack
           // bool proche = false;
@@ -1044,14 +1068,25 @@ namespace hpp {
           //*/
           distance_mutex_.unlock();
 
-          (*q_rand)[0] = val[0];
-          (*q_rand)[1] = val[1];
-          (*q_rand)[2] = val[2];
+          ::gepetto::corbaserver::Transform tr;
+          tr[0] = (*q_rand)[0] = val[0];
+          tr[1] = (*q_rand)[1] = val[1];
+          tr[2] = (*q_rand)[2] = val[2];
           // fixer rotation
-          (*q_rand)[3] = (*Planner::actual_configuration_ptr_)[3];
-          (*q_rand)[4] = (*Planner::actual_configuration_ptr_)[4];
-          (*q_rand)[5] = (*Planner::actual_configuration_ptr_)[5];
-          (*q_rand)[6] = (*Planner::actual_configuration_ptr_)[6];
+          tr[3] = (*q_rand)[3] = (*Planner::actual_configuration_ptr_)[3];
+          tr[4] = (*q_rand)[4] = (*Planner::actual_configuration_ptr_)[4];
+          tr[5] = (*q_rand)[5] = (*Planner::actual_configuration_ptr_)[5];
+          tr[6] = (*q_rand)[6] = (*Planner::actual_configuration_ptr_)[6];
+
+          string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_3angles.urdf";
+          string chiffre = boost::lexical_cast<std::string>(rand());
+          string node_name = "0_scene_hpp_/robot_interactif" + chiffre;
+          //cout << "node_name contact robot temp = " << node_name.data() << endl;
+          if(0)if(Planner::iteration_%5)
+          {
+            client_.gui()->addURDF(node_name.data() , robot_name.data() ,"/hpp/install/share");
+            client_.gui()->applyConfiguration(node_name.data(), tr);
+          }          
 
           Planner::iteration_++;
           //cout << "iteration contact " << iteration_ << endl;
