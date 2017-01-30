@@ -10,6 +10,10 @@
 #include <hpp/interactive/drdc.h>
 #include <stdio.h>
 #include <iostream>
+#include <iomanip>
+#include <hpp/interactive/Data.hh>
+#include <hpp/interactive/zmq.hh>
+
 
 boost::thread* SixDOFMouseDriver::interactiveDeviceThread_ = 0;
 int SixDOFMouseDriver::fd_ = 0;
@@ -29,6 +33,7 @@ double SixDOFMouseDriver::K_off_[3];
 // x, y, z for side, front, up vectors ; in this order
 float SixDOFMouseDriver::cameraVectors_[9];
 short int SixDOFMouseDriver::type_;
+zmq::socket_t* SixDOFMouseDriver::socket_;
 Eigen::Vector3d SixDOFMouseDriver::deviceForce_;
 Eigen::Vector3d SixDOFMouseDriver::deviceTorque_;
 
@@ -296,12 +301,54 @@ void SixDOFMouseDriver::MouseInit(short int type, const double* bounds)
       //*/
 
       // init bras : durée de chute 
-      for (int i=0; i< 1000; i++) getData();
+      for (int i=0; i< 1000; i++) getData(NULL);
       // execute thread 
       //void* arg = 0;
       SixDOFMouseDriver::interactiveDeviceThread_ = 
         new boost::thread(boost::thread(SixDOFMouseDriver::ReadMouse, bounds));
     }
+  }
+  if (type_==3)
+  {
+    // init status
+    SixDOFMouseDriver::has_moved_ = false;
+    // init position
+    //*
+    transformation_.translation()[0] = 0;
+    transformation_.translation()[1] = 0;
+    transformation_.translation()[2] = 0;
+    //*/
+    // init rotation
+    transformation_.rotation().setIdentity();
+    // init speed
+    //SixDOFMouseDriver::linear_speed_ = 20;
+    //SixDOFMouseDriver::angular_speed_ = 40;
+    // init axes
+    SixDOFMouseDriver::cameraVectors_[0] = 1;
+    SixDOFMouseDriver::cameraVectors_[1] = 0;
+    SixDOFMouseDriver::cameraVectors_[2] = 0;
+    SixDOFMouseDriver::cameraVectors_[3] = 0;
+    SixDOFMouseDriver::cameraVectors_[4] = 1;
+    SixDOFMouseDriver::cameraVectors_[5] = 0;
+    SixDOFMouseDriver::cameraVectors_[6] = 0;
+    SixDOFMouseDriver::cameraVectors_[7] = 0;
+    SixDOFMouseDriver::cameraVectors_[8] = 1;
+
+    //ref.recv(&request);
+    //Data *recv_config = (Data *)(request.data());
+    //int array_size = recv_config->getCollisionArraySize();
+    //std::cout << std::setw(6) << "Array Size: " << array_size << std::endl;
+    //for (int j=0; j<3; j++){
+      //cout << "pos"<<j<<" "<<recv_config->getObjCooridnate().getPosition()[j] << endl;
+      //cout << "force"<<j<< recv_config->getArmCF().getForceByIndex(j) << endl;
+    //}
+    cout << "message reçu ex\n";
+
+    sleep(6);
+    // execute thread 
+    SixDOFMouseDriver::interactiveDeviceThread_ = 
+      new boost::thread(boost::thread(SixDOFMouseDriver::ReadMouse, bounds));
+
   }
 
 }
@@ -314,170 +361,195 @@ void SixDOFMouseDriver::ReadMouse(const double* bounds_)
   for (int i=0; i<6; i++) bounds[i]=bounds_[i];
   // infinite loop
   cout << "ReadDevice thread...\n";
+  void* arg;
+
+  zmq::context_t contextpp (1);
+  zmq::socket_t socket (contextpp, ZMQ_PULL);
+  socket.bind ("tcp://*:5555");
+  if(0)while(1){
+    cout << "while\n";
+    zmq::message_t request;
+
+    //  Wait for next request from client
+    socket.recv (&request);
+    Data *recv_config = (Data *)(request.data());
+    // output the size of received collision array
+    int array_size = recv_config->getCollisionArraySize();
+    std::cout << std::setw(6) << "Array Size: " << array_size << std::endl;
+    std::cout<<*(recv_config->getCollisionPairByIndex(0).getPositionOnObj1())<<" "<<*(recv_config->getCollisionPairByIndex(0).getPositionOnObj2())<<std::endl;
+    for (int j=0; j<3; j++){
+      cout << "pos"<<j<<" "<<recv_config->getObjCooridnate().getPosition()[j] << endl;
+      //cout << "force"<<j<< recv_config->getArmCF().getForceByIndex(j) << endl;
+    }   
+
+  }
+
+
   while (1){
-    getData();
+    //cout << "ReadDevice thread...while\n";
+    getData(arg);
     //mutex_.unlock();
     se3::SE3 temp_trans = transformation_;
     if (type_==1)
     {
-    /////////////////////////////////////////////////////////
-    // translation
-    float divideFactor = (float)SixDOFMouseDriver::linear_speed_;// dt
-    /*
-       cout << "in the driver cam vect ";
-       for (int i=0; i<9; i++)
-       cout << SixDOFMouseDriver::cameraVectors_[i] << " ";
-       cout << "\r";
-    //*/
-    //*
-    for (int i=0; i<3; i++){
-      pos[i] =
-        (float) SixDOFMouseDriver::deviceValuesNormalized_[0]/divideFactor*SixDOFMouseDriver::cameraVectors_[i] -
-        (float) SixDOFMouseDriver::deviceValuesNormalized_[1]/divideFactor*SixDOFMouseDriver::cameraVectors_[i+3] -
-        (float) SixDOFMouseDriver::deviceValuesNormalized_[2]/divideFactor*SixDOFMouseDriver::cameraVectors_[i+6];
-    }
-    //*/
-    /*
-    // bounds limits ---------------- TODO : provoque un effet de bords avec les rotations
-    if (pos[0]+transformation_.translation()[0]<bounds[0]){
+      /////////////////////////////////////////////////////////
+      // translation
+      float divideFactor = (float)SixDOFMouseDriver::linear_speed_;// dt
+      /*
+         cout << "in the driver cam vect ";
+         for (int i=0; i<9; i++)
+         cout << SixDOFMouseDriver::cameraVectors_[i] << " ";
+         cout << "\r";
+      //*/
+      //*
+      for (int i=0; i<3; i++){
+        pos[i] =
+          (float) SixDOFMouseDriver::deviceValuesNormalized_[0]/divideFactor*SixDOFMouseDriver::cameraVectors_[i] -
+          (float) SixDOFMouseDriver::deviceValuesNormalized_[1]/divideFactor*SixDOFMouseDriver::cameraVectors_[i+3] -
+          (float) SixDOFMouseDriver::deviceValuesNormalized_[2]/divideFactor*SixDOFMouseDriver::cameraVectors_[i+6];
+      }
+      //*/
+      /*
+      // bounds limits ---------------- TODO : provoque un effet de bords avec les rotations
+      if (pos[0]+transformation_.translation()[0]<bounds[0]){
       pos[0] = 0;
       cout << "pos[0]+transformation_.translation()[0]<bounds[0]\n";
       cout << pos[0]<< "<" << bounds[0]<< "\n";
-    }
-    if (pos[0]+transformation_.translation()[0]>bounds[1]){
+      }
+      if (pos[0]+transformation_.translation()[0]>bounds[1]){
       pos[0] = 0;
       cout << "pos[0]+transformation_.translation()[0]>bounds[1]\n";
       cout << pos[0] << ">" << bounds[1] << "\n";
-    }
-    if (pos[1]+transformation_.translation()[1]<bounds[2]){
+      }
+      if (pos[1]+transformation_.translation()[1]<bounds[2]){
       pos[1] = 0;
       cout << "pos[1]+transformation_.translation()[1]<bounds[2]\n";
       cout << pos[1] << "<" << bounds[2] << "\n";
-    }
-    if (pos[1]+transformation_.translation()[1]>bounds[3]){
+      }
+      if (pos[1]+transformation_.translation()[1]>bounds[3]){
       pos[1] = 0;
       cout << "pos[1]+transformation_.translation()[1]>bounds[3]\n";
       cout << pos[1] << ">" << bounds[3] << "\n";
-    }
-    if (pos[2]+transformation_.translation()[2]<bounds[4]){
+      }
+      if (pos[2]+transformation_.translation()[2]<bounds[4]){
       pos[2] = 0;
       cout << "pos[2]+transformation_.translation()[2]<bounds[4]\n";
       cout << pos[2] << "<" << bounds[4] << "\n";
-    }
-    if (pos[2]+transformation_.translation()[2]>bounds[5]){
+      }
+      if (pos[2]+transformation_.translation()[2]>bounds[5]){
       pos[2] = 0;
       cout << "pos[2]+transformation_.translation()[2]>bounds[5]\n";
       cout << pos[2] << ">" << bounds[5] << "\n";
-    }
-    // -------------------------------------------------------
-    //*/
-    temp_trans.translation(pos + transformation_.translation());
-    /////////////////////////////////////////////////////////
-    /*
-       for (int i=0; i<3; i++){
-       rot[i] =
-       (float) SixDOFMouseDriver::deviceValuesNormalized_[3]*M_PI
-     *SixDOFMouseDriver::cameraVectors_[i] -
-     (float) SixDOFMouseDriver::deviceValuesNormalized_[4]*M_PI
-     *SixDOFMouseDriver::cameraVectors_[i+3] -
-     (float) SixDOFMouseDriver::deviceValuesNormalized_[5]*M_PI
-     *SixDOFMouseDriver::cameraVectors_[i+6];
-     }
-    //cout << "rotation " << rot[0] << " " << rot[1] << " " << rot[2] << endl;
-    double norme = sqrt(pow(rot[0], 2)+ pow(rot[1], 2)+pow(rot[2], 2));
-    //cout << "norme " << norme << endl;
-    rot[0] = rot[0]/norme;
-    rot[1] = rot[1]/norme;
-    rot[1] = rot[2]/norme;
-    /*/
-    /* // réorienter selon caméra
-       Eigen::Vector3f res;
-       res << SixDOFMouseDriver::deviceValuesNormalized_[3] ,
-       SixDOFMouseDriver::deviceValuesNormalized_[4] ,
-       SixDOFMouseDriver::deviceValuesNormalized_[5];
-       cout << matrot << endl;
-       res = matrot.inverse() * res;
-    // res 0 tangage res1 roulis
-    //cout << "rotation " << rot[0] << " " << rot[1] << " " << rot[2] << endl;
-    // rotation
-    //*/
-    //* // sans modif, version initiale
-    rot[0] = (float) (SixDOFMouseDriver::deviceValuesNormalized_[3]* M_PI);
-    rot[1] = (float) (SixDOFMouseDriver::deviceValuesNormalized_[4]* M_PI);
-    rot[2] = (float) (SixDOFMouseDriver::deviceValuesNormalized_[5]* M_PI);
-    //cout << "ancienne meth "<< rot[0] << " " << rot[1] << " " << rot[2] << endl ;
-    //*/
-    /*
-    // réorienter selon précédente position
-    Eigen::Matrix3f matrot;
-    matrot = transformation_.rotation();
-    Eigen::Vector3f res;
-    res << SixDOFMouseDriver::deviceValuesNormalized_[3]* M_PI ,
-    SixDOFMouseDriver::deviceValuesNormalized_[4]* M_PI ,
-    SixDOFMouseDriver::deviceValuesNormalized_[5]* M_PI;
-    res = matrot * res;
-    rot[0] = res(0);
-    rot[1] = -res(1);
-    rot[2] = -res(2);
-    cout << "rotation " << rot[0] << " " << rot[1] << " " << rot[2] << endl << endl;
-    //*/
-    /////////////////////////////////////////////////////////
-    // integrate rotations
-    double threshold;
-    if (type_==1) threshold = 0.5; // anciennement 0.5 0.2
-    if (type_==2) threshold = 0.03; // anciennement 0.5 0.2
-    divideFactor = (float)SixDOFMouseDriver::angular_speed_;
-    // rotation variations
-    se3::SE3::Vector3 v_local (0., 0., 0.);
-    // threshold for rotations
-    if (std::abs(rot[0]) > threshold)
-      v_local[0] = (float)(rot[0]-threshold)/(float)divideFactor;
-    if (std::abs(rot[1]) > threshold)
-      v_local[1] = -(float)(rot[1]-threshold)/(float)divideFactor;
-    if (std::abs(rot[2]) > threshold)
-      v_local[2] = (float)(rot[2]-threshold)/(float)divideFactor;
-    Eigen::Matrix3f matrot;
+      }
+      // -------------------------------------------------------
+      //*/
+      temp_trans.translation(pos + transformation_.translation());
+      /////////////////////////////////////////////////////////
+      /*
+         for (int i=0; i<3; i++){
+         rot[i] =
+         (float) SixDOFMouseDriver::deviceValuesNormalized_[3]*M_PI
+       *SixDOFMouseDriver::cameraVectors_[i] -
+       (float) SixDOFMouseDriver::deviceValuesNormalized_[4]*M_PI
+       *SixDOFMouseDriver::cameraVectors_[i+3] -
+       (float) SixDOFMouseDriver::deviceValuesNormalized_[5]*M_PI
+       *SixDOFMouseDriver::cameraVectors_[i+6];
+       }
+      //cout << "rotation " << rot[0] << " " << rot[1] << " " << rot[2] << endl;
+      double norme = sqrt(pow(rot[0], 2)+ pow(rot[1], 2)+pow(rot[2], 2));
+      //cout << "norme " << norme << endl;
+      rot[0] = rot[0]/norme;
+      rot[1] = rot[1]/norme;
+      rot[1] = rot[2]/norme;
+      /*/
+      /* // réorienter selon caméra
+         Eigen::Vector3f res;
+         res << SixDOFMouseDriver::deviceValuesNormalized_[3] ,
+         SixDOFMouseDriver::deviceValuesNormalized_[4] ,
+         SixDOFMouseDriver::deviceValuesNormalized_[5];
+         cout << matrot << endl;
+         res = matrot.inverse() * res;
+      // res 0 tangage res1 roulis
+      //cout << "rotation " << rot[0] << " " << rot[1] << " " << rot[2] << endl;
+      // rotation
+      //*/
+      //* // sans modif, version initiale
+      rot[0] = (float) (SixDOFMouseDriver::deviceValuesNormalized_[3]* M_PI);
+      rot[1] = (float) (SixDOFMouseDriver::deviceValuesNormalized_[4]* M_PI);
+      rot[2] = (float) (SixDOFMouseDriver::deviceValuesNormalized_[5]* M_PI);
+      //cout << "ancienne meth "<< rot[0] << " " << rot[1] << " " << rot[2] << endl ;
+      //*/
+      /*
+      // réorienter selon précédente position
+      Eigen::Matrix3f matrot;
+      matrot = transformation_.rotation();
+      Eigen::Vector3f res;
+      res << SixDOFMouseDriver::deviceValuesNormalized_[3]* M_PI ,
+      SixDOFMouseDriver::deviceValuesNormalized_[4]* M_PI ,
+      SixDOFMouseDriver::deviceValuesNormalized_[5]* M_PI;
+      res = matrot * res;
+      rot[0] = res(0);
+      rot[1] = -res(1);
+      rot[2] = -res(2);
+      cout << "rotation " << rot[0] << " " << rot[1] << " " << rot[2] << endl << endl;
+      //*/
+      /////////////////////////////////////////////////////////
+      // integrate rotations
+      double threshold;
+      if (type_==1) threshold = 0.5; // anciennement 0.5 0.2
+      if (type_==2) threshold = 0.03; // anciennement 0.5 0.2
+      divideFactor = (float)SixDOFMouseDriver::angular_speed_;
+      // rotation variations
+      se3::SE3::Vector3 v_local (0., 0., 0.);
+      // threshold for rotations
+      if (std::abs(rot[0]) > threshold)
+        v_local[0] = (float)(rot[0]-threshold)/(float)divideFactor;
+      if (std::abs(rot[1]) > threshold)
+        v_local[1] = -(float)(rot[1]-threshold)/(float)divideFactor;
+      if (std::abs(rot[2]) > threshold)
+        v_local[2] = (float)(rot[2]-threshold)/(float)divideFactor;
+      Eigen::Matrix3f matrot;
 
-    //*
-    matrot <<
-      (abs(SixDOFMouseDriver::cameraVectors_[3]) < 1e-7 ? 0 : SixDOFMouseDriver::cameraVectors_[3]) ,
-      (abs(SixDOFMouseDriver::cameraVectors_[4]) < 1e-7 ? 0 : SixDOFMouseDriver::cameraVectors_[4]) ,
-      (abs(SixDOFMouseDriver::cameraVectors_[5]) < 1e-7 ? 0 : SixDOFMouseDriver::cameraVectors_[5]) ,
-      (abs(SixDOFMouseDriver::cameraVectors_[6]) < 1e-7 ? 0 : SixDOFMouseDriver::cameraVectors_[6]) ,
-      (abs(SixDOFMouseDriver::cameraVectors_[7]) < 1e-7 ? 0 : SixDOFMouseDriver::cameraVectors_[7]) ,
-      (abs(SixDOFMouseDriver::cameraVectors_[8]) < 1e-7 ? 0 : SixDOFMouseDriver::cameraVectors_[8]) ,
-      (abs(SixDOFMouseDriver::cameraVectors_[0]) < 1e-7 ? 0 : SixDOFMouseDriver::cameraVectors_[0]) ,
-      (abs(SixDOFMouseDriver::cameraVectors_[1]) < 1e-7 ? 0 : SixDOFMouseDriver::cameraVectors_[1]) ,
-      (abs(SixDOFMouseDriver::cameraVectors_[2]) < 1e-7 ? 0 : SixDOFMouseDriver::cameraVectors_[2]) ;
-    //*/
+      //*
+      matrot <<
+        (abs(SixDOFMouseDriver::cameraVectors_[3]) < 1e-7 ? 0 : SixDOFMouseDriver::cameraVectors_[3]) ,
+        (abs(SixDOFMouseDriver::cameraVectors_[4]) < 1e-7 ? 0 : SixDOFMouseDriver::cameraVectors_[4]) ,
+        (abs(SixDOFMouseDriver::cameraVectors_[5]) < 1e-7 ? 0 : SixDOFMouseDriver::cameraVectors_[5]) ,
+        (abs(SixDOFMouseDriver::cameraVectors_[6]) < 1e-7 ? 0 : SixDOFMouseDriver::cameraVectors_[6]) ,
+        (abs(SixDOFMouseDriver::cameraVectors_[7]) < 1e-7 ? 0 : SixDOFMouseDriver::cameraVectors_[7]) ,
+        (abs(SixDOFMouseDriver::cameraVectors_[8]) < 1e-7 ? 0 : SixDOFMouseDriver::cameraVectors_[8]) ,
+        (abs(SixDOFMouseDriver::cameraVectors_[0]) < 1e-7 ? 0 : SixDOFMouseDriver::cameraVectors_[0]) ,
+        (abs(SixDOFMouseDriver::cameraVectors_[1]) < 1e-7 ? 0 : SixDOFMouseDriver::cameraVectors_[1]) ,
+        (abs(SixDOFMouseDriver::cameraVectors_[2]) < 1e-7 ? 0 : SixDOFMouseDriver::cameraVectors_[2]) ;
+      //*/
 
-    /*
-       matrot << SixDOFMouseDriver::cameraVectors_[0] ,
+      /*
+         matrot << SixDOFMouseDriver::cameraVectors_[0] ,
          SixDOFMouseDriver::cameraVectors_[1] ,
-       SixDOFMouseDriver::cameraVectors_[2] ,
-       SixDOFMouseDriver::cameraVectors_[3] ,
-       SixDOFMouseDriver::cameraVectors_[4] ,
-       SixDOFMouseDriver::cameraVectors_[5] ,
-       SixDOFMouseDriver::cameraVectors_[6] ,
-       SixDOFMouseDriver::cameraVectors_[7] ,
-       SixDOFMouseDriver::cameraVectors_[8];
-    //*/
+         SixDOFMouseDriver::cameraVectors_[2] ,
+         SixDOFMouseDriver::cameraVectors_[3] ,
+         SixDOFMouseDriver::cameraVectors_[4] ,
+         SixDOFMouseDriver::cameraVectors_[5] ,
+         SixDOFMouseDriver::cameraVectors_[6] ,
+         SixDOFMouseDriver::cameraVectors_[7] ,
+         SixDOFMouseDriver::cameraVectors_[8];
+      //*/
 
-    //cout << "matrot " << matrot.transpose() << endl;
+      //cout << "matrot " << matrot.transpose() << endl;
 
-    //v_local = transformation_.rotation().transpose() * v_local; // ça marcheoie biengue
-    //v_local = matrot.transpose() * v_local;
+      //v_local = transformation_.rotation().transpose() * v_local; // ça marcheoie biengue
+      //v_local = matrot.transpose() * v_local;
 
-    se3::SE3::Matrix3 dR;
-    // threshold
-    if (v_local.norm () < 1e-8) dR.setIdentity();
-    else expMap(v_local, dR);
+      se3::SE3::Matrix3 dR;
+      // threshold
+      if (v_local.norm () < 1e-8) dR.setIdentity();
+      else expMap(v_local, dR);
 
-    //cout << dR << endl << endl;
+      //cout << dR << endl << endl;
 
 
-    se3::SE3::Matrix3 R_new (temp_trans.rotation () * dR);
-    temp_trans.rotation(R_new);
+      se3::SE3::Matrix3 R_new (temp_trans.rotation () * dR);
+      temp_trans.rotation(R_new);
 
     }
     if (type_==2)
@@ -524,8 +596,8 @@ void SixDOFMouseDriver::ReadMouse(const double* bounds_)
       dhdGetOrientationDeg(angles+0, angles+1, angles+2);
       for (int i=0; i<3;i++){
         d[i] = bornes[i][1]-bornes[i][0];
-        //if(angles[i]<0) val[i] = fabs(bornes[i][0])-fabs(angles[i]);
-        //else val[i] = angles[i] - fabs(bornes[i][0]);
+      //if(angles[i]<0) val[i] = fabs(bornes[i][0])-fabs(angles[i]);
+      //else val[i] = angles[i] - fabs(bornes[i][0]);
         val[i]=angles[i]-bornes[i][0];
         //cout <<" "<<i<<"angles="<<angles[i]<<"borne "<< bornes[i][0]<< " val="<<val[i];
         double aaa = val[i]/d[i];
@@ -540,13 +612,71 @@ void SixDOFMouseDriver::ReadMouse(const double* bounds_)
       //r = quat2Euler(q.w(),q.x(),q.y(),q.z());
       //r = quat2Euler(quat[0], quat[1], quat[2], quat[3]);
   
-      //cout << " re les angles " << angles[0]<<" "<<angles[1]<<" "<<angles[2]<<endl; 
+      //cout << " re les angles "<<angles[0]<<" "<<angles[1]<<" "<<angles[2]<<endl; 
       Eigen::Quaternionf qq(quat[0], quat[1], quat[2], quat[3]);
       qq.normalize();
       Eigen::Matrix3f temp =quat2Mat(qq.x(),qq.y(),qq.z(),qq.w());
       temp_trans.rotation(temp);
       //Rot.setZero();
       //temp_trans.rotation(Rot);
+    }
+    if (type_==3)
+    {
+
+      float p[3], f[3];
+    cout << "while\n";
+    zmq::message_t request;
+
+    //  Wait for next request from client
+    socket.recv (&request);
+    Data *recv_config = (Data *)(request.data());
+    // output the size of received collision array
+    int array_size = recv_config->getCollisionArraySize();
+    std::cout << std::setw(6) << "Array Size: " << array_size << std::endl;
+    std::cout<<*(recv_config->getCollisionPairByIndex(0).getPositionOnObj1())<<" "<<*(recv_config->getCollisionPairByIndex(0).getPositionOnObj2())<<std::endl;
+    for (int j=0; j<3; j++){
+  p[j] = recv_config->getObjCooridnate().getPosition()[j];
+      cout << "pos"<<j<<" "<<p[j]<< endl;
+      //cout << "force"<<j<< recv_config->getArmCF().getForceByIndex(j) << endl;
+    }   
+
+
+      for (int i=0; i<3; i++){
+        pos[i] =
+          p[0]*
+            SixDOFMouseDriver::cameraVectors_[i] -
+          p[1]*
+            SixDOFMouseDriver::cameraVectors_[i+3] -
+          p[2]*
+            SixDOFMouseDriver::cameraVectors_[i+6];
+      }
+      temp_trans.translation(pos);
+      /*
+      zmq::message_t request;
+      Data *recv_config = (Data *)(request.data());
+      int array_size = recv_config->getCollisionArraySize();
+      //cout << "taille " << array_size << endl;
+      float p[3], f[3];
+      for (int j=0; j<3; j++){
+        cout<< "pos"<<j<<" "<<recv_config->getObjCooridnate().getPosition()[j] << " ";
+        //cout << "force"<<j<< recv_config->getArmCF().getForceByIndex(j) << endl;
+        p[j] = recv_config->getObjCooridnate().getPosition()[j];
+        f[j] = recv_config->getArmCF().getForceByIndex(j);
+      }
+      cout << endl;
+ 
+      for (int i=0; i<3; i++){
+        pos[i] =
+          p[0]*
+            SixDOFMouseDriver::cameraVectors_[i] -
+          p[1]*
+            SixDOFMouseDriver::cameraVectors_[i+3] -
+          p[2]*
+            SixDOFMouseDriver::cameraVectors_[i+6];
+      }
+      temp_trans.translation(pos);
+      //*/
+
     } 
 
     /////////////////////////////////////////////////////////
@@ -559,8 +689,9 @@ void SixDOFMouseDriver::ReadMouse(const double* bounds_)
 }
 
 // read data from device and fill class members
-void SixDOFMouseDriver::getData()
+void SixDOFMouseDriver::getData(void* arg)
 {
+  //cout << "getData\n";
   if (type_==1)
   {
     union val{
@@ -634,6 +765,37 @@ void SixDOFMouseDriver::getData()
     // send forces to device
     //dhdSetForceAndTorqueAndGripperForce (deviceForce_(0), deviceForce_(1),  deviceForce_(2),deviceTorque_(0), deviceTorque_(1), deviceTorque_(2), 0.0);
   }
+  if(type_==3)
+  {
+
+    
+    
+    //zmq::message_t request;
+    //socket.recv (&request);
+    //Data *recv_config = (Data *)(request.data());
+
+    //zmq_msg_t msg;
+    //int rc = zmq_msg_init (&msg);
+    //rc = zmq_msg_recv (&msg, (void*)socket_, 0);
+    //Data *recv_config = (Data *)(msg.data());
+
+
+    //zmq::message_t request;
+
+    //  Wait for next request from client
+
+    //  Wait for next request from client
+    //socket_->recv (&request);
+    //Data *recv_config = (Data *)(request.data());
+    //int array_size = recv_config->getCollisionArraySize();
+    //std::cout << std::setw(6) << "Array Size: " << array_size << std::endl;
+    //for (int j=0; j<3; j++){
+      //cout << "pos"<<j<<" "<<recv_config->getObjCooridnate().getPosition()[j] << endl;
+      //cout << "force"<<j<< recv_config->getArmCF().getForceByIndex(j) << endl;
+    //}
+    //cout << "message reçu\n";
+  }
+    //cout << "fin getData\n";
 
 
   //	//print values

@@ -21,6 +21,7 @@
 
 #include <gepetto/viewer/corba/se3.hh> // se3 dependancy
 
+#include <hpp/interactive/zmq.hh>
 #ifndef SIXDOFMOUSEDRIVER
 #define SIXDOFMOUSEDRIVER
 
@@ -45,7 +46,7 @@ class SixDOFMouseDriver{
         float c1, float c2, float c3);
     static void setForceAndTorque(Eigen::Vector3d force, Eigen::Vector3d Torque);
   private :
-    static void getData();
+    static void getData(void* arg);
     static void ReadMouse(const double* bounds);
 
     static int fd_; // hid file descriptor
@@ -67,6 +68,8 @@ class SixDOFMouseDriver{
     static double limits_[6];// limites en position du Sigma7
     static double K_[3];// multiplicateur pour limites Sigma7 
     static double K_off_[3];//décalage
+
+    static zmq::socket_t* socket_;
 
     static Eigen::Vector3d deviceForce_;
     static Eigen::Vector3d deviceTorque_;

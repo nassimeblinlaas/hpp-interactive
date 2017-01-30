@@ -269,70 +269,9 @@ namespace hpp {
         // pour éviter les warnings :
         force2=force2+force3+D3+max+(double)iteration;
       }
-      //return NULL;
+      return NULL;
 
     }
-
-
-/*
-          ///
-        string nom_ligne = "0_scene_hpp_/ligne_force";
-        string ind = boost::lexical_cast<std::string>(iteration);
-        nom_ligne += ind;
-        //if (iteration > 0){
-          //cout << "index " << iteration << " obj à cacher " << nom_ligne << endl;
-          client_ref.gui()->setVisibility(nom_ligne.c_str(), "OFF");
-        nom_ligne += 'b';
-          client_ref.gui()->setVisibility(nom_ligne.c_str(), "OFF");
-        //}
-        iteration++;
-        nom_ligne = "0_scene_hpp_/ligne_force";
-        ind = boost::lexical_cast<std::string>(iteration);
-        nom_ligne += ind;
-        gepetto::corbaserver::Color color;
-        color[0] =(float) 0.3; color[1] = (float) 0.7; color[2] = (float) 0.2; color[3] = (float) 1.;
-        gepetto::corbaserver::Color color2;
-        color2[0] =(float) 0.83; color2[1] = (float) 0.3; color2[2] = (float) 0.2; color2[3] = (float) 1.;
-        Eigen::Vector3f t;
-        Eigen::Vector3f t2;
-
-
-        t <<(float)results_cpy[0].nearest_points[1][0], 
-            (float)results_cpy[0].nearest_points[1][1],
-            (float)results_cpy[0].nearest_points[1][2];
-        t2 <<(float)results_cpy[0].nearest_points[1][0]-obst[0], 
-             (float)results_cpy[0].nearest_points[1][1]-obst[1],
-             (float)results_cpy[0].nearest_points[1][2]-obst[2];
-        t2.normalize();
-        t2=t2*force*3;
-        t2+=t;
-
-        {
-        gepetto::corbaserver::Position v = {obst[0], obst[1], obst[2]};
-        gepetto::corbaserver::Position tt = {t2[0], t2[1], t2[2]};
-        client_ref.gui()->addLine(nom_ligne.c_str(), v, tt, &color[0]);
-        }
-
-        nom_ligne += 'b';
-        t <<(float)results_cpy[1].nearest_points[1][0], 
-            (float)results_cpy[1].nearest_points[1][1],
-            (float)results_cpy[1].nearest_points[1][2];
-        t2 <<(float)results_cpy[1].nearest_points[1][0]-obst2[0], 
-             (float)results_cpy[1].nearest_points[1][1]-obst2[1],
-             (float)results_cpy[1].nearest_points[1][2]-obst2[2];
-        t2.normalize();
-        t2=t2*force*10;
-        t2+=t;
-
-        {
-        gepetto::corbaserver::Position v = {obst2[0], obst2[1], obst2[2]};
-        gepetto::corbaserver::Position tt = {t2[0], t2[1], t2[2]};
-        client_ref.gui()->addLine(nom_ligne.c_str(), v, tt, &color2[0]);
-        }
-        //*/
-
-
-
 
 
 
@@ -346,9 +285,9 @@ namespace hpp {
     {
       client_ptr = &client_;
       nb_launchs++;
-      type_ = 1; //device type 1 mouse 2 sigma7
+      type_ = 3; //device type 1 mouse 2 sigma7 3 haption
       random_prob_ = 0; // 0 all human  1 all machine
-      d_ = 0.05; // distance entrée mode contact
+      d_ = 0.15; // distance entrée mode contact
       Planner::mode_contact_ = false;
       change_obst_ = false;
       //force_feedback_=false;
@@ -453,6 +392,12 @@ namespace hpp {
         tr[4] = (float)quat.x()/(float)mag;
         tr[5] = (float)quat.y()/(float)mag;
         tr[6] = (float)quat.z()/(float)mag;
+        
+        //cout << "InteractiveDeviceThread\n";
+        //for (int ii=0; ii<7; ii++){
+          //cout << tr[ii] << " ";
+        //}
+        //cout << endl;
 
         // save current transfo-rmation in the planner's memory
         (*Planner::actual_configuration_ptr_)[0] = tr[0];
@@ -713,6 +658,299 @@ namespace hpp {
 
     }
 //*
+
+    void Planner::init (const PlannerWkPtr_t& weak)
+    {
+      PathPlanner::init (weak);
+      weakPtr_ = weak;
+    }
+
+    bool belongs (const ConfigurationPtr_t& q, const Nodes_t& nodes)
+    {
+      for (Nodes_t::const_iterator itNode = nodes.begin ();
+          itNode != nodes.end (); ++itNode) {
+        if (*((*itNode)->configuration ()) == *q) return true;
+      }
+      return false;
+    }
+
+    PathPtr_t Planner::extend (const NodePtr_t& near,
+        const ConfigurationPtr_t& target)
+    {
+      const SteeringMethodPtr_t& sm (problem ().steeringMethod ());
+      const ConstraintSetPtr_t& constraints (sm->constraints ());
+      if (constraints) {
+        ConfigProjectorPtr_t configProjector (constraints->configProjector ());
+        if (configProjector) {
+          configProjector->projectOnKernel (*(near->configuration ()), *target,
+              qProj_);
+        } else {
+          qProj_ = *target;
+        }
+        if (constraints->apply (qProj_)) {
+          return (*sm) (*(near->configuration ()), qProj_);
+        } else {
+          return PathPtr_t ();
+        }
+      }
+      return (*sm) (*(near->configuration ()), *target);
+    }
+
+    void Planner::oneStep ()
+    {
+      //cout << "one step\n";
+      robot_mutex_.lock();
+      //cout << "robot_mutex_lock one step\n";
+      typedef boost::tuple <NodePtr_t, ConfigurationPtr_t, PathPtr_t>
+        DelayedEdge_t;
+      typedef std::vector <DelayedEdge_t> DelayedEdges_t;
+      DelayedEdges_t delayedEdges;
+      DevicePtr_t robot (problem ().robot ());
+      PathValidationPtr_t pathValidation (problem ().pathValidation ());
+      Nodes_t newNodes;
+      PathPtr_t validPath, path;
+      // Pick a random node
+      ConfigurationPtr_t q_rand = configurationShooter_->shoot ();
+      //
+      // First extend each connected component toward q_rand
+      //
+      double rando = rand();
+      rando = rando / RAND_MAX;
+      // keep random config
+      if (rando > Planner::random_prob_ || Planner::mode_contact_)
+      {
+        if (Planner::mode_contact_){
+          //cout << rando << " contact q \n";
+          Matrix3 rot;
+          rot(0,0) = MGS.col[0].v[0];
+          rot(0,1) = MGS.col[0].v[1];
+          rot(0,2) = MGS.col[0].v[2];
+          rot(1,0) = MGS.col[1].v[0];
+          rot(1,1) = MGS.col[1].v[1];
+          rot(1,2) = MGS.col[1].v[2];
+          rot(2,0) = MGS.col[2].v[0];
+          rot(2,1) = MGS.col[2].v[1];
+          rot(2,2) = MGS.col[2].v[2];
+          //cout << "rot" << rot << endl;
+
+          //double pi = 3.141592653589;
+          //double th = pi/2;
+          //Matrix3 rotx;
+          //rotx(0,0) = 1;
+          //rotx(0,1) = 0;
+          //rotx(0,2) = 0;
+          //rotx(1,0) = 0;
+          //rotx(1,1) = cos(th);
+          //rotx(1,2) = -sin(th);
+          //rotx(2,0) = 0;
+          //rotx(2,1) = sin(th);
+          //rotx(2,2) = cos(th);
+          //Matrix3 roty;
+          //roty(0,0) = cos(th);
+          //roty(0,1) = 0;
+          //roty(0,2) = sin(th);
+          //roty(1,0) = 0;
+          //roty(1,1) = 1;
+          //roty(1,2) = 0;
+          //roty(2,0) = -sin(th);
+          //roty(2,1) = 0;
+          //roty(2,2) = cos(th);
+          //Matrix3 rotz;
+          //roty(0,0) = cos(th);
+          //roty(0,1) = -sin(th);
+          //roty(0,2) = 0;
+          //roty(1,0) = sin(th);
+          //roty(1,1) = cos(th);
+          //roty(1,2) = 0;
+          //roty(2,0) = 0;
+          //roty(2,1) = 0;
+          //roty(2,2) = 1;
+
+          // nouvelle méthode pour éviter le gros hack
+          double K = 4.5;
+          double ray = rand();
+          ray=ray/RAND_MAX;
+          double thet = rand();
+          thet = thet / RAND_MAX;
+          ray = sqrt(ray) * K;
+          thet = 2 * 3.141592653589 * thet;
+          double x, y;
+          x = 0.4 * ray * cos(thet);
+          //x = ray * cos(thet);
+          y = ray * sin(thet); 
+
+          // garder z à zéro
+          Vector3 val(0, (float)x, (float)y);
+          //cout << "rot " << rot << endl;
+          //cout << "val " << val.transpose() << endl;
+          //std::cout << "one step distance centre/surf " << distance_ << std::endl;
+          //cout << "org " << org_[1] << " obj " << obj_[1]
+          //     << " signe org-obj " << signe(org_[1]-obj_[1]) << endl;
+
+
+          /*
+          // la rotation aléatoire sous la forme d'une matrice de rotation 
+          double e, f, g;
+          double qq[4];
+          e = rand();f = rand();g = rand();
+          e=e/RAND_MAX;f=f/RAND_MAX;g=g/RAND_MAX;
+          euler2Quat(e, f, g, qq);
+          Eigen::Matrix3f rotaleat = quat2Mat(qq[1], qq[2], qq[3], qq[0]);
+
+          Vector3 distances_bis(distances_);
+          distances_bis = rot.transpose() * rotaleat * distances_bis;
+          //distances_bis[0] = distances_bis[2] = 0;
+          Vector3 n(normal[0][0],normal[0][1],normal[0][2]);
+          distances_bis[0] = distances_[0] + distances_bis[0] * n[0];
+          distances_bis[1] = distances_[1] + distances_bis[1] * n[1];
+          distances_bis[2] = distances_[2] + distances_bis[2] * n[2];
+          cout << "dist " << distances_[0] << " " << distances_[1] << " " <<
+            distances_[2] << " distb " << distances_bis.transpose() << endl;
+          Vector3 org_bis(
+              (float)org_[0]+signe(obj_[0]-org_[0])*distances_bis[0]*(float)1.1,
+              (float)org_[1]+signe(obj_[1]-org_[1])*distances_bis[1]*(float)1.1,
+              (float)org_[2]+signe(obj_[2]-org_[2])*distances_bis[2]*(float)1.1
+              );
+          //*/
+          
+          distance_mutex_.try_lock(); // TODO oulah c'est pas bon ça
+          Vector3 org(
+              (float)org_[0]+signe(obj_[0]-org_[0])*distances_[0]*(float)1.1,
+              (float)org_[1]+signe(obj_[1]-org_[1])*distances_[1]*(float)1.1,
+              (float)org_[2]+signe(obj_[2]-org_[2])*distances_[2]*(float)1.1
+              );
+          // TODO attention j'ai rajouté ci dessus un facteur 1.1
+          // car les échantillons ont tendance 
+          // à être en collision, c'est trop bas, à corriger
+
+
+          //org_bis = rotaleat * org;
+          //cout << "org " << org.transpose() << " org_bis " << org_bis.transpose() << endl;
+          //cout << "rotaleat " << rotaleat << endl;
+
+          val = rot.transpose()*val + org;
+          //val = rot.transpose()*val + org_bis;
+
+          //val[0]=x;val[1]=y;val[2]=2;
+          //cout << "val " << val.transpose() << endl;
+          //val = val+org; 
+          //cout << "nouveau val " << val.transpose() << endl;
+          distance_mutex_.unlock();
+
+          ::gepetto::corbaserver::Transform tr; // utilisé pour l'affichage
+          tr[0] = ((*q_rand)[0]) = val[0];
+          tr[1] = ((*q_rand)[1]) = val[1];
+          tr[2] = ((*q_rand)[2]) = val[2];
+          // fixer rotation
+          //tr[3] = (*q_rand)[3];// = (*Planner::actual_configuration_ptr_)[3];
+          //tr[4] = (*q_rand)[4];// = (*Planner::actual_configuration_ptr_)[4];
+          //tr[5] = (*q_rand)[5];// = (*Planner::actual_configuration_ptr_)[5];
+          //tr[6] = (*q_rand)[6];// = (*Planner::actual_configuration_ptr_)[6];
+          tr[3] = (*q_rand)[3] = (*Planner::actual_configuration_ptr_)[3];
+          tr[4] = (*q_rand)[4] = (*Planner::actual_configuration_ptr_)[4];
+          tr[5] = (*q_rand)[5] = (*Planner::actual_configuration_ptr_)[5];
+          tr[6] = (*q_rand)[6] = (*Planner::actual_configuration_ptr_)[6];
+
+         
+          /*// afficher des échantillons parfois 
+          string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_3angles.urdf";
+          string chiffre = boost::lexical_cast<std::string>(rand());
+          string node_name = "0_scene_hpp_/robot_interactif" + chiffre;
+          if(!Planner::iteration_%50)
+          {
+            client_.gui()->addURDF(node_name.data() , robot_name.data() ,"/hpp/install/share");
+            client_.gui()->applyConfiguration(node_name.data(), tr);
+          }
+          ///////////////////////////////         */ 
+
+          //sleep(1);
+          Planner::iteration_++;
+          //cout << "iteration contact " << iteration_ << endl;
+          if(Planner::iteration_ == 5){
+            Planner::mode_contact_ = false;
+            // ancien emplacement de distance_mutex_.unlock();
+          }
+        }
+        else{ // mode interactif
+          *q_rand = *actual_configuration_ptr_; 
+        }
+      }
+
+      for (ConnectedComponents_t::const_iterator itcc =
+          roadmap ()->connectedComponents ().begin ();
+          itcc != roadmap ()->connectedComponents ().end (); ++itcc) {
+        // Find nearest node in roadmap
+        value_type distance;
+        NodePtr_t near = roadmap ()->nearestNode (q_rand, *itcc, distance);
+        path = extend (near, q_rand);
+        if (path) {
+          core::PathValidationReportPtr_t report;
+          bool pathValid = pathValidation->validate (path, false, validPath,
+              report);
+          // Insert new path to q_near in roadmap
+          value_type t_final = validPath->timeRange ().second;
+          if (t_final != path->timeRange ().first) {
+            ConfigurationPtr_t q_new (new Configuration_t
+                (validPath->end ()));
+            if (!pathValid || !belongs (q_new, newNodes)) {
+              newNodes.push_back (roadmap ()->addNodeAndEdges
+                  (near, q_new, validPath));
+            } else {
+              // Store edges to add for later insertion.
+              // Adding edges while looping on connected components is indeed
+              // not recommended.
+              delayedEdges.push_back (DelayedEdge_t (near, q_new, validPath));
+            }
+          }
+        }
+      }
+      // Insert delayed edges
+      for (DelayedEdges_t::const_iterator itEdge = delayedEdges.begin ();
+          itEdge != delayedEdges.end (); ++itEdge) {
+        const NodePtr_t& near = itEdge-> get <0> ();
+        const ConfigurationPtr_t& q_new = itEdge-> get <1> ();
+        const PathPtr_t& validPath = itEdge-> get <2> ();
+        NodePtr_t newNode = roadmap ()->addNode (q_new);
+        roadmap ()->addEdge (near, newNode, validPath);
+        interval_t timeRange = validPath->timeRange ();
+        roadmap ()->addEdge (newNode, near, validPath->extract
+            (interval_t (timeRange.second ,
+                         timeRange.first)));
+      }
+
+      //
+      // Second, try to connect new nodes together
+      //
+      const SteeringMethodPtr_t& sm (problem ().steeringMethod ());
+      for (Nodes_t::const_iterator itn1 = newNodes.begin ();
+          itn1 != newNodes.end (); ++itn1) {
+        for (Nodes_t::const_iterator itn2 = boost::next (itn1);
+            itn2 != newNodes.end (); ++itn2) {
+          ConfigurationPtr_t q1 ((*itn1)->configuration ());
+          ConfigurationPtr_t q2 ((*itn2)->configuration ());
+          assert (*q1 != *q2);
+          path = (*sm) (*q1, *q2);
+          core::PathValidationReportPtr_t report;
+          if (path && pathValidation->validate (path, false, validPath,
+                report)) {
+            roadmap ()->addEdge (*itn1, *itn2, path);
+            interval_t timeRange = path->timeRange ();
+            roadmap ()->addEdge (*itn2, *itn1, path->extract
+                (interval_t (timeRange.second,
+                             timeRange.first)));
+          }
+        }
+      }
+      robot_mutex_.unlock();
+      //cout << "robot_mutex_unlock one step\n";
+    }
+
+    void Planner::configurationShooter
+      (const ConfigurationShooterPtr_t& shooter)
+      {
+        configurationShooter_ = shooter;
+      }
+
     void Planner::AfficherReperes(bool contact[3], vector<fcl::DistanceResult> results){
       se3::SE3 trans_temp = SixDOFMouseDriver::getTransformation();
       gepetto::corbaserver::Color color;
@@ -918,263 +1156,6 @@ namespace hpp {
       }
     }//*/
 
-    void Planner::init (const PlannerWkPtr_t& weak)
-    {
-      PathPlanner::init (weak);
-      weakPtr_ = weak;
-    }
-
-    bool belongs (const ConfigurationPtr_t& q, const Nodes_t& nodes)
-    {
-      for (Nodes_t::const_iterator itNode = nodes.begin ();
-          itNode != nodes.end (); ++itNode) {
-        if (*((*itNode)->configuration ()) == *q) return true;
-      }
-      return false;
-    }
-
-    PathPtr_t Planner::extend (const NodePtr_t& near,
-        const ConfigurationPtr_t& target)
-    {
-      const SteeringMethodPtr_t& sm (problem ().steeringMethod ());
-      const ConstraintSetPtr_t& constraints (sm->constraints ());
-      if (constraints) {
-        ConfigProjectorPtr_t configProjector (constraints->configProjector ());
-        if (configProjector) {
-          configProjector->projectOnKernel (*(near->configuration ()), *target,
-              qProj_);
-        } else {
-          qProj_ = *target;
-        }
-        if (constraints->apply (qProj_)) {
-          return (*sm) (*(near->configuration ()), qProj_);
-        } else {
-          return PathPtr_t ();
-        }
-      }
-      return (*sm) (*(near->configuration ()), *target);
-    }
-
-    void Planner::oneStep ()
-    {
-      //cout << "one step\n";
-      robot_mutex_.lock();
-      //cout << "robot_mutex_lock one step\n";
-      typedef boost::tuple <NodePtr_t, ConfigurationPtr_t, PathPtr_t>
-        DelayedEdge_t;
-      typedef std::vector <DelayedEdge_t> DelayedEdges_t;
-      DelayedEdges_t delayedEdges;
-      DevicePtr_t robot (problem ().robot ());
-      PathValidationPtr_t pathValidation (problem ().pathValidation ());
-      Nodes_t newNodes;
-      PathPtr_t validPath, path;
-      // Pick a random node
-      ConfigurationPtr_t q_rand = configurationShooter_->shoot ();
-      //
-      // First extend each connected component toward q_rand
-      //
-      double rando = rand();
-      rando = rando / RAND_MAX;
-      // keep random config
-      if (rando > Planner::random_prob_ || Planner::mode_contact_)
-      {
-        if (Planner::mode_contact_){
-          //cout << rando << " contact q \n";
-          Matrix3 rot;
-          rot(0,0) = MGS.col[0].v[0];
-          rot(0,1) = MGS.col[0].v[1];
-          rot(0,2) = MGS.col[0].v[2];
-          rot(1,0) = MGS.col[1].v[0];
-          rot(1,1) = MGS.col[1].v[1];
-          rot(1,2) = MGS.col[1].v[2];
-          rot(2,0) = MGS.col[2].v[0];
-          rot(2,1) = MGS.col[2].v[1];
-          rot(2,2) = MGS.col[2].v[2];
-          //cout << "rot" << rot << endl;
-
-          //rot(0,0) = 1;
-          //rot(0,1) = 0;
-          //rot(0,2) = 0;
-          //rot(1,0) = 0;
-          //rot(1,1) = sqrt(3)/2;
-          //rot(1,2) = 0.5;
-          //rot(2,0) = 0;
-          //rot(2,1) = -0.5;
-          //rot(2,2) = sqrt(3)/2;
-
-          // nouvelle méthode pour éviter le gros hack
-          double K = 2.5;
-          double ray = rand();
-          ray = ray / RAND_MAX;
-          double thet = rand();
-          thet = thet / RAND_MAX;
-          ray = sqrt(ray) * K;
-          thet = 2 * 3.141592653589 * thet;
-          double x, y;
-          x = 0.4 * ray * cos(thet);
-          y = ray * sin(thet); 
-
-          // garder z à zéro
-          //Vector3 val(0, (float)(*q_rand)[0], (float)(*q_rand)[2]);
-          Vector3 val(0, (float)x, (float)y);
-          //cout << "rot " << rot << endl;
-          //cout << "val " << val.transpose() << endl;
-          //std::cout << "one step distance centre/surf " << distance_ << std::endl;
-          //cout << "org " << org_[1] << " obj " << obj_[1]
-          //     << " signe org-obj " << signe(org_[1]-obj_[1]) << endl;
-          distance_mutex_.try_lock(); // TODO oulah c'est pas bon ça
-          Vector3 org(
-              (float)org_[0]+signe(obj_[0]-org_[0])*distances_[0]*1.1,
-              (float)org_[1]+signe(obj_[1]-org_[1])*distances_[1]*1.1,
-              (float)org_[2]+signe(obj_[2]-org_[2])*distances_[2]*1.1
-              );
-          // TODO attention j'ai rajouté ci dessus un facteur 1.1
-          // car les échantillons ont tendance 
-          // à être en collision, c'est trop bas, à corriger
-
-          //cout << "org " << org.transpose() << endl;
-          val = rot.transpose()*val + org;
-
-          //val[0]=x;val[1]=y;val[2]=2;
-          //cout << "val " << val.transpose() << endl;
-          //val = val+org; 
-          //cout << "nouveau val " << val.transpose() << endl;
-
-          /*// gros hack
-          // bool proche = false;
-          while(1){
-            double dist;
-            dist = sqrt(
-                pow(val[0]-(*Planner::actual_configuration_ptr_)[0], 2)+
-                pow(val[1]-(*Planner::actual_configuration_ptr_)[1], 2)+
-                pow(val[2]-(*Planner::actual_configuration_ptr_)[2], 2)
-                );
-            if (dist<2){
-              break;
-            }
-            else{
-              //cout << "retente\n";
-              q_rand = configurationShooter_->shoot ();
-              val[0] = 0;
-              val[1] = (float)(*q_rand)[1];
-              val[2] = (float)(*q_rand)[2];
-              Vector3 re_org((float)org_[0]+signe(obj_[0]-org_[0])*distances_[0],
-                  (float)org_[1]+signe(obj_[1]-org_[1])*distances_[1],
-                  (float)org_[2]+signe(obj_[2]-org_[2])*distances_[2]
-                  );
-              val = rot.transpose()*val + re_org;
-            }
-          }
-          //*/
-          distance_mutex_.unlock();
-
-          ::gepetto::corbaserver::Transform tr;
-          tr[0] = (*q_rand)[0] = val[0];
-          tr[1] = (*q_rand)[1] = val[1];
-          tr[2] = (*q_rand)[2] = val[2];
-          // fixer rotation
-          tr[3] = (*q_rand)[3] = (*Planner::actual_configuration_ptr_)[3];
-          tr[4] = (*q_rand)[4] = (*Planner::actual_configuration_ptr_)[4];
-          tr[5] = (*q_rand)[5] = (*Planner::actual_configuration_ptr_)[5];
-          tr[6] = (*q_rand)[6] = (*Planner::actual_configuration_ptr_)[6];
-
-          string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_3angles.urdf";
-          string chiffre = boost::lexical_cast<std::string>(rand());
-          string node_name = "0_scene_hpp_/robot_interactif" + chiffre;
-          //cout << "node_name contact robot temp = " << node_name.data() << endl;
-          if(0)if(Planner::iteration_%5)
-          {
-            client_.gui()->addURDF(node_name.data() , robot_name.data() ,"/hpp/install/share");
-            client_.gui()->applyConfiguration(node_name.data(), tr);
-          }          
-
-          Planner::iteration_++;
-          //cout << "iteration contact " << iteration_ << endl;
-          if(Planner::iteration_ == 5){
-            Planner::mode_contact_ = false;
-            // ancien emplacement de distance_mutex_.unlock();
-          }
-        }
-        else{ // mode interactif
-          *q_rand = *actual_configuration_ptr_; 
-        }
-      }
-
-      for (ConnectedComponents_t::const_iterator itcc =
-          roadmap ()->connectedComponents ().begin ();
-          itcc != roadmap ()->connectedComponents ().end (); ++itcc) {
-        // Find nearest node in roadmap
-        value_type distance;
-        NodePtr_t near = roadmap ()->nearestNode (q_rand, *itcc, distance);
-        path = extend (near, q_rand);
-        if (path) {
-          core::PathValidationReportPtr_t report;
-          bool pathValid = pathValidation->validate (path, false, validPath,
-              report);
-          // Insert new path to q_near in roadmap
-          value_type t_final = validPath->timeRange ().second;
-          if (t_final != path->timeRange ().first) {
-            ConfigurationPtr_t q_new (new Configuration_t
-                (validPath->end ()));
-            if (!pathValid || !belongs (q_new, newNodes)) {
-              newNodes.push_back (roadmap ()->addNodeAndEdges
-                  (near, q_new, validPath));
-            } else {
-              // Store edges to add for later insertion.
-              // Adding edges while looping on connected components is indeed
-              // not recommended.
-              delayedEdges.push_back (DelayedEdge_t (near, q_new, validPath));
-            }
-          }
-        }
-      }
-      // Insert delayed edges
-      for (DelayedEdges_t::const_iterator itEdge = delayedEdges.begin ();
-          itEdge != delayedEdges.end (); ++itEdge) {
-        const NodePtr_t& near = itEdge-> get <0> ();
-        const ConfigurationPtr_t& q_new = itEdge-> get <1> ();
-        const PathPtr_t& validPath = itEdge-> get <2> ();
-        NodePtr_t newNode = roadmap ()->addNode (q_new);
-        roadmap ()->addEdge (near, newNode, validPath);
-        interval_t timeRange = validPath->timeRange ();
-        roadmap ()->addEdge (newNode, near, validPath->extract
-            (interval_t (timeRange.second ,
-                         timeRange.first)));
-      }
-
-      //
-      // Second, try to connect new nodes together
-      //
-      const SteeringMethodPtr_t& sm (problem ().steeringMethod ());
-      for (Nodes_t::const_iterator itn1 = newNodes.begin ();
-          itn1 != newNodes.end (); ++itn1) {
-        for (Nodes_t::const_iterator itn2 = boost::next (itn1);
-            itn2 != newNodes.end (); ++itn2) {
-          ConfigurationPtr_t q1 ((*itn1)->configuration ());
-          ConfigurationPtr_t q2 ((*itn2)->configuration ());
-          assert (*q1 != *q2);
-          path = (*sm) (*q1, *q2);
-          core::PathValidationReportPtr_t report;
-          if (path && pathValidation->validate (path, false, validPath,
-                report)) {
-            roadmap ()->addEdge (*itn1, *itn2, path);
-            interval_t timeRange = path->timeRange ();
-            roadmap ()->addEdge (*itn2, *itn1, path->extract
-                (interval_t (timeRange.second,
-                             timeRange.first)));
-          }
-        }
-      }
-      robot_mutex_.unlock();
-      //cout << "robot_mutex_unlock one step\n";
-    }
-
-    void Planner::configurationShooter
-      (const ConfigurationShooterPtr_t& shooter)
-      {
-        configurationShooter_ = shooter;
-      }
-
     // afficher bornes du problème
     void Planner::ShowBounds(){
       gepetto::corbaserver::Color color_rouge;
@@ -1356,3 +1337,64 @@ namespace hpp {
             //client_.gui()->addLine(axe.c_str(), v2, w2, &color[0]);
             // //////////////////////////////////////////////////////////////
             //*/
+/*
+          ///
+        string nom_ligne = "0_scene_hpp_/ligne_force";
+        string ind = boost::lexical_cast<std::string>(iteration);
+        nom_ligne += ind;
+        //if (iteration > 0){
+          //cout << "index " << iteration << " obj à cacher " << nom_ligne << endl;
+          client_ref.gui()->setVisibility(nom_ligne.c_str(), "OFF");
+        nom_ligne += 'b';
+          client_ref.gui()->setVisibility(nom_ligne.c_str(), "OFF");
+        //}
+        iteration++;
+        nom_ligne = "0_scene_hpp_/ligne_force";
+        ind = boost::lexical_cast<std::string>(iteration);
+        nom_ligne += ind;
+        gepetto::corbaserver::Color color;
+        color[0] =(float) 0.3; color[1] = (float) 0.7; color[2] = (float) 0.2; color[3] = (float) 1.;
+        gepetto::corbaserver::Color color2;
+        color2[0] =(float) 0.83; color2[1] = (float) 0.3; color2[2] = (float) 0.2; color2[3] = (float) 1.;
+        Eigen::Vector3f t;
+        Eigen::Vector3f t2;
+
+
+        t <<(float)results_cpy[0].nearest_points[1][0], 
+            (float)results_cpy[0].nearest_points[1][1],
+            (float)results_cpy[0].nearest_points[1][2];
+        t2 <<(float)results_cpy[0].nearest_points[1][0]-obst[0], 
+             (float)results_cpy[0].nearest_points[1][1]-obst[1],
+             (float)results_cpy[0].nearest_points[1][2]-obst[2];
+        t2.normalize();
+        t2=t2*force*3;
+        t2+=t;
+
+        {
+        gepetto::corbaserver::Position v = {obst[0], obst[1], obst[2]};
+        gepetto::corbaserver::Position tt = {t2[0], t2[1], t2[2]};
+        client_ref.gui()->addLine(nom_ligne.c_str(), v, tt, &color[0]);
+        }
+
+        nom_ligne += 'b';
+        t <<(float)results_cpy[1].nearest_points[1][0], 
+            (float)results_cpy[1].nearest_points[1][1],
+            (float)results_cpy[1].nearest_points[1][2];
+        t2 <<(float)results_cpy[1].nearest_points[1][0]-obst2[0], 
+             (float)results_cpy[1].nearest_points[1][1]-obst2[1],
+             (float)results_cpy[1].nearest_points[1][2]-obst2[2];
+        t2.normalize();
+        t2=t2*force*10;
+        t2+=t;
+
+        {
+        gepetto::corbaserver::Position v = {obst2[0], obst2[1], obst2[2]};
+        gepetto::corbaserver::Position tt = {t2[0], t2[1], t2[2]};
+        client_ref.gui()->addLine(nom_ligne.c_str(), v, tt, &color2[0]);
+        }
+        //*/
+
+
+
+
+

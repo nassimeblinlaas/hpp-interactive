@@ -31,6 +31,11 @@ SET(${PROJECT_NAME}_HEADERS
   include/hpp/interactive/gram-schmidt.hh
   include/hpp/interactive/dhdc.h
   include/hpp/interactive/drdc.h
+  include/hpp/interactive/ObjectCoordinate.hh
+  include/hpp/interactive/ArmConfigurationForce.hh
+  include/hpp/interactive/CollisionPair.hh
+  include/hpp/interactive/Data.hh
+  include/hpp/interactive/zmq.hh
 )
 
 # Activate hpp-util logging if requested
