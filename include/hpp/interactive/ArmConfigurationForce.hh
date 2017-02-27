@@ -18,7 +18,7 @@ public:
 
 	float getPositionByIndex(int index);
 	float getQuaternionByIndex(int index);
-	float getForceByIndex(int index);
+	const float(&getForce())[3];
 
 	float getDisparity(ArmConfigurationForce a);
 

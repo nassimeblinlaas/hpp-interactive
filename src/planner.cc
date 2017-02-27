@@ -44,13 +44,16 @@
 #include <Eigen/Core>
 #include <algorithm>
 
+#include <boost/math/quaternion.hpp>
 
 typedef se3::SE3::Vector3 Vector3;
 typedef se3::SE3::Matrix3 Matrix3;
+typedef std::array<float, 3> float3;
 
 extern Eigen::Matrix3f quat2Mat(float x, float y, float z, float w);
 extern void euler2Quat(double psi, double theta, double phi, double* quat);
 extern void normalizeQuat(double& w, double& x, double& y, double& z);
+extern float3 quat2Euler(float q0, float q1, float q2, float q3);
 
 short int signe (double x) {
   return ((x < 0) ? -1 : 1);
@@ -287,7 +290,7 @@ namespace hpp {
       nb_launchs++;
       type_ = 3; //device type 1 mouse 2 sigma7 3 haption
       random_prob_ = 0; // 0 all human  1 all machine
-      d_ = 0.15; // distance entrée mode contact
+      d_ = 0.10; // distance entrée mode contact
       Planner::mode_contact_ = false;
       change_obst_ = false;
       //force_feedback_=false;
@@ -295,9 +298,12 @@ namespace hpp {
       client_.connect();
       cout << "adding landmark to viewer\n";
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_mesh.urdf"; contact_activated_ = true;
-      string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_3angles.urdf"; contact_activated_ = true;
+      //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_siege.urdf"; contact_activated_ = true;
+      string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_cube_mesh.urdf"; contact_activated_ = true;
+      //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_strange.urdf"; contact_activated_ = true;
+      //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_3angles.urdf"; contact_activated_ = true;
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_L.urdf"; contact_activated_ = true;
-      float f = (float) 0.1;
+      float f = (float) 0.0001;
       gepetto::corbaserver::Color color;
       color[0] = 1; color[1] = 1; color[2] = 1; color[3] = 1.;
       client_.gui()->addBox ("0_scene_hpp_/curseur", f/10,f/10,f/10, color);
@@ -305,7 +311,7 @@ namespace hpp {
       client_.gui()->addLandmark("0_scene_hpp_/curseur", 1.);
       client_.gui()->addURDF("0_scene_hpp_/robot_interactif", robot_name.data() ,"/hpp/install/share");
       ::gepetto::corbaserver::Transform tr;
-      tr[0] = 1; tr[1] = 1; tr[2] = 1;
+      tr[0] = 0; tr[1] = 0; tr[2] = 0;
       client_.gui()->applyConfiguration("0_scene_hpp_/curseur", tr);
       client_.gui()->applyConfiguration("0_scene_hpp_/robot_interactif", tr);
       this->problem().robot()->computeForwardKinematics();
@@ -323,9 +329,9 @@ namespace hpp {
       SixDOFMouseDriver::MouseInit(type_, bounds);
       ShowBounds();
       ConfigurationPtr_t config (new Configuration_t ((hpp::model::size_type)7));
-      (*config)[0] = 1;
-      (*config)[1] = 1;
-      (*config)[2] = 1;
+      (*config)[0] = 0;
+      (*config)[1] = 0;
+      (*config)[2] = 0;
       (*config)[3] = 1;
       (*config)[4] = 0;
       (*config)[5] = 0;
@@ -369,17 +375,26 @@ namespace hpp {
         if (!init){
           const ConfigurationPtr_t initConfig_ = this->problem().initConfig();
           //TODO régler le pb init curseur ici en prenant les infos du script python
-          //double translations[3] = {  //TODO
-          //(*initConfig_)[0],
-          //(*initConfig_)[1],
-          //(*initConfig_)[2]
-          //};
-          //SixDOFMouseDriver::InitPosition(translations);
+          double translations[3] = {  //TODO
+          (*initConfig_)[0],
+          (*initConfig_)[1],
+          (*initConfig_)[2]
+          };
+          SixDOFMouseDriver::InitPosition(translations);
+          //double rotations[4]={
+            //(*initConfig_)[3],
+            //(*initConfig_)[4],
+            //(*initConfig_)[5],
+            //(*initConfig_)[6]
+          //}; 
+          //SixDOFMouseDriver::InitRotation(rotations);
           init = true;
         }
 
         // get data from 6D mouse
         se3::SE3 trans_temp = SixDOFMouseDriver::getTransformation();
+        
+
         // conversion matrice -> quaternion
         Eigen::Matrix3f mat = trans_temp.rotation();
         Eigen::Quaternionf quat(mat);
@@ -527,7 +542,7 @@ namespace hpp {
             (float)results[2].nearest_points[1][2] - trans_temp.translation()[2]};
         }
 
-        AfficherReperes(contact, results_temp); 
+        //AfficherReperes(contact, results_temp); 
 
         //*
         // //////////////////////////////////////////////////////////////////
@@ -547,6 +562,8 @@ namespace hpp {
             (float)result.nearest_points[1][0],
             (float)result.nearest_points[1][1],
             (float)result.nearest_points[1][2]};
+
+
 
           // algorithme de GRAM-SCHMIDT
           if (result.min_distance != -1){
@@ -617,6 +634,41 @@ namespace hpp {
               
 
             }
+
+/*// afficher le repère local // //////////////////////////////////////////
+      gepetto::corbaserver::Color color;
+      color[0] = 1; color[1] = 1; color[2] = 1; color[3] = 1;
+                string nom_ligne = "0_scene_hpp_/ligne";
+                string ind = boost::lexical_cast<std::string>(index_lignes);
+                nom_ligne += ind;
+
+                if (index_lignes > 0){
+                  //cout << "index " << index_lignes << " obj à cacher " << nom_ligne << endl;
+                  client_.gui()->setVisibility(nom_ligne.c_str(), "OFF");
+                  string axe = nom_ligne +='a';
+                  client_.gui()->setVisibility(axe.c_str(), "OFF");
+                  axe = nom_ligne +='b';
+                  client_.gui()->setVisibility(axe.c_str(), "OFF");
+                }
+
+                index_lignes++;
+                nom_ligne = "0_scene_hpp_/ligne";
+                ind = boost::lexical_cast<std::string>(index_lignes);
+                nom_ligne += ind;
+                client_.gui()->addLine(nom_ligne.c_str(), v, w, &color[0]);
+
+                // afficher les deux axes manquants du repère
+                w[0] = v[0] + MGS.col[1].v[0];
+                w[1] = v[1] + MGS.col[1].v[1];
+                w[2] = v[2] + MGS.col[1].v[2];
+                string axe = nom_ligne +='a';
+                client_.gui()->addLine(axe.c_str(), v, w, &color[0]);
+                w[0] = v[0] + MGS.col[2].v[0];
+                w[1] = v[1] + MGS.col[2].v[1];
+                w[2] = v[2] + MGS.col[2].v[2];
+                axe = nom_ligne +='b';
+                client_.gui()->addLine(axe.c_str(), v, w, &color[0]);
+// //////////////////////////////////////////////////////////////*/
 
 
             //::Eigen::Matrix3f MGS_;
@@ -766,8 +818,28 @@ namespace hpp {
           //roty(2,1) = 0;
           //roty(2,2) = 1;
 
+          Eigen::Vector3d uf, cn;
+          uf = SixDOFMouseDriver::getUserForce();
+          cn = SixDOFMouseDriver::getContactNormal();
+          // angle force/normale phi
+          // cos phi = (n.f)/(|n||f|)
+          double phi;
+          uf.norm();
+          phi = (uf.dot(cn))/(uf.norm()*cn.norm());
+          phi = acos(phi);
+          if(SixDOFMouseDriver::userInContact()){
+            cout << "uf " << uf.transpose() << " cn " << cn.transpose() << endl;
+            cout << "angle " << phi << endl;
+          }
+          //double t1 = (n[0]+n[1]+n[2])*(f[0]+f[1]+f[2]);
+          //double t2 = sqrt(pow(n[0],2)+pow(n[1],2)+pow(n[2],2))
+          //*sqrt(pow(f[0],2)+pow(f[1],2)+pow(f[2],2));
+          //t1 = t1/t2;
+          //phi = acos(t1);
+          //cout << "t1 " << t1 << " t2 " << t2 << endl;
+
           // nouvelle méthode pour éviter le gros hack
-          double K = 4.5;
+          double K = 3.5;
           double ray = rand();
           ray=ray/RAND_MAX;
           double thet = rand();
@@ -778,7 +850,88 @@ namespace hpp {
           x = 0.4 * ray * cos(thet);
           //x = ray * cos(thet);
           y = ray * sin(thet); 
+          float zz = 0;
 
+          /////////////////////////////////////////////////////////////////////
+          // la rotation aléatoire sous la forme d'une matrice de rotation 
+          Eigen::Quaternionf qqe(
+            (float)(*Planner::actual_configuration_ptr_)[3],
+            (float)(*Planner::actual_configuration_ptr_)[4],
+            (float)(*Planner::actual_configuration_ptr_)[5],
+            (float)(*Planner::actual_configuration_ptr_)[6]);
+          qqe.normalize();
+          ::boost::math::quaternion<float> qq(
+            (float)(*Planner::actual_configuration_ptr_)[3],
+            (float)(*Planner::actual_configuration_ptr_)[4],
+            (float)(*Planner::actual_configuration_ptr_)[5],
+            (float)(*Planner::actual_configuration_ptr_)[6]);
+          float qw = qq.R_component_1();
+          float qx = qq.R_component_2();
+          float qy = qq.R_component_3();
+          float qz = qq.R_component_4();
+          const float n = 1.0f/sqrt(qx*qx+qy*qy+qz*qz+qw*qw);
+          qq/=n;
+          ::boost::math::quaternion<float> qq2(
+            (float)(*q_rand)[3],
+            (float)(*q_rand)[4],
+            (float)(*q_rand)[5],
+            (float)(*q_rand)[6]);
+          
+          Eigen::Quaternionf qq2e(
+            (float)(*q_rand)[3],
+            (float)(*q_rand)[4],
+            (float)(*q_rand)[5],
+            (float)(*q_rand)[6]);
+          std::array<float, 3> r1, r2, rr;
+          r1= quat2Euler(qqe.x(),qqe.y(),qqe.z(),qqe.w());
+          r2= quat2Euler(qq2e.x(),qq2e.y(),qq2e.z(),qq2e.w());
+          //cout <<"affiche quat"<<qqe.x()<<" "<<qqe.y()<<' '<<qqe.z()<<" "<<qqe.w() << endl;
+          //cout << "rot init " << r1[0] << " " << r1[1] << " " << r1[2] << endl;
+          //cout << "rot alea " << r2[0] << " " << r2[1] << " " << r2[2] << endl;
+          //cout << "rot relt " << rr[0] << " " << rr[1] << " " << rr[2] << endl;
+          double res[4];
+          euler2Quat(0.5, r1[1], r1[2], res);
+          Eigen::Quaternionf rotfixe((float)res[0], (float)res[1], (float)res[2], (float)res[3]);
+          rotfixe.normalize();
+
+          //(*q_rand)[3] = rotfixe.w();
+          //(*q_rand)[4] = rotfixe.x();
+          //(*q_rand)[5] = rotfixe.y();
+          //(*q_rand)[6] = rotfixe.z();
+          //tr[3] = (*q_rand)[3] = (*Planner::actual_configuration_ptr_)[3];
+          //tr[4] = (*q_rand)[4] = (*Planner::actual_configuration_ptr_)[4];
+          //tr[5] = (*q_rand)[5] = (*Planner::actual_configuration_ptr_)[5];
+          //tr[6] = (*q_rand)[6] = (*Planner::actual_configuration_ptr_)[6];
+
+          qq2e.normalize();
+          qw = qq2.R_component_1();
+          qx = qq2.R_component_2();
+          qy = qq2.R_component_3();
+          qz = qq2.R_component_4();
+          const float nn = 1.0f/sqrt(qx*qx+qy*qy+qz*qz+qw*qw);
+          qq2/=nn;
+          ::boost::math::quaternion<float> relat_q(qq2-qq);
+          Eigen::Quaternionf rqe(
+            relat_q.R_component_2(),
+            relat_q.R_component_3(),
+            relat_q.R_component_4(),
+            relat_q.R_component_1());
+          rqe = qq2e.inverse()*qqe;
+          rqe = rotfixe.inverse()*qqe;
+          rqe.normalize();
+
+          //Eigen::Quaternionf qqe_inv(qqe.inverse());
+          //Eigen::Matrix3f matqqe_inv =
+            //quat2Mat(qqe_inv.x(),qqe_inv.y(),qqe_inv.z(),qqe_inv.w());
+          //Eigen::Matrix3f mat_qqe = quat2Mat(qqe.x(), qqe.y(), qqe.z(), qqe.w());
+          //cout << "quaternion inverse " << endl << mat_qqe.transpose() << endl;
+          //cout << "matrice transpose  " << endl << mat_qqe.transpose() << endl;
+
+          Eigen::Matrix3f matrelat =quat2Mat(rqe.x(),rqe.y(),rqe.z(),rqe.w()); 
+          
+
+          /////////////////////////////////////////////////////////////////////
+          
           // garder z à zéro
           Vector3 val(0, (float)x, (float)y);
           //cout << "rot " << rot << endl;
@@ -786,34 +939,8 @@ namespace hpp {
           //std::cout << "one step distance centre/surf " << distance_ << std::endl;
           //cout << "org " << org_[1] << " obj " << obj_[1]
           //     << " signe org-obj " << signe(org_[1]-obj_[1]) << endl;
-
-
-          /*
-          // la rotation aléatoire sous la forme d'une matrice de rotation 
-          double e, f, g;
-          double qq[4];
-          e = rand();f = rand();g = rand();
-          e=e/RAND_MAX;f=f/RAND_MAX;g=g/RAND_MAX;
-          euler2Quat(e, f, g, qq);
-          Eigen::Matrix3f rotaleat = quat2Mat(qq[1], qq[2], qq[3], qq[0]);
-
-          Vector3 distances_bis(distances_);
-          distances_bis = rot.transpose() * rotaleat * distances_bis;
-          //distances_bis[0] = distances_bis[2] = 0;
-          Vector3 n(normal[0][0],normal[0][1],normal[0][2]);
-          distances_bis[0] = distances_[0] + distances_bis[0] * n[0];
-          distances_bis[1] = distances_[1] + distances_bis[1] * n[1];
-          distances_bis[2] = distances_[2] + distances_bis[2] * n[2];
-          cout << "dist " << distances_[0] << " " << distances_[1] << " " <<
-            distances_[2] << " distb " << distances_bis.transpose() << endl;
-          Vector3 org_bis(
-              (float)org_[0]+signe(obj_[0]-org_[0])*distances_bis[0]*(float)1.1,
-              (float)org_[1]+signe(obj_[1]-org_[1])*distances_bis[1]*(float)1.1,
-              (float)org_[2]+signe(obj_[2]-org_[2])*distances_bis[2]*(float)1.1
-              );
-          //*/
           
-          distance_mutex_.try_lock(); // TODO oulah c'est pas bon ça
+          distance_mutex_.try_lock(); // TODO mutex à vérifier
           Vector3 org(
               (float)org_[0]+signe(obj_[0]-org_[0])*distances_[0]*(float)1.1,
               (float)org_[1]+signe(obj_[1]-org_[1])*distances_[1]*(float)1.1,
@@ -823,12 +950,33 @@ namespace hpp {
           // car les échantillons ont tendance 
           // à être en collision, c'est trop bas, à corriger
 
+          Vector3 new_distances;
+          Vector3 old_distances(distances_[0],distances_[1], distances_[2]);
+          new_distances = matrelat*old_distances;
+          new_distances[0] = (float) (0.0 + normal[0](0) * new_distances[0]);
+          new_distances[1] = (float) (0.0 + normal[0](1) * new_distances[1]);
+          new_distances[2] = (float) (0.0 + normal[0](2) * new_distances[2]);
+          Vector3 org2(
+              (float)org_[0]+signe(obj_[0]-org_[0])*new_distances[0]*(float)1,
+              (float)org_[1]+signe(obj_[1]-org_[1])*new_distances[1]*(float)1,
+              (float)org_[2]+signe(obj_[2]-org_[2])*new_distances[2]*(float)1
+              );
+          //cout << "orgv " << org.transpose() << endl;
+          //cout << "orgn " << org2.transpose() << endl;
+          //cout << "orgv " << old_distances.transpose() << endl;
+          //cout << "orgn " << new_distances.transpose() << endl;
+
+
+          //Vector3 old_distances(distances_);
+          //new_distances = temp3 * org;
+          //new_distances = rot * new_distances;
+          //zz = new_distances(2);
+          //cout << "orgv " << org.transpose() << endl;
+          //cout << "orgn " << org.transpose() << endl;
 
           //org_bis = rotaleat * org;
-          //cout << "org " << org.transpose() << " org_bis " << org_bis.transpose() << endl;
-          //cout << "rotaleat " << rotaleat << endl;
-
           val = rot.transpose()*val + org;
+
           //val = rot.transpose()*val + org_bis;
 
           //val[0]=x;val[1]=y;val[2]=2;
@@ -838,30 +986,37 @@ namespace hpp {
           distance_mutex_.unlock();
 
           ::gepetto::corbaserver::Transform tr; // utilisé pour l'affichage
-          tr[0] = ((*q_rand)[0]) = val[0];
-          tr[1] = ((*q_rand)[1]) = val[1];
-          tr[2] = ((*q_rand)[2]) = val[2];
-          // fixer rotation
+          ((*q_rand)[0]) = val[0];
+          ((*q_rand)[1]) = val[1];
+          ((*q_rand)[2]) = val[2];
+          // ne pas fixer rotation
           //tr[3] = (*q_rand)[3];// = (*Planner::actual_configuration_ptr_)[3];
           //tr[4] = (*q_rand)[4];// = (*Planner::actual_configuration_ptr_)[4];
           //tr[5] = (*q_rand)[5];// = (*Planner::actual_configuration_ptr_)[5];
           //tr[6] = (*q_rand)[6];// = (*Planner::actual_configuration_ptr_)[6];
+          // fixer rotation
+          //tr[3] = (float)(*Planner::actual_configuration_ptr_)[3];
+          //tr[4] = (float)(*Planner::actual_configuration_ptr_)[4];
+          //tr[5] = (float)(*Planner::actual_configuration_ptr_)[5];
+          //tr[6] = (float)(*Planner::actual_configuration_ptr_)[6];
           tr[3] = (*q_rand)[3] = (*Planner::actual_configuration_ptr_)[3];
           tr[4] = (*q_rand)[4] = (*Planner::actual_configuration_ptr_)[4];
           tr[5] = (*q_rand)[5] = (*Planner::actual_configuration_ptr_)[5];
           tr[6] = (*q_rand)[6] = (*Planner::actual_configuration_ptr_)[6];
 
          
-          /*// afficher des échantillons parfois 
-          string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_3angles.urdf";
-          string chiffre = boost::lexical_cast<std::string>(rand());
-          string node_name = "0_scene_hpp_/robot_interactif" + chiffre;
-          if(!Planner::iteration_%50)
-          {
-            client_.gui()->addURDF(node_name.data() , robot_name.data() ,"/hpp/install/share");
-            client_.gui()->applyConfiguration(node_name.data(), tr);
-          }
-          ///////////////////////////////         */ 
+            /*// afficher des échantillons parfois 
+            string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_3angles.urdf";
+            string chiffre = boost::lexical_cast<std::string>(rand());
+            string node_name = "0_scene_hpp_/robot_interactif" + chiffre;
+            if(!Planner::iteration_%100)
+            //if(pathValid && Planner::mode_contact_)
+              //if(0)
+            {
+              client_.gui()->addURDF(node_name.data() , robot_name.data() ,"/hpp/install/share");
+              client_.gui()->applyConfiguration(node_name.data(), tr);
+            }
+            ///////////////////////////////         */ 
 
           //sleep(1);
           Planner::iteration_++;

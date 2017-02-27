@@ -10,17 +10,12 @@
  * call MouseInit() first
  *
  * */
-
 #include <boost/thread/thread.hpp>
-
 #include <linux/hidraw.h>
 #include <fcntl.h>
-
 #include <iostream>
 #include <math.h>
-
 #include <gepetto/viewer/corba/se3.hh> // se3 dependancy
-
 #include <hpp/interactive/zmq.hh>
 #ifndef SIXDOFMOUSEDRIVER
 #define SIXDOFMOUSEDRIVER
@@ -31,9 +26,15 @@ class SixDOFMouseDriver{
     // to call for init
     static void MouseInit(short int type, const double* bounds);
     static void InitPosition(double* translation);
+    static void InitRotation(double* rotation);
     // blocking if no data
     static const se3::SE3& getTransformation();
     static const se3::SE3& getTransformationNoMutex();
+
+    static const Eigen::Vector3d& getContactNormal();
+    static const Eigen::Vector3d& getUserForce();
+    static bool userInContact();
+
     // return false before first data
     static bool HasMoved(){return has_moved_;};
 
@@ -68,6 +69,11 @@ class SixDOFMouseDriver{
     static double limits_[6];// limites en position du Sigma7
     static double K_[3];// multiplicateur pour limites Sigma7 
     static double K_off_[3];//décalage
+    
+    // pour haption
+    static Eigen::Vector3d contact_normal_;
+    static Eigen::Vector3d user_force_;
+    static bool in_contact_; 
 
     static zmq::socket_t* socket_;
 

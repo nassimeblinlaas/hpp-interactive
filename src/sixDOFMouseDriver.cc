@@ -36,7 +36,9 @@ short int SixDOFMouseDriver::type_;
 zmq::socket_t* SixDOFMouseDriver::socket_;
 Eigen::Vector3d SixDOFMouseDriver::deviceForce_;
 Eigen::Vector3d SixDOFMouseDriver::deviceTorque_;
-
+Eigen::Vector3d SixDOFMouseDriver::contact_normal_;
+Eigen::Vector3d SixDOFMouseDriver::user_force_;
+bool SixDOFMouseDriver::in_contact_;
 using namespace std;
 
 typedef std::array<float, 3> float3;
@@ -61,7 +63,42 @@ void normalizeQuat(double& w, double& x, double& y, double& z){
   double mag = sqrt(pow(w,2)+pow(x,2)+pow(y,2)+pow(z,2));
   w = w/mag; x = x/mag; y = y/mag; z = z/mag;
 }
+static void toEulerianAngle(const Eigen::Quaterniond& q, double& roll, double& pitch, double& yaw)
+{
+  double ysqr = q.y() * q.y();
 
+  // roll (x-axis rotation)
+  double t0 = +2.0 * (q.w() * q.x() + q.y() * q.z());
+  double t1 = +1.0 - 2.0 * (q.x() * q.x() + ysqr);
+  roll = std::atan2(t0, t1);
+
+  // pitch (y-axis rotation)
+  double t2 = +2.0 * (q.w() * q.y() - q.z() * q.x());
+  t2 = t2 > 1.0 ? 1.0 : t2;
+  t2 = t2 < -1.0 ? -1.0 : t2;
+  pitch = std::asin(t2);
+
+  // yaw (z-axis rotation)
+  double t3 = +2.0 * (q.w() * q.z() + q.x() * q.y());
+  double t4 = +1.0 - 2.0 * (ysqr + q.z() * q.z());  
+  yaw = std::atan2(t3, t4);
+}
+static Eigen::Quaterniond toQuaternion(double pitch, double roll, double yaw)
+{
+  Eigen::Quaterniond q;
+  double t0 = std::cos(yaw * 0.5);
+  double t1 = std::sin(yaw * 0.5);
+  double t2 = std::cos(roll * 0.5);
+  double t3 = std::sin(roll * 0.5);
+  double t4 = std::cos(pitch * 0.5);
+  double t5 = std::sin(pitch * 0.5);
+
+  q.w() = t0 * t2 * t4 + t1 * t3 * t5;
+  q.x() = t0 * t3 * t4 - t1 * t2 * t5;
+  q.y() = t0 * t2 * t5 + t1 * t3 * t4;
+  q.z() = t1 * t2 * t4 - t0 * t3 * t5;
+  return q;
+}
 float3 quat2Euler(float q0, float q1, float q2, float q3)
 {
   return
@@ -83,6 +120,16 @@ void euler2Quat(double psi, double theta, double phi, double* quat){
   
 SixDOFMouseDriver::SixDOFMouseDriver(){
 
+}
+
+const Eigen::Vector3d& SixDOFMouseDriver::getContactNormal(){
+  return SixDOFMouseDriver::contact_normal_;
+}
+const Eigen::Vector3d& SixDOFMouseDriver::getUserForce(){
+  return SixDOFMouseDriver::user_force_;
+}
+bool SixDOFMouseDriver::userInContact(){
+  return in_contact_;
 }
 
 const se3::SE3& SixDOFMouseDriver::getTransformation(){
@@ -176,13 +223,21 @@ void SixDOFMouseDriver::InitPosition(double* translation)
     transformation_.translation()[2] = (float)translation[2];
 }
 
+void SixDOFMouseDriver::InitRotation(double* ro)
+{
+  Eigen::Quaternionf qq((float)ro[0], (float)ro[1], (float)ro[2], (float)ro[3]);
+  qq.normalize();
+  Eigen::Matrix3f temp =quat2Mat(qq.x(),qq.y(),qq.z(),qq.w());
+  transformation_.rotation(temp);
+}
+
 
 void SixDOFMouseDriver::MouseInit(short int type, const double* bounds)
 {
   type_=type;
   if (type_==1)
   {
-    fd_ = open("/dev/hidraw2", O_RDONLY);
+    fd_ = open("/dev/hidraw1", O_RDONLY);
     if (fd_ < 0) {
       perror("Unable to open interactive device");
       abort();
@@ -196,7 +251,7 @@ void SixDOFMouseDriver::MouseInit(short int type, const double* bounds)
     //*
     transformation_.translation()[0] = 0;
     transformation_.translation()[1] = 0;
-    transformation_.translation()[2] = 0;
+    transformation_.translation()[2] = 1;
     //*/
     // init rotation
     transformation_.rotation().setIdentity();
@@ -342,7 +397,7 @@ void SixDOFMouseDriver::MouseInit(short int type, const double* bounds)
       //cout << "pos"<<j<<" "<<recv_config->getObjCooridnate().getPosition()[j] << endl;
       //cout << "force"<<j<< recv_config->getArmCF().getForceByIndex(j) << endl;
     //}
-    cout << "message reçu ex\n";
+    //cout << "message reçu ex\n";
 
     sleep(6);
     // execute thread 
@@ -363,10 +418,11 @@ void SixDOFMouseDriver::ReadMouse(const double* bounds_)
   cout << "ReadDevice thread...\n";
   void* arg;
 
+  // TODO n'ouvrir qu'en cas de type_==3
   zmq::context_t contextpp (1);
   zmq::socket_t socket (contextpp, ZMQ_PULL);
   socket.bind ("tcp://*:5555");
-  if(0)while(1){
+  /*if(0)while(1){
     cout << "while\n";
     zmq::message_t request;
 
@@ -382,7 +438,7 @@ void SixDOFMouseDriver::ReadMouse(const double* bounds_)
       //cout << "force"<<j<< recv_config->getArmCF().getForceByIndex(j) << endl;
     }   
 
-  }
+  }//*/
 
 
   while (1){
@@ -444,6 +500,8 @@ void SixDOFMouseDriver::ReadMouse(const double* bounds_)
       // -------------------------------------------------------
       //*/
       temp_trans.translation(pos + transformation_.translation());
+      
+
       /////////////////////////////////////////////////////////
       /*
          for (int i=0; i<3; i++){
@@ -493,6 +551,7 @@ void SixDOFMouseDriver::ReadMouse(const double* bounds_)
       rot[2] = -res(2);
       cout << "rotation " << rot[0] << " " << rot[1] << " " << rot[2] << endl << endl;
       //*/
+
       /////////////////////////////////////////////////////////
       // integrate rotations
       double threshold;
@@ -534,9 +593,7 @@ void SixDOFMouseDriver::ReadMouse(const double* bounds_)
          SixDOFMouseDriver::cameraVectors_[7] ,
          SixDOFMouseDriver::cameraVectors_[8];
       //*/
-
       //cout << "matrot " << matrot.transpose() << endl;
-
       //v_local = transformation_.rotation().transpose() * v_local; // ça marcheoie biengue
       //v_local = matrot.transpose() * v_local;
 
@@ -546,7 +603,6 @@ void SixDOFMouseDriver::ReadMouse(const double* bounds_)
       else expMap(v_local, dR);
 
       //cout << dR << endl << endl;
-
 
       se3::SE3::Matrix3 R_new (temp_trans.rotation () * dR);
       temp_trans.rotation(R_new);
@@ -600,7 +656,7 @@ void SixDOFMouseDriver::ReadMouse(const double* bounds_)
       //else val[i] = angles[i] - fabs(bornes[i][0]);
         val[i]=angles[i]-bornes[i][0];
         //cout <<" "<<i<<"angles="<<angles[i]<<"borne "<< bornes[i][0]<< " val="<<val[i];
-        double aaa = val[i]/d[i];
+        //double aaa = val[i]/d[i];
         res[i] = k * 2 * M_PI * ((val[i]/d[i])-(1/2)); 
       }
       //cout << endl;
@@ -613,7 +669,7 @@ void SixDOFMouseDriver::ReadMouse(const double* bounds_)
       //r = quat2Euler(quat[0], quat[1], quat[2], quat[3]);
   
       //cout << " re les angles "<<angles[0]<<" "<<angles[1]<<" "<<angles[2]<<endl; 
-      Eigen::Quaternionf qq(quat[0], quat[1], quat[2], quat[3]);
+      Eigen::Quaternionf qq((float)quat[0], (float)quat[1], (float)quat[2], (float)quat[3]);
       qq.normalize();
       Eigen::Matrix3f temp =quat2Mat(qq.x(),qq.y(),qq.z(),qq.w());
       temp_trans.rotation(temp);
@@ -623,61 +679,91 @@ void SixDOFMouseDriver::ReadMouse(const double* bounds_)
     if (type_==3)
     {
 
-      float p[3], f[3];
-    cout << "while\n";
-    zmq::message_t request;
-
-    //  Wait for next request from client
-    socket.recv (&request);
-    Data *recv_config = (Data *)(request.data());
-    // output the size of received collision array
-    int array_size = recv_config->getCollisionArraySize();
-    std::cout << std::setw(6) << "Array Size: " << array_size << std::endl;
-    std::cout<<*(recv_config->getCollisionPairByIndex(0).getPositionOnObj1())<<" "<<*(recv_config->getCollisionPairByIndex(0).getPositionOnObj2())<<std::endl;
-    for (int j=0; j<3; j++){
-  p[j] = recv_config->getObjCooridnate().getPosition()[j];
-      cout << "pos"<<j<<" "<<p[j]<< endl;
-      //cout << "force"<<j<< recv_config->getArmCF().getForceByIndex(j) << endl;
-    }   
-
-
-      for (int i=0; i<3; i++){
-        pos[i] =
-          p[0]*
-            SixDOFMouseDriver::cameraVectors_[i] -
-          p[1]*
-            SixDOFMouseDriver::cameraVectors_[i+3] -
-          p[2]*
-            SixDOFMouseDriver::cameraVectors_[i+6];
-      }
-      temp_trans.translation(pos);
-      /*
+      float r[4], f[3], n[3];
       zmq::message_t request;
-      Data *recv_config = (Data *)(request.data());
-      int array_size = recv_config->getCollisionArraySize();
-      //cout << "taille " << array_size << endl;
-      float p[3], f[3];
-      for (int j=0; j<3; j++){
-        cout<< "pos"<<j<<" "<<recv_config->getObjCooridnate().getPosition()[j] << " ";
-        //cout << "force"<<j<< recv_config->getArmCF().getForceByIndex(j) << endl;
-        p[j] = recv_config->getObjCooridnate().getPosition()[j];
-        f[j] = recv_config->getArmCF().getForceByIndex(j);
-      }
-      cout << endl;
- 
-      for (int i=0; i<3; i++){
-        pos[i] =
-          p[0]*
-            SixDOFMouseDriver::cameraVectors_[i] -
-          p[1]*
-            SixDOFMouseDriver::cameraVectors_[i+3] -
-          p[2]*
-            SixDOFMouseDriver::cameraVectors_[i+6];
-      }
-      temp_trans.translation(pos);
-      //*/
 
-    } 
+      //  Wait for next request from client
+      socket.recv (&request);
+      Data *recv_config = (Data *)(request.data());
+      // output the size of received collision array
+      int array_size = recv_config->getCollisionArraySize();
+      in_contact_ = array_size; 
+      //std::cout << std::setw(6) << "Array Size: " << array_size << std::endl;
+      //std::cout<<*(recv_config->getCollisionPairByIndex(0).getPositionOnObj1())<<" "<<*(recv_config->getCollisionPairByIndex(0).getPositionOnObj2())<<std::endl;
+      memcpy(f, recv_config->getArmCF().getForce(), 3*sizeof(float));
+      memcpy(n,recv_config->getCollisionPairByIndex(0).getNormalOnObj1(),3*sizeof(float));
+      user_force_<<f[0], f[1], f[2];
+      contact_normal_<<n[0], n[1], n[2];
+      contact_normal_.normalize();
+
+      //cout << "force ";
+      //for (int j=0; j<3; j++){
+        //cout << f[j]<< " ";}
+      //cout << endl;
+      
+      //for (int j=0; j<3; j++){
+        //p[j] = recv_config->getObjCooridnate().getPosition()[j];
+        //if (p[j]<1e-9)p[j] = 0;
+        //cout << "pos"<<j<<" "<<p[j]<<" ";
+        //pos[j] = p[j];
+        //cout << "force"<<j<< recv_config->getArmCF().getForceByIndex(j) << endl;
+      //}
+      //cout << "p 0 " << p[0] << " 1 " << p[1] << " 2 " << p[2] << endl;
+      //cout << "pos 0 " << pos[0] << " 1 " << pos[1] << " 2 " << pos[2] << endl;
+      //if (p[j]<1e-9)p[j] = 0;
+      //cout << "pos"<<j<<" "<<p[j]<<" ";
+      //pos[j] = p[j];
+
+
+  
+    
+
+      // position
+      // TODO essayer de savoir d'où viennent les décalages   
+      pos[0] = recv_config->getObjCooridnate().getPosition()[0];//+(float)0.4782;
+      pos[1] = recv_config->getObjCooridnate().getPosition()[2];
+      pos[2] = recv_config->getObjCooridnate().getPosition()[1];//-1;
+      temp_trans.translation(pos);
+      cout << "pos";
+      for (int j=0; j<3; j++){cout << " " << pos[j];}
+      cout << endl;
+
+      //rotation
+      memcpy(r, recv_config->getObjCooridnate().getQuaternion(), 4*sizeof(float));
+      cout << "quaternions ";
+      for (int j=0; j<4; j++){cout << "rot"<<j<<" "<<r[j]<<" ";}
+      cout << endl;
+      Eigen::Quaterniond qq(r[1], -r[0], -r[2], r[3]);
+      qq.normalize();
+      cout << "quat eigen  " << qq.x()<<" "<<qq.y()<<" "<<qq.z()<<" "<<qq.w()<<endl;
+      
+      double roll, pitch, yaw;
+      toEulerianAngle(qq, roll, pitch, yaw);
+      //eu = quat2Euler(qq.w(),qq.x(),qq.y(),qq.z());
+      //cout << "eulers " << eu[0]<< " " << eu[1] << " " << eu[2] << endl;
+      //eu[0]-=(float)1.57006;
+      //eu[1]+=(float)3.14;
+      //roll+=M_PI;
+      //yaw+=M_PI/2;
+      //double sauv;
+      //sauv = yaw;
+      //pitch = sauv;
+      //sauv = yaw;
+      //yaw = -roll;
+      //yaw = pitch;
+      //roll = sauv;
+
+      Eigen::Quaterniond qq2(toQuaternion(pitch, roll, yaw));
+      qq2.normalize();
+      cout << "quat eigen2 " << qq2.x()<<" "<<qq2.y()<<" "<<qq2.z()<<" "<<qq2.w()<<endl;
+      Eigen::Matrix3f temp =quat2Mat(qq2.x(),qq2.y(),qq2.z(),qq2.w());
+
+      //Eigen::Matrix3f temp =quat2Mat(qq.x(),qq.y(),qq.z(),qq.w());
+      temp_trans.rotation(temp);
+     } 
+
+      //float3 quat2Euler(float q0, float q1, float q2, float q3)
+      //void euler2Quat(double psi, double theta, double phi, double* quat)
 
     /////////////////////////////////////////////////////////
     // apply configuration

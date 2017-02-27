@@ -33,9 +33,9 @@ void ArmConfigurationForce::setQuaternion(float x1, float x2, float x3, float x4
 	quaternion[3] = x4;
 }
 
-float ArmConfigurationForce::getForceByIndex(int index)
+const float (&ArmConfigurationForce::getForce())[3]
 {
-	return force[index];
+	return force;
 }
 
 float ArmConfigurationForce::getPositionByIndex(int index)
