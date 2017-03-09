@@ -85,6 +85,10 @@ namespace hpp {
     vector<fcl::DistanceResult> results;
     vector<fcl::DistanceResult> results_cpy;
     vector<fcl::DistanceResult> prev_results;
+
+    #define tpg 10
+    Eigen::Vector3f pos_glissante[tpg];
+    Eigen::Vector3f vec_mvt;
     //////////// var glob
 
     double dnn[7];
@@ -290,7 +294,7 @@ namespace hpp {
       nb_launchs++;
       type_ = 3; //device type 1 mouse 2 sigma7 3 haption
       random_prob_ = 0; // 0 all human  1 all machine
-      d_ = 0.10; // distance entrée mode contact
+      d_ = 0.70; // distance entrée mode contact
       Planner::mode_contact_ = false;
       change_obst_ = false;
       //force_feedback_=false;
@@ -298,6 +302,7 @@ namespace hpp {
       client_.connect();
       cout << "adding landmark to viewer\n";
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_mesh.urdf"; contact_activated_ = true;
+      //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_strange.urdf"; contact_activated_ = true;
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_siege.urdf"; contact_activated_ = true;
       string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_cube_mesh.urdf"; contact_activated_ = true;
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_strange.urdf"; contact_activated_ = true;
@@ -327,7 +332,7 @@ namespace hpp {
         this->problem().robot()->rootJoint()->upperBound(2)
       };
       SixDOFMouseDriver::MouseInit(type_, bounds);
-      ShowBounds();
+      //ShowBounds();
       ConfigurationPtr_t config (new Configuration_t ((hpp::model::size_type)7));
       (*config)[0] = 0;
       (*config)[1] = 0;
@@ -365,11 +370,16 @@ namespace hpp {
       //color[0] = 1; color[1] = 1; color[2] = 1; color[3] = 1.;
       int index_lignes = 0;
       int index_lignes2 = 0;
+      for (int i=0; i<tpg-1; i++)
+        pos_glissante[i].setZero();
+
       index_lignes += index_lignes2; // pour éviter le warning
       bool double_contact = true; 
       sleep(1);//TODO ceci pour régler le pb init curseur viteuf, à changer
       bool init = false;
       cout << "InteractiveDevice thread...\n";
+      Eigen::Vector3f prev_vec_mvt;
+      prev_vec_mvt.setZero();
       while(!SixDOFMouseDriver::HasMoved());
       while(nb_launchs<2){
         if (!init){
@@ -407,7 +417,30 @@ namespace hpp {
         tr[4] = (float)quat.x()/(float)mag;
         tr[5] = (float)quat.y()/(float)mag;
         tr[6] = (float)quat.z()/(float)mag;
+       
+
+      for (int i=0; i<tpg-1; i++){
+        pos_glissante[i] = pos_glissante[i+1];
+        //cout << "pos_glissante["<<i<<"]="<<pos_glissante[i].transpose()<<endl;
+      }
+  
+        pos_glissante[tpg-1] << tr[0], tr[1], tr[2];
+
+        Eigen::Vector3f db, fn;
+        db.setZero(); fn.setZero();
+      for (int i=0; i<tpg/2; i++){
+        db += pos_glissante[i];// + pos_glissante[1]; db = db/2;
+        fn += pos_glissante[i+tpg/2];// + pos_glissante[3]; fn = fn/2;
+      }fn/=(tpg/2);db/=(tpg/2);
+        vec_mvt = fn - db;
+        if (vec_mvt.isZero()) vec_mvt = prev_vec_mvt;
+        else prev_vec_mvt = vec_mvt;
         
+        
+        //cout << "deb "<<db.transpose()<<endl;
+        //cout << "fin "<<fn.transpose()<<endl;
+        //cout << "vec "<<vec_mvt.transpose()<<endl<<endl;
+         
         //cout << "InteractiveDeviceThread\n";
         //for (int ii=0; ii<7; ii++){
           //cout << tr[ii] << " ";
@@ -635,7 +668,7 @@ namespace hpp {
 
             }
 
-/*// afficher le repère local // //////////////////////////////////////////
+//*// afficher le repère local // //////////////////////////////////////////
       gepetto::corbaserver::Color color;
       color[0] = 1; color[1] = 1; color[2] = 1; color[3] = 1;
                 string nom_ligne = "0_scene_hpp_/ligne";
@@ -750,6 +783,7 @@ namespace hpp {
 
     void Planner::oneStep ()
     {
+      static float prev_ang=0;
       //cout << "one step\n";
       robot_mutex_.lock();
       //cout << "robot_mutex_lock one step\n";
@@ -824,36 +858,91 @@ namespace hpp {
           // angle force/normale phi
           // cos phi = (n.f)/(|n||f|)
           double phi;
+          double sert_a_rien;
           uf.norm();
           phi = (uf.dot(cn))/(uf.norm()*cn.norm());
           phi = acos(phi);
-          if(SixDOFMouseDriver::userInContact()){
-            cout << "uf " << uf.transpose() << " cn " << cn.transpose() << endl;
-            cout << "angle " << phi << endl;
+          phi = modf(phi, &sert_a_rien);//%(M_PI/2);
+          double pa, ga; // petit axe, grand axe
+          pa = ga = 1;
+          //cout <<"planner contact?"<<SixDOFMouseDriver::userInContact()<<endl;
+if(phi==phi){
+     //if(SixDOFMouseDriver::userInContact())
+            //cout << "uf " << uf.transpose() << " cn " << cn.transpose() << endl;
+            cout << "angle fu " << phi << endl;
+            ga = exp(2*phi);
+            pa = 1/ga;
           }
+          //pa = 0.05;
+          //ga = 5;
+          cout << "pa="<<pa<<" ga="<<ga<<endl;
+          cout << "uf.norm="<<uf.norm()<<endl;
           //double t1 = (n[0]+n[1]+n[2])*(f[0]+f[1]+f[2]);
           //double t2 = sqrt(pow(n[0],2)+pow(n[1],2)+pow(n[2],2))
           //*sqrt(pow(f[0],2)+pow(f[1],2)+pow(f[2],2));
           //t1 = t1/t2;
           //phi = acos(t1);
           //cout << "t1 " << t1 << " t2 " << t2 << endl;
-
+          
           // nouvelle méthode pour éviter le gros hack
-          double K = 3.5;
+          double K = uf.norm();
+          K = 1.5*uf.norm(); 
+          //K = 1;
           double ray = rand();
           ray=ray/RAND_MAX;
           double thet = rand();
           thet = thet / RAND_MAX;
           ray = sqrt(ray) * K;
-          thet = 2 * 3.141592653589 * thet;
+          thet = 2 * M_PI * thet;
           double x, y;
-          x = 0.4 * ray * cos(thet);
+          x = pa * ray * cos(thet);
           //x = ray * cos(thet);
-          y = ray * sin(thet); 
+          y = ga * ray * sin(thet); 
           float zz = 0;
+
+          if (1){
+            Eigen::Vector3f n(normal[0]);
+            Eigen::Vector3f vt1, vml;
+            float dpt = vec_mvt.dot(n);
+            vml=n*dpt;
+            vml = vec_mvt-vml;//vecteur mouvement local à la surface
+            double ang;
+            //Eigen::Matrix3f rot_vt;
+            //double kk = M_PI/2;
+            //rot_vt << cos(kk), -sin(kk), 0, sin(kk), cos(kk), 0, 0, 0, 1;
+            vt1 << MGS.col[2].v[0],MGS.col[2].v[1],MGS.col[2].v[2];
+            //vt1 = rot_vt * vt1;
+            
+            ang = acos((vml.dot(vt1))/(vt1.norm()*vml.norm()));
+            //cout<<"vec_mvt " << vec_mvt.transpose()<< endl;
+            //cout<<"normale " << n.transpose() << endl;
+            //cout<<"vml " << vml.transpose()<<endl;
+            //cout<<"vt1 " << vt1.transpose() << endl;
+            cout << "angle à vt1  "<< ang << endl <<endl;
+            
+            //if (ang!=ang)ang=prev_ang; 
+            //prev_ang = ang;
+            //ang = ang/(M_PI*2)*360;
+            //cout << "angle à vt11 "<< ang << endl;
+           
+            //ang = ang + 90;       
+            //ang = 37;
+            //ang = 90;
+            //ang = ang/360*2*M_PI;
+            //ang = 0;
+            //ang = M_PI/4;
+            //cout << "angle corrige="<<ang<<endl<<endl;;
+            Eigen::Matrix2d nouv_rep;
+            Eigen::Vector2d nouv_coord;
+            nouv_rep << cos(ang), -sin(ang), sin(ang), cos(ang);
+            nouv_coord << x, y;
+            nouv_coord = nouv_rep * nouv_coord;
+            x=nouv_coord[0];y=nouv_coord[1];
+          }
 
           /////////////////////////////////////////////////////////////////////
           // la rotation aléatoire sous la forme d'une matrice de rotation 
+          /*
           Eigen::Quaternionf qqe(
             (float)(*Planner::actual_configuration_ptr_)[3],
             (float)(*Planner::actual_configuration_ptr_)[4],
@@ -929,6 +1018,7 @@ namespace hpp {
 
           Eigen::Matrix3f matrelat =quat2Mat(rqe.x(),rqe.y(),rqe.z(),rqe.w()); 
           
+          //*/
 
           /////////////////////////////////////////////////////////////////////
           
@@ -949,7 +1039,9 @@ namespace hpp {
           // TODO attention j'ai rajouté ci dessus un facteur 1.1
           // car les échantillons ont tendance 
           // à être en collision, c'est trop bas, à corriger
-
+          
+          // pour la rotation aléatoire
+          /*
           Vector3 new_distances;
           Vector3 old_distances(distances_[0],distances_[1], distances_[2]);
           new_distances = matrelat*old_distances;
@@ -965,7 +1057,7 @@ namespace hpp {
           //cout << "orgn " << org2.transpose() << endl;
           //cout << "orgv " << old_distances.transpose() << endl;
           //cout << "orgn " << new_distances.transpose() << endl;
-
+*/
 
           //Vector3 old_distances(distances_);
           //new_distances = temp3 * org;
@@ -1098,7 +1190,22 @@ namespace hpp {
       }
       robot_mutex_.unlock();
       //cout << "robot_mutex_unlock one step\n";
+      long int n, e;
+      n = roadmap()->nodes().size();
+      e = roadmap()->edges().size();
+      //cout << "n="<<n<<" e="<<e<<endl;
     }
+
+
+
+
+
+
+
+
+
+
+
 
     void Planner::configurationShooter
       (const ConfigurationShooterPtr_t& shooter)

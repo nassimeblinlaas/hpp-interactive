@@ -10,7 +10,7 @@ class Data
 protected:
 	ObjectCoordinate objCoordinate;
 	ArmConfigurationForce armCF;
-	CollsionPair collisionPointArray[1024];
+	CollsionPair collisionPointArray[512];
 	int arraySize;
 
 public:

@@ -14,6 +14,9 @@
 #include <hpp/interactive/Data.hh>
 #include <hpp/interactive/zmq.hh>
 
+#include <array>
+#include <limits>
+
 
 boost::thread* SixDOFMouseDriver::interactiveDeviceThread_ = 0;
 int SixDOFMouseDriver::fd_ = 0;
@@ -42,6 +45,48 @@ bool SixDOFMouseDriver::in_contact_;
 using namespace std;
 
 typedef std::array<float, 3> float3;
+typedef std::array<float3, 3> float3x3;
+
+const float PI = 3.14159265358979323846264f;
+
+bool closeEnough(const float& a, const float& b, const float& epsilon = std::numeric_limits<float>::epsilon()) {
+    return (epsilon > std::abs(a - b));
+}
+
+float3 eulerAngles(const float3x3& R) {
+
+    //check for gimbal lock
+    if (closeEnough(R[0][2], -1.0f)) {
+        float x = 0; //gimbal lock, value of x doesn't matter
+        float y = PI / 2;
+        float z = x + atan2(R[1][0], R[2][0]);
+        return { x, y, z };
+    } else if (closeEnough(R[0][2], 1.0f)) {
+        float x = 0;
+        float y = -PI / 2;
+        float z = -x + atan2(-R[1][0], -R[2][0]);
+        return { x, y, z };
+    } else { //two solutions exist
+        float x1 = -asin(R[0][2]);
+        float x2 = PI - x1;
+
+        float y1 = atan2(R[1][2] / cos(x1), R[2][2] / cos(x1));
+        float y2 = atan2(R[1][2] / cos(x2), R[2][2] / cos(x2));
+
+        float z1 = atan2(R[0][1] / cos(x1), R[0][0] / cos(x1));
+        float z2 = atan2(R[0][1] / cos(x2), R[0][0] / cos(x2));
+
+        //choose one solution to return
+        //for example the "shortest" rotation
+        if ((std::abs(x1) + std::abs(y1) + std::abs(z1)) <= (std::abs(x2) + std::abs(y2) + std::abs(z2))) {
+            return { x1, y1, z1 };
+        } else {
+            return { x2, y2, z2 };
+        }
+    }
+}
+
+
 
 Eigen::Matrix3f quat2Mat(float x, float y, float z, float w){
   ::Eigen::Matrix3f ret;
@@ -421,6 +466,8 @@ void SixDOFMouseDriver::ReadMouse(const double* bounds_)
   // TODO n'ouvrir qu'en cas de type_==3
   zmq::context_t contextpp (1);
   zmq::socket_t socket (contextpp, ZMQ_PULL);
+  //zmq_unbind (socket, "tcp://*:5555");
+  //zmq_disconnect (socket, "tcp://*:5555");
   socket.bind ("tcp://*:5555");
   /*if(0)while(1){
     cout << "while\n";
@@ -688,6 +735,7 @@ void SixDOFMouseDriver::ReadMouse(const double* bounds_)
       // output the size of received collision array
       int array_size = recv_config->getCollisionArraySize();
       in_contact_ = array_size; 
+      //cout << "user in contact" << in_contact_ << endl;
       //std::cout << std::setw(6) << "Array Size: " << array_size << std::endl;
       //std::cout<<*(recv_config->getCollisionPairByIndex(0).getPositionOnObj1())<<" "<<*(recv_config->getCollisionPairByIndex(0).getPositionOnObj2())<<std::endl;
       memcpy(f, recv_config->getArmCF().getForce(), 3*sizeof(float));
@@ -718,52 +766,35 @@ void SixDOFMouseDriver::ReadMouse(const double* bounds_)
   
     
 
-      // position
-      // TODO essayer de savoir d'où viennent les décalages   
-      pos[0] = recv_config->getObjCooridnate().getPosition()[0];//+(float)0.4782;
-      pos[1] = recv_config->getObjCooridnate().getPosition()[2];
-      pos[2] = recv_config->getObjCooridnate().getPosition()[1];//-1;
+      // position ///////////////////////////////////////////////////////
+      // pour le mur
+      //pos[0] = recv_config->getObjCooridnate().getPosition()[0]+(float)1;
+      //pos[1] = recv_config->getObjCooridnate().getPosition()[2];
+      //pos[2] = recv_config->getObjCooridnate().getPosition()[1];//-1;
+      // pour la voiture
+      //pos[0] = -recv_config->getObjCooridnate().getPosition()[0];
+      //pos[1] = recv_config->getObjCooridnate().getPosition()[1];
+      //pos[2] = recv_config->getObjCooridnate().getPosition()[2];
+      // pour le tore
+      pos[0] = -recv_config->getObjCooridnate().getPosition()[0];
+      pos[1] = recv_config->getObjCooridnate().getPosition()[1];
+      pos[2] = recv_config->getObjCooridnate().getPosition()[2];
+
       temp_trans.translation(pos);
-      cout << "pos";
-      for (int j=0; j<3; j++){cout << " " << pos[j];}
-      cout << endl;
+      cout<<"pos";for(int j=0;j<3;j++){cout<<" "<<pos[j];} cout<<endl;
 
-      //rotation
+
+      //rotation /////////////////////////////////////////////////
       memcpy(r, recv_config->getObjCooridnate().getQuaternion(), 4*sizeof(float));
-      cout << "quaternions ";
-      for (int j=0; j<4; j++){cout << "rot"<<j<<" "<<r[j]<<" ";}
-      cout << endl;
-      Eigen::Quaterniond qq(r[1], -r[0], -r[2], r[3]);
+      //cout<<"quat recu ";for(int j=0;j<4;j++){cout<<"rot "<<j<<" "<<r[j]<<" ";}
+      //cout << endl;
+      Eigen::Quaterniond qq(r[0], -r[1], r[2],  r[3]);
       qq.normalize();
-      cout << "quat eigen  " << qq.x()<<" "<<qq.y()<<" "<<qq.z()<<" "<<qq.w()<<endl;
-      
-      double roll, pitch, yaw;
-      toEulerianAngle(qq, roll, pitch, yaw);
-      //eu = quat2Euler(qq.w(),qq.x(),qq.y(),qq.z());
-      //cout << "eulers " << eu[0]<< " " << eu[1] << " " << eu[2] << endl;
-      //eu[0]-=(float)1.57006;
-      //eu[1]+=(float)3.14;
-      //roll+=M_PI;
-      //yaw+=M_PI/2;
-      //double sauv;
-      //sauv = yaw;
-      //pitch = sauv;
-      //sauv = yaw;
-      //yaw = -roll;
-      //yaw = pitch;
-      //roll = sauv;
-
-      Eigen::Quaterniond qq2(toQuaternion(pitch, roll, yaw));
-      qq2.normalize();
-      cout << "quat eigen2 " << qq2.x()<<" "<<qq2.y()<<" "<<qq2.z()<<" "<<qq2.w()<<endl;
-      Eigen::Matrix3f temp =quat2Mat(qq2.x(),qq2.y(),qq2.z(),qq2.w());
-
-      //Eigen::Matrix3f temp =quat2Mat(qq.x(),qq.y(),qq.z(),qq.w());
+      Eigen::Matrix3f temp =quat2Mat(qq.x(),qq.y(),qq.z(),qq.w());
       temp_trans.rotation(temp);
+
      } 
 
-      //float3 quat2Euler(float q0, float q1, float q2, float q3)
-      //void euler2Quat(double psi, double theta, double phi, double* quat)
 
     /////////////////////////////////////////////////////////
     // apply configuration
@@ -931,3 +962,82 @@ void SixDOFMouseDriver::getData(void* arg)
        (float) SixDOFMouseDriver::deviceValuesNormalized_[2]/divideFactor*SixDOFMouseDriver::cameraVectors_[8];
     //*/
 
+
+
+
+
+
+
+      //Eigen::Vector3d v;
+      //Eigen::Quaterniond p, np, pi, rqq;
+
+      //v<<1,0,0;
+      //p.w() = 0;
+      //p.vec() = v;
+      //np.w() = 0;
+      //np.vec() = -v;
+      //pi = p.inverse();
+      //rqq = np * qq * pi;
+      //cout<<"np x "<<np.x()<<" y "<<np.y()<<" z "<<np.z()<<" w "<<np.w()<<endl;
+      //cout<<"pi x "<<pi.x()<<" y "<<pi.y()<<" z "<<pi.z()<<" w "<<pi.w()<<endl;
+
+
+      //rqq = rqq * pi; 
+
+      //cout<<"rqat x "<<rqq.x()<<" y "<<rqq.y()<<" z "<<rqq.z()<<" w "<<rqq.w()<<endl;
+      //temp =quat2Mat(rqq.x(),rqq.y(),rqq.z(),rqq.w());
+
+      //Eigen::Vector3d rotatedV = rqq.vec();
+
+
+      //origine = qq;
+      //mirroir(0.0,1.0,0.0,0.0); 
+      //origine<<qq.x(), qq.y(), qq.z();
+      //mirroir<<1, 0, 0;
+      //retourne =  -mirroir.transpose() * origine;
+      //mirroir = mirroir.inverse();
+      /*
+      double roll, pitch, yaw;
+      toEulerianAngle(qq, roll, pitch, yaw);
+      //float3 eu;
+      //eu = quat2Euler(qq.w(),qq.x(),qq.y(),qq.z());
+      //roll = yaw = 0;
+      roll = roll/(2*M_PI)*360; 
+      pitch = pitch/(2*M_PI)*360; 
+      yaw = yaw/(2*M_PI)*360; 
+      cout<<"eulers r "<<roll<<" p "<<pitch<<" y "<<yaw<<endl;
+      //cout<<"eulerv r"<<eu[0]<<" p"<<eu[1]<<" y"<<eu[2]<<endl;
+
+      //cout << "quat eigen2 " << qq2.x()<<" "<<qq2.y()<<" "<<qq2.z()<<" "<<qq2.w()<<endl;
+
+      float3x3 convert;
+      convert[0][0] = temp(0,0);
+      convert[0][1] = temp(1,0);
+      convert[0][2] = temp(2,0);
+      convert[1][0] = temp(0,1);
+      convert[1][1] = temp(1,1);
+      convert[1][2] = temp(2,1);
+      convert[2][0] = temp(0,2);
+      convert[2][1] = temp(1,2);
+      convert[2][2] = temp(2,2);
+      float3 rt = eulerAngles(convert);
+
+      //cout<<"euler2 r "<<rt[1]<<" p "<<rt[0]<<" y "<<rt[2]<<endl;
+      //if(std::abs(rt[0])<1e-9)rt[0]=0; 
+      //if(std::abs(rt[1])<1e-9)rt[1]=0; 
+      //if(std::abs(rt[2])<1e-9)rt[2]=0; 
+
+      //roll = pitch = yaw = 0;
+
+      roll = rt[0];
+      pitch = -rt[1];
+      yaw = rt[2]; 
+
+      //cout<<"euler3 r "<<roll<<" p "<<pitch<<" y "<<yaw<<endl<<endl;
+
+      Eigen::Quaterniond qq2(toQuaternion(roll, pitch, yaw));
+      qq2.normalize();
+      //cout<<"quat2x "<<qq2.x()<<" y "<<qq2.y()<<" z "<<qq2.z()<<" w "<<qq2.w()<<endl;
+      //*/
+      
+      //temp =quat2Mat(qq2.x(),qq2.y(),qq2.z(),qq2.w());
