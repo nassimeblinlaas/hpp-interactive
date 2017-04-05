@@ -37,6 +37,8 @@ double SixDOFMouseDriver::K_off_[3];
 float SixDOFMouseDriver::cameraVectors_[9];
 short int SixDOFMouseDriver::type_;
 zmq::socket_t* SixDOFMouseDriver::socket_;
+zmq::context_t* SixDOFMouseDriver::context_;
+
 Eigen::Vector3d SixDOFMouseDriver::deviceForce_;
 Eigen::Vector3d SixDOFMouseDriver::deviceTorque_;
 Eigen::Vector3d SixDOFMouseDriver::contact_normal_;
@@ -464,11 +466,11 @@ void SixDOFMouseDriver::ReadMouse(const double* bounds_)
   void* arg;
 
   // TODO n'ouvrir qu'en cas de type_==3
-  zmq::context_t contextpp (1);
-  zmq::socket_t socket (contextpp, ZMQ_PULL);
+  //zmq::context_t contextpp (1);
+  //zmq::socket_t socket (contextpp, ZMQ_PULL);
   //zmq_unbind (socket, "tcp://*:5555");
   //zmq_disconnect (socket, "tcp://*:5555");
-  socket.bind ("tcp://*:5555");
+  //socket.bind ("tcp://*:5555");
   /*if(0)while(1){
     cout << "while\n";
     zmq::message_t request;
@@ -726,11 +728,11 @@ void SixDOFMouseDriver::ReadMouse(const double* bounds_)
     if (type_==3)
     {
 
-      float r[4], f[3], n[3];
+      float p[3], r[4], f[3], n[3];
       zmq::message_t request;
 
       //  Wait for next request from client
-      socket.recv (&request);
+      socket_->recv (&request);
       Data *recv_config = (Data *)(request.data());
       // output the size of received collision array
       int array_size = recv_config->getCollisionArraySize();
@@ -743,19 +745,41 @@ void SixDOFMouseDriver::ReadMouse(const double* bounds_)
       user_force_<<f[0], f[1], f[2];
       contact_normal_<<n[0], n[1], n[2];
       contact_normal_.normalize();
+      //cout << "XXXXXXX cn="<<contact_normal_.transpose()<<endl;
+    cout << "array size " << array_size<< endl;
+    if(0)for (int i=0; i<array_size; i++){
+      cout << "pt obj1 ";
+      for (int j=0; j<3; j++)
+      cout << recv_config->getCollisionPairByIndex(i).getPositionOnObj1()[j] << " ";
+      cout << "pt obj2 ";
+      for (int j=0; j<3; j++)
+      cout << recv_config->getCollisionPairByIndex(i).getPositionOnObj2()[j] << " ";
+      cout << "n  obj1 ";
+      for (int j=0; j<3; j++)
+      cout << recv_config->getCollisionPairByIndex(i).getNormalOnObj1()[0] << " ";
+      cout << "n obj2 ";
+      for (int j=0; j<3; j++)
+      cout << recv_config->getCollisionPairByIndex(i).getNormalOnObj1()[0] << " ";
+
+      
+    }
 
       //cout << "force ";
       //for (int j=0; j<3; j++){
         //cout << f[j]<< " ";}
       //cout << endl;
       
-      //for (int j=0; j<3; j++){
-        //p[j] = recv_config->getObjCooridnate().getPosition()[j];
+      /*
+      for (int j=0; j<3; j++){
+        p[j] = recv_config->getObjCooridnate().getPosition()[j];
         //if (p[j]<1e-9)p[j] = 0;
-        //cout << "pos"<<j<<" "<<p[j]<<" ";
+        cout << "pos"<<j<<" "<<p[j]<<" ";
         //pos[j] = p[j];
         //cout << "force"<<j<< recv_config->getArmCF().getForceByIndex(j) << endl;
-      //}
+      }
+      cout << endl;
+      //*/
+
       //cout << "p 0 " << p[0] << " 1 " << p[1] << " 2 " << p[2] << endl;
       //cout << "pos 0 " << pos[0] << " 1 " << pos[1] << " 2 " << pos[2] << endl;
       //if (p[j]<1e-9)p[j] = 0;
@@ -775,18 +799,23 @@ void SixDOFMouseDriver::ReadMouse(const double* bounds_)
       //pos[0] = -recv_config->getObjCooridnate().getPosition()[0];
       //pos[1] = recv_config->getObjCooridnate().getPosition()[1];
       //pos[2] = recv_config->getObjCooridnate().getPosition()[2];
-      // pour le tore
+ 
+
+     // pour le tore
+      pos[0] = -0.0035-recv_config->getObjCooridnate().getPosition()[0];
+      pos[1] = 0.0035+recv_config->getObjCooridnate().getPosition()[1];
+      pos[2] = 0.0035+recv_config->getObjCooridnate().getPosition()[2];
       pos[0] = -recv_config->getObjCooridnate().getPosition()[0];
-      pos[1] = recv_config->getObjCooridnate().getPosition()[1];
-      pos[2] = recv_config->getObjCooridnate().getPosition()[2];
+      pos[1] = +recv_config->getObjCooridnate().getPosition()[1];
+      pos[2] = +recv_config->getObjCooridnate().getPosition()[2];
 
       temp_trans.translation(pos);
-      cout<<"pos";for(int j=0;j<3;j++){cout<<" "<<pos[j];} cout<<endl;
+      //cout<<"pos";for(int j=0;j<3;j++){cout<<" "<<pos[j];} cout<<endl;
 
 
       //rotation /////////////////////////////////////////////////
       memcpy(r, recv_config->getObjCooridnate().getQuaternion(), 4*sizeof(float));
-      //cout<<"quat recu ";for(int j=0;j<4;j++){cout<<"rot "<<j<<" "<<r[j]<<" ";}
+      //cout<<"quat recu ";for(int j=-3;j<4;j++){cout<<"rot "<<j<<" "<<r[j]<<" ";}
       //cout << endl;
       Eigen::Quaterniond qq(r[0], -r[1], r[2],  r[3]);
       qq.normalize();
@@ -945,6 +974,12 @@ void SixDOFMouseDriver::getData(void* arg)
 
 }
 
+
+void SixDOFMouseDriver::SetConnexion(){
+  context_ = new zmq::context_t(1);
+  socket_ = new zmq::socket_t(*context_, ZMQ_PULL);
+  socket_->bind("tcp://*:5555");
+}
 
 
     /*

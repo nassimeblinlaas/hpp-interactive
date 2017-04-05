@@ -46,6 +46,11 @@ class SixDOFMouseDriver{
         float b1, float b2, float b3,
         float c1, float c2, float c3);
     static void setForceAndTorque(Eigen::Vector3d force, Eigen::Vector3d Torque);
+
+    static void SetConnexion();
+    //static const void* Context();
+
+
   private :
     static void getData(void* arg);
     static void ReadMouse(const double* bounds);
@@ -76,6 +81,7 @@ class SixDOFMouseDriver{
     static bool in_contact_; 
 
     static zmq::socket_t* socket_;
+    static zmq::context_t* context_;
 
     static Eigen::Vector3d deviceForce_;
     static Eigen::Vector3d deviceTorque_;
