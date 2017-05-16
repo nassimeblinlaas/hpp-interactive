@@ -802,12 +802,16 @@ void SixDOFMouseDriver::ReadMouse(const double* bounds_)
  
 
      // pour le tore
-      pos[0] = -0.0035-recv_config->getObjCooridnate().getPosition()[0];
-      pos[1] = 0.0035+recv_config->getObjCooridnate().getPosition()[1];
-      pos[2] = 0.0035+recv_config->getObjCooridnate().getPosition()[2];
-      pos[0] = -recv_config->getObjCooridnate().getPosition()[0];
-      pos[1] = +recv_config->getObjCooridnate().getPosition()[1];
-      pos[2] = +recv_config->getObjCooridnate().getPosition()[2];
+      //pos[0] = -0.0035-recv_config->getObjCooridnate().getPosition()[0];
+      //pos[1] = 0.0035+recv_config->getObjCooridnate().getPosition()[1];
+      //pos[2] = 0.0035+recv_config->getObjCooridnate().getPosition()[2];
+      // pour environnement trou
+      //pos[0] = -0.0035-recv_config->getObjCooridnate().getPosition()[0];
+      //pos[1] = 0.0030+recv_config->getObjCooridnate().getPosition()[1];
+      // robot E
+      pos[0] = -0.075-recv_config->getObjCooridnate().getPosition()[0];
+      pos[1] = -0.020+recv_config->getObjCooridnate().getPosition()[1];
+      pos[2] = +0.032+recv_config->getObjCooridnate().getPosition()[2];
 
       temp_trans.translation(pos);
       //cout<<"pos";for(int j=0;j<3;j++){cout<<" "<<pos[j];} cout<<endl;

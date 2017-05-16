@@ -105,9 +105,9 @@ namespace hpp {
     {
       client_ptr = &client_;
       nb_launchs++;
-      type_ = 1; //device type 1 mouse 2 sigma7 3 haption
-      random_prob_ = 1.00; // 0 all human  1 all machine
-      d_ = 0.15; // distance entrée mode contact
+      type_ = 3; //device type 1 mouse 2 sigma7 3 haption
+      random_prob_ = 0.00; // 0 all human  1 all machine
+      d_ = 0.05; // distance entrée mode contact
       Planner::mode_contact_ = false;
       change_obst_ = false;
       //force_feedback_=false;
@@ -122,7 +122,9 @@ namespace hpp {
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_strange.urdf"; contact_activated_ = true;
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_3angles.urdf"; contact_activated_ = true;
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_L.urdf"; contact_activated_ = true;
-      string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_mesh_L.urdf"; contact_activated_ = true;
+      //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_mesh_L.urdf"; contact_activated_ = true;
+      string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_mesh_E.urdf"; contact_activated_ = true;
+      //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_mesh_3angles.urdf"; contact_activated_ = true;
       float f = (float) 0.0001;
       gepetto::corbaserver::Color color;
       color[0] = 1; color[1] = 1; color[2] = 1; color[3] = 1.;
@@ -495,7 +497,7 @@ namespace hpp {
 
             }
 
-/*// afficher le repère local // //////////////////////////////////////////
+//*// afficher le repère local // //////////////////////////////////////////
       gepetto::corbaserver::Color color;
       color[0] = 1; color[1] = 1; color[2] = 1; color[3] = 1;
                 string nom_ligne = "0_scene_hpp_/ligne";
@@ -718,7 +720,7 @@ if(phi==phi){
           //cout << "t1 " << t1 << " t2 " << t2 << endl;
           
           double K = uf.norm();
-          K = 0.3*uf.norm(); 
+          K = 0.1*uf.norm(); 
           //K = 2*uf.norm(); 
           //K = 0.25;
           double ray = rand();
