@@ -808,6 +808,10 @@ void SixDOFMouseDriver::ReadMouse(const double* bounds_)
       pos[0] = -recv_config->getObjCooridnate().getPosition()[0];
       pos[1] = +recv_config->getObjCooridnate().getPosition()[1];
       pos[2] = +recv_config->getObjCooridnate().getPosition()[2];
+      pos[0] = 0.216-recv_config->getObjCooridnate().getPosition()[0];
+      pos[1] = -0.030+recv_config->getObjCooridnate().getPosition()[1];
+      pos[2] = +0.002+recv_config->getObjCooridnate().getPosition()[2];
+
 
       temp_trans.translation(pos);
       //cout<<"pos";for(int j=0;j<3;j++){cout<<" "<<pos[j];} cout<<endl;
