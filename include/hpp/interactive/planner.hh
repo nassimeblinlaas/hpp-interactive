@@ -74,7 +74,7 @@ namespace hpp {
       PlannerWkPtr_t weakPtr_;
 
       ConfigurationPtr_t actual_configuration_ptr_;
-      bool random_prob_;
+      float random_prob_;
       graphics::corbaServer::Client client_;
       static short int nb_lauchs; // static because value kept
 

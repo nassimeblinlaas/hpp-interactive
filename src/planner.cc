@@ -105,7 +105,7 @@ namespace hpp {
     {
       client_ptr = &client_;
       nb_launchs++;
-      type_ = 3; //device type 1 mouse 2 sigma7 3 haption
+      type_ = 1; //device type 1 mouse 2 sigma7 3 haption
       random_prob_ = 0.00; // 0 all human  1 all machine
       d_ = 0.05; // distance entrée mode contact
       Planner::mode_contact_ = false;
@@ -123,7 +123,7 @@ namespace hpp {
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_3angles.urdf"; contact_activated_ = true;
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_L.urdf"; contact_activated_ = true;
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_mesh_L.urdf"; contact_activated_ = true;
-      string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_mesh_E.urdf"; contact_activated_ = true;
+      string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_mesh_E.urdf"; contact_activated_ = false;
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_mesh_3angles.urdf"; contact_activated_ = true;
       float f = (float) 0.0001;
       gepetto::corbaserver::Color color;
@@ -131,9 +131,9 @@ namespace hpp {
       client_.gui()->addBox ("0_scene_hpp_/curseur", f/10,f/10,f/10, color);
       //client_.gui()->addSceneToWindow ("0_scene_hpp_", 0);
       client_.gui()->addLandmark("0_scene_hpp_/curseur", 0.1);
-      client_.gui()->addURDF("0_scene_hpp_/robot_interactif", robot_name.data() ,"/hpp/install/share");
+if(nb_launchs<2)      client_.gui()->addURDF("0_scene_hpp_/robot_interactif", robot_name.data() ,"/hpp/install/share");
       ::gepetto::corbaserver::Transform tr;
-      tr[0] = 0; tr[1] = 0; tr[2] = 0;
+      tr[0] = 0; tr[1] = 0; tr[2] = 0.2; tr[3] = 1; tr[4] = 0; tr[5] = 0; tr[6] = 0;
       client_.gui()->applyConfiguration("0_scene_hpp_/curseur", tr);
       client_.gui()->applyConfiguration("0_scene_hpp_/robot_interactif", tr);
       this->problem().robot()->computeForwardKinematics();
@@ -633,6 +633,7 @@ namespace hpp {
       //
       double rando = rand();
       rando = rando / RAND_MAX;
+      cout << "alpha="<<Planner::random_prob_<<" a="<<rando<<endl;
       // keep random config
       if (rando > Planner::random_prob_ || Planner::mode_contact_)
       {
@@ -649,39 +650,6 @@ namespace hpp {
           rot(2,1) = MGS.col[2].v[1];
           rot(2,2) = MGS.col[2].v[2];
           //cout << "rot" << rot << endl;
-
-          //double pi = 3.141592653589;
-          //double th = pi/2;
-          //Matrix3 rotx;
-          //rotx(0,0) = 1;
-          //rotx(0,1) = 0;
-          //rotx(0,2) = 0;
-          //rotx(1,0) = 0;
-          //rotx(1,1) = cos(th);
-          //rotx(1,2) = -sin(th);
-          //rotx(2,0) = 0;
-          //rotx(2,1) = sin(th);
-          //rotx(2,2) = cos(th);
-          //Matrix3 roty;
-          //roty(0,0) = cos(th);
-          //roty(0,1) = 0;
-          //roty(0,2) = sin(th);
-          //roty(1,0) = 0;
-          //roty(1,1) = 1;
-          //roty(1,2) = 0;
-          //roty(2,0) = -sin(th);
-          //roty(2,1) = 0;
-          //roty(2,2) = cos(th);
-          //Matrix3 rotz;
-          //roty(0,0) = cos(th);
-          //roty(0,1) = -sin(th);
-          //roty(0,2) = 0;
-          //roty(1,0) = sin(th);
-          //roty(1,1) = cos(th);
-          //roty(1,2) = 0;
-          //roty(2,0) = 0;
-          //roty(2,1) = 0;
-          //roty(2,2) = 1;
 
           //*
           // nouvelle méthode pour éviter le gros hack
@@ -790,87 +758,6 @@ if(phi==phi){
           }
           cout << "x="<<x<<" y="<<y<<"\n\n";
 
-          /////////////////////////////////////////////////////////////////////
-          // la rotation aléatoire sous la forme d'une matrice de rotation 
-          /*
-          Eigen::Quaternionf qqe(
-            (float)(*Planner::actual_configuration_ptr_)[3],
-            (float)(*Planner::actual_configuration_ptr_)[4],
-            (float)(*Planner::actual_configuration_ptr_)[5],
-            (float)(*Planner::actual_configuration_ptr_)[6]);
-          qqe.normalize();
-          ::boost::math::quaternion<float> qq(
-            (float)(*Planner::actual_configuration_ptr_)[3],
-            (float)(*Planner::actual_configuration_ptr_)[4],
-            (float)(*Planner::actual_configuration_ptr_)[5],
-            (float)(*Planner::actual_configuration_ptr_)[6]);
-          float qw = qq.R_component_1();
-          float qx = qq.R_component_2();
-          float qy = qq.R_component_3();
-          float qz = qq.R_component_4();
-          const float n = 1.0f/sqrt(qx*qx+qy*qy+qz*qz+qw*qw);
-          qq/=n;
-          ::boost::math::quaternion<float> qq2(
-            (float)(*q_rand)[3],
-            (float)(*q_rand)[4],
-            (float)(*q_rand)[5],
-            (float)(*q_rand)[6]);
-          
-          Eigen::Quaternionf qq2e(
-            (float)(*q_rand)[3],
-            (float)(*q_rand)[4],
-            (float)(*q_rand)[5],
-            (float)(*q_rand)[6]);
-          std::array<float, 3> r1, r2, rr;
-          r1= quat2Euler(qqe.x(),qqe.y(),qqe.z(),qqe.w());
-          r2= quat2Euler(qq2e.x(),qq2e.y(),qq2e.z(),qq2e.w());
-          //cout <<"affiche quat"<<qqe.x()<<" "<<qqe.y()<<' '<<qqe.z()<<" "<<qqe.w() << endl;
-          //cout << "rot init " << r1[0] << " " << r1[1] << " " << r1[2] << endl;
-          //cout << "rot alea " << r2[0] << " " << r2[1] << " " << r2[2] << endl;
-          //cout << "rot relt " << rr[0] << " " << rr[1] << " " << rr[2] << endl;
-          double res[4];
-          euler2Quat(0.5, r1[1], r1[2], res);
-          Eigen::Quaternionf rotfixe((float)res[0], (float)res[1], (float)res[2], (float)res[3]);
-          rotfixe.normalize();
-
-          //(*q_rand)[3] = rotfixe.w();
-          //(*q_rand)[4] = rotfixe.x();
-          //(*q_rand)[5] = rotfixe.y();
-          //(*q_rand)[6] = rotfixe.z();
-          //tr[3] = (*q_rand)[3] = (*Planner::actual_configuration_ptr_)[3];
-          //tr[4] = (*q_rand)[4] = (*Planner::actual_configuration_ptr_)[4];
-          //tr[5] = (*q_rand)[5] = (*Planner::actual_configuration_ptr_)[5];
-          //tr[6] = (*q_rand)[6] = (*Planner::actual_configuration_ptr_)[6];
-
-          qq2e.normalize();
-          qw = qq2.R_component_1();
-          qx = qq2.R_component_2();
-          qy = qq2.R_component_3();
-          qz = qq2.R_component_4();
-          const float nn = 1.0f/sqrt(qx*qx+qy*qy+qz*qz+qw*qw);
-          qq2/=nn;
-          ::boost::math::quaternion<float> relat_q(qq2-qq);
-          Eigen::Quaternionf rqe(
-            relat_q.R_component_2(),
-            relat_q.R_component_3(),
-            relat_q.R_component_4(),
-            relat_q.R_component_1());
-          rqe = qq2e.inverse()*qqe;
-          rqe = rotfixe.inverse()*qqe;
-          rqe.normalize();
-
-          //Eigen::Quaternionf qqe_inv(qqe.inverse());
-          //Eigen::Matrix3f matqqe_inv =
-            //quat2Mat(qqe_inv.x(),qqe_inv.y(),qqe_inv.z(),qqe_inv.w());
-          //Eigen::Matrix3f mat_qqe = quat2Mat(qqe.x(), qqe.y(), qqe.z(), qqe.w());
-          //cout << "quaternion inverse " << endl << mat_qqe.transpose() << endl;
-          //cout << "matrice transpose  " << endl << mat_qqe.transpose() << endl;
-
-          Eigen::Matrix3f matrelat =quat2Mat(rqe.x(),rqe.y(),rqe.z(),rqe.w()); 
-          
-          //*/
-
-          /////////////////////////////////////////////////////////////////////
           
           // garder z à zéro
           Vector3 val(0, (float)x, (float)y);
@@ -890,24 +777,6 @@ if(phi==phi){
           // car les échantillons ont tendance 
           // à être en collision, c'est trop bas, à corriger
           
-          // pour la rotation aléatoire
-          /*
-          Vector3 new_distances;
-          Vector3 old_distances(distances_[0],distances_[1], distances_[2]);
-          new_distances = matrelat*old_distances;
-          new_distances[0] = (float) (0.0 + normal[0](0) * new_distances[0]);
-          new_distances[1] = (float) (0.0 + normal[0](1) * new_distances[1]);
-          new_distances[2] = (float) (0.0 + normal[0](2) * new_distances[2]);
-          Vector3 org2(
-              (float)org_[0]+signe(obj_[0]-org_[0])*new_distances[0]*(float)1,
-              (float)org_[1]+signe(obj_[1]-org_[1])*new_distances[1]*(float)1,
-              (float)org_[2]+signe(obj_[2]-org_[2])*new_distances[2]*(float)1
-              );
-          //cout << "orgv " << org.transpose() << endl;
-          //cout << "orgn " << org2.transpose() << endl;
-          //cout << "orgv " << old_distances.transpose() << endl;
-          //cout << "orgn " << new_distances.transpose() << endl;
-*/
 
           //Vector3 old_distances(distances_);
           //new_distances = temp3 * org;
@@ -916,7 +785,6 @@ if(phi==phi){
           //cout << "orgv " << org.transpose() << endl;
           //cout << "orgn " << org.transpose() << endl;
 
-          //org_bis = rotaleat * org;
           val = rot.transpose()*val + org;
 
 
@@ -931,7 +799,6 @@ if(phi==phi){
 //*/
 
 
-          //val = rot.transpose()*val + org_bis;
 
           //val[0]=x;val[1]=y;val[2]=2;
           //cout << "val " << val.transpose() << endl;
@@ -943,11 +810,6 @@ if(phi==phi){
           ((*q_rand)[0]) = val[0];
           ((*q_rand)[1]) = val[1];
           ((*q_rand)[2]) = val[2];
-          // ne pas fixer rotation
-          //tr[3] = (*q_rand)[3];// = (*Planner::actual_configuration_ptr_)[3];
-          //tr[4] = (*q_rand)[4];// = (*Planner::actual_configuration_ptr_)[4];
-          //tr[5] = (*q_rand)[5];// = (*Planner::actual_configuration_ptr_)[5];
-          //tr[6] = (*q_rand)[6];// = (*Planner::actual_configuration_ptr_)[6];
           // fixer rotation
           //tr[3] = (float)(*Planner::actual_configuration_ptr_)[3];
           //tr[4] = (float)(*Planner::actual_configuration_ptr_)[4];
@@ -981,11 +843,11 @@ if(phi==phi){
           }
         }
         else{ // mode interactif
-          //cout << "mode interactif\n";
+          cout << "mode interactif\n";
           *q_rand = *actual_configuration_ptr_; 
         }
       }
-      //else cout << "mode rrt\n";
+      else cout << "mode rrt\n";
 
       for (ConnectedComponents_t::const_iterator itcc =
           roadmap ()->connectedComponents ().begin ();
@@ -1776,3 +1638,104 @@ if(phi==phi){
 
 
 
+          /////////////////////////////////////////////////////////////////////
+          // la rotation aléatoire sous la forme d'une matrice de rotation 
+          /*
+          Eigen::Quaternionf qqe(
+            (float)(*Planner::actual_configuration_ptr_)[3],
+            (float)(*Planner::actual_configuration_ptr_)[4],
+            (float)(*Planner::actual_configuration_ptr_)[5],
+            (float)(*Planner::actual_configuration_ptr_)[6]);
+          qqe.normalize();
+          ::boost::math::quaternion<float> qq(
+            (float)(*Planner::actual_configuration_ptr_)[3],
+            (float)(*Planner::actual_configuration_ptr_)[4],
+            (float)(*Planner::actual_configuration_ptr_)[5],
+            (float)(*Planner::actual_configuration_ptr_)[6]);
+          float qw = qq.R_component_1();
+          float qx = qq.R_component_2();
+          float qy = qq.R_component_3();
+          float qz = qq.R_component_4();
+          const float n = 1.0f/sqrt(qx*qx+qy*qy+qz*qz+qw*qw);
+          qq/=n;
+          ::boost::math::quaternion<float> qq2(
+            (float)(*q_rand)[3],
+            (float)(*q_rand)[4],
+            (float)(*q_rand)[5],
+            (float)(*q_rand)[6]);
+          
+          Eigen::Quaternionf qq2e(
+            (float)(*q_rand)[3],
+            (float)(*q_rand)[4],
+            (float)(*q_rand)[5],
+            (float)(*q_rand)[6]);
+          std::array<float, 3> r1, r2, rr;
+          r1= quat2Euler(qqe.x(),qqe.y(),qqe.z(),qqe.w());
+          r2= quat2Euler(qq2e.x(),qq2e.y(),qq2e.z(),qq2e.w());
+          //cout <<"affiche quat"<<qqe.x()<<" "<<qqe.y()<<' '<<qqe.z()<<" "<<qqe.w() << endl;
+          //cout << "rot init " << r1[0] << " " << r1[1] << " " << r1[2] << endl;
+          //cout << "rot alea " << r2[0] << " " << r2[1] << " " << r2[2] << endl;
+          //cout << "rot relt " << rr[0] << " " << rr[1] << " " << rr[2] << endl;
+          double res[4];
+          euler2Quat(0.5, r1[1], r1[2], res);
+          Eigen::Quaternionf rotfixe((float)res[0], (float)res[1], (float)res[2], (float)res[3]);
+          rotfixe.normalize();
+
+          //(*q_rand)[3] = rotfixe.w();
+          //(*q_rand)[4] = rotfixe.x();
+          //(*q_rand)[5] = rotfixe.y();
+          //(*q_rand)[6] = rotfixe.z();
+          //tr[3] = (*q_rand)[3] = (*Planner::actual_configuration_ptr_)[3];
+          //tr[4] = (*q_rand)[4] = (*Planner::actual_configuration_ptr_)[4];
+          //tr[5] = (*q_rand)[5] = (*Planner::actual_configuration_ptr_)[5];
+          //tr[6] = (*q_rand)[6] = (*Planner::actual_configuration_ptr_)[6];
+
+          qq2e.normalize();
+          qw = qq2.R_component_1();
+          qx = qq2.R_component_2();
+          qy = qq2.R_component_3();
+          qz = qq2.R_component_4();
+          const float nn = 1.0f/sqrt(qx*qx+qy*qy+qz*qz+qw*qw);
+          qq2/=nn;
+          ::boost::math::quaternion<float> relat_q(qq2-qq);
+          Eigen::Quaternionf rqe(
+            relat_q.R_component_2(),
+            relat_q.R_component_3(),
+            relat_q.R_component_4(),
+            relat_q.R_component_1());
+          rqe = qq2e.inverse()*qqe;
+          rqe = rotfixe.inverse()*qqe;
+          rqe.normalize();
+
+          //Eigen::Quaternionf qqe_inv(qqe.inverse());
+          //Eigen::Matrix3f matqqe_inv =
+            //quat2Mat(qqe_inv.x(),qqe_inv.y(),qqe_inv.z(),qqe_inv.w());
+          //Eigen::Matrix3f mat_qqe = quat2Mat(qqe.x(), qqe.y(), qqe.z(), qqe.w());
+          //cout << "quaternion inverse " << endl << mat_qqe.transpose() << endl;
+          //cout << "matrice transpose  " << endl << mat_qqe.transpose() << endl;
+
+          Eigen::Matrix3f matrelat =quat2Mat(rqe.x(),rqe.y(),rqe.z(),rqe.w()); 
+          
+          //*/
+
+          /////////////////////////////////////////////////////////////////////
+          //val = rot.transpose()*val + org_bis;
+          //org_bis = rotaleat * org;
+          // pour la rotation aléatoire
+          /*
+          Vector3 new_distances;
+          Vector3 old_distances(distances_[0],distances_[1], distances_[2]);
+          new_distances = matrelat*old_distances;
+          new_distances[0] = (float) (0.0 + normal[0](0) * new_distances[0]);
+          new_distances[1] = (float) (0.0 + normal[0](1) * new_distances[1]);
+          new_distances[2] = (float) (0.0 + normal[0](2) * new_distances[2]);
+          Vector3 org2(
+              (float)org_[0]+signe(obj_[0]-org_[0])*new_distances[0]*(float)1,
+              (float)org_[1]+signe(obj_[1]-org_[1])*new_distances[1]*(float)1,
+              (float)org_[2]+signe(obj_[2]-org_[2])*new_distances[2]*(float)1
+              );
+          //cout << "orgv " << org.transpose() << endl;
+          //cout << "orgn " << org2.transpose() << endl;
+          //cout << "orgv " << old_distances.transpose() << endl;
+          //cout << "orgn " << new_distances.transpose() << endl;
+*/
