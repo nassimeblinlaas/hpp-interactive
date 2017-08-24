@@ -639,20 +639,8 @@ if(nb_launchs<2)      client_.gui()->addURDF("0_scene_hpp_/robot_interactif", ro
       {
         if (Planner::mode_contact_){
           //cout << rando << " contact q \n";
-          Matrix3 rot;
-          rot(0,0) = MGS.col[0].v[0];
-          rot(0,1) = MGS.col[0].v[1];
-          rot(0,2) = MGS.col[0].v[2];
-          rot(1,0) = MGS.col[1].v[0];
-          rot(1,1) = MGS.col[1].v[1];
-          rot(1,2) = MGS.col[1].v[2];
-          rot(2,0) = MGS.col[2].v[0];
-          rot(2,1) = MGS.col[2].v[1];
-          rot(2,2) = MGS.col[2].v[2];
-          //cout << "rot" << rot << endl;
 
-          //*
-          // nouvelle méthode pour éviter le gros hack
+          // élongation de l'ellipse //////////////////////
           Eigen::Vector3d uf, cn;
           uf = SixDOFMouseDriver::getUserForce();
           cn = SixDOFMouseDriver::getContactNormal();
@@ -668,10 +656,10 @@ if(nb_launchs<2)      client_.gui()->addURDF("0_scene_hpp_/robot_interactif", ro
           double pa, ga; // petit axe, grand axe
           pa = ga = 0.1;
           //cout <<"planner contact?"<<SixDOFMouseDriver::userInContact()<<endl;
-      double max = exp(M_PI/2);
+          double max = exp(M_PI/2);
           //cout << "angle phi " << phi << endl;
-if(phi==phi){
-     //if(SixDOFMouseDriver::userInContact())
+          if(phi==phi){
+            //if(SixDOFMouseDriver::userInContact())
             ga = exp(phi)/max;
             ga = exp(phi)/10;
             pa = 1/ga /10;
@@ -686,7 +674,8 @@ if(phi==phi){
           //t1 = t1/t2;
           //phi = acos(t1);
           //cout << "t1 " << t1 << " t2 " << t2 << endl;
-          
+         
+          // surface de l'ellipse ///////////////////////// 
           double K = uf.norm();
           K = 0.10*uf.norm(); 
           //K = 2*uf.norm(); 
@@ -702,13 +691,8 @@ if(phi==phi){
           //x = ray * cos(thet);
           y = ga * ray * sin(thet); 
           float zz = 0;
-          //*/
-
-/*
-
-      
-//*/
-          //rotation de l'ellipse
+          
+          //rotation de l'ellipse //////////////////////////////
           if (1){
             Eigen::Vector3f n(normal[0]);
             Eigen::Vector3f vt1, vml;
@@ -716,45 +700,16 @@ if(phi==phi){
             vml=n*dpt;
             vml = vec_mvt-vml;//vecteur mouvement local à la surface
             double ang;
-            //Eigen::Matrix3f rot_vt;
-            //double kk = M_PI/2;
-            //rot_vt << cos(kk), -sin(kk), 0, sin(kk), cos(kk), 0, 0, 0, 1;
             vt1 << MGS.col[2].v[0],MGS.col[2].v[1],MGS.col[2].v[2];
-            //vt1 = rot_vt * vt1;
-            //cout<< "vt1 " << vt1[0] << " " << vt1[1]<< " " << vt1[2]<< endl; 
-            //cout<< "vml " << vml[0] << " " << vml[1]<< " " << vml[2]<< endl; 
-            //ang = acos((vml.dot(vt1))/(vt1.norm()*vml.norm()));
-            //ang = atan2(vml[1],vt1[1])-atan2(vml[0], vt1[0]);
             ang = atan2(vml[1],vml[0])-atan2(vt1[1], vt1[0]);
-
-            
-            //cout<<"vec_mvt " << vec_mvt.transpose()<< endl;
-            //cout<<"normale " << n.transpose() << endl;
-            //cout<<"vml " << vml.transpose()<<endl;
-            //cout<<"vt1 " << vt1.transpose() << endl;
-            
-            //if (ang!=ang)ang=prev_ang; 
-            //prev_ang = ang;
-            //ang = ang/(M_PI*2)*360;
-            //cout << "angle à vt11 "<< ang << endl;
-           
-            //ang = ang + 90;       
-            //ang = 37;
-            //ang = 90;
-            //ang = ang/360*2*M_PI;
-            //ang = 0;
-            //ang = M_PI/4;
-            //cout << "angle corrige="<<ang<<endl;
-            //cout << "x="<<x<<" y="<<y<<endl;
-            
             Eigen::Matrix2d nouv_rep;
             Eigen::Vector2d nouv_coord;
-            //TODO parfois l'angle vaut nan et hpp plante
-            //correction à la va vite
             nouv_rep << cos(ang), -sin(ang), sin(ang), cos(ang);
             nouv_coord << x, y;
-            cout <<  " angl à vt1  "<< ang <<endl;
+            //cout <<  " angl à vt1  "<< ang <<endl;
 
+            //TODO parfois l'angle vaut nan et hpp plante
+            //correction à la va vite
             if(ang==ang)
             nouv_coord = nouv_rep * nouv_coord;
 
@@ -763,7 +718,8 @@ if(phi==phi){
           }
           //cout << "x="<<x<<" y="<<y<<"\n\n";
 
-          
+         
+          // échantillonnage au contact ///////////////////// 
           // garder z à zéro
           Vector3 val(0, (float)x, (float)y);
           //cout << "rot " << rot << endl;
@@ -772,6 +728,17 @@ if(phi==phi){
           //cout << "org " << org_[1] << " obj " << obj_[1]
           //     << " signe org-obj " << signe(org_[1]-obj_[1]) << endl;
           
+          Matrix3 rot;
+          rot(0,0) = MGS.col[0].v[0];
+          rot(0,1) = MGS.col[0].v[1];
+          rot(0,2) = MGS.col[0].v[2];
+          rot(1,0) = MGS.col[1].v[0];
+          rot(1,1) = MGS.col[1].v[1];
+          rot(1,2) = MGS.col[1].v[2];
+          rot(2,0) = MGS.col[2].v[0];
+          rot(2,1) = MGS.col[2].v[1];
+          rot(2,2) = MGS.col[2].v[2];
+          //cout << "rot" << rot << endl;
           distance_mutex_.try_lock(); // TODO mutex à vérifier
           Vector3 org(
               (float)org_[0]+signe(obj_[0]-org_[0])*distances_[0]*(float)1.1,
@@ -791,19 +758,15 @@ if(phi==phi){
           //cout << "orgn " << org.transpose() << endl;
 
           val = rot.transpose()*val + org;
-
-
-/*/
-          // nouveau gros hack pour rester dans les bornes
+          /*/
+          // gros hack pour rester dans les bornes
           if (val[0]<NewMinBounds[0]) val[0] = NewMinBounds[0]; 
           if (val[1]<NewMinBounds[1]) val[1] = NewMinBounds[1]; 
           if (val[2]<NewMinBounds[2]) val[2] = NewMinBounds[2]; 
           if (val[0]>NewMaxBounds[0]) val[0] = NewMinBounds[0]; 
           if (val[1]>NewMaxBounds[1]) val[1] = NewMinBounds[1]; 
           if (val[2]>NewMaxBounds[2]) val[2] = NewMinBounds[2]; 
-//*/
-
-
+          //*/
 
           //val[0]=x;val[1]=y;val[2]=2;
           //cout << "val " << val.transpose() << endl;
@@ -811,35 +774,37 @@ if(phi==phi){
           //cout << "nouveau val " << val.transpose() << endl;
           distance_mutex_.unlock();
 
+
+          // sauvegarde /////////////////////////////////////////////////////
           ::gepetto::corbaserver::Transform tr; // utilisé pour l'affichage
           ((*q_rand)[0]) = val[0];
           ((*q_rand)[1]) = val[1];
           ((*q_rand)[2]) = val[2];
+          tr[3] = (*q_rand)[3] = (*Planner::actual_configuration_ptr_)[3];
+          tr[4] = (*q_rand)[4] = (*Planner::actual_configuration_ptr_)[4];
+          tr[5] = (*q_rand)[5] = (*Planner::actual_configuration_ptr_)[5];
+          tr[6] = (*q_rand)[6] = (*Planner::actual_configuration_ptr_)[6];
           // fixer rotation
           //tr[3] = (float)(*Planner::actual_configuration_ptr_)[3];
           //tr[4] = (float)(*Planner::actual_configuration_ptr_)[4];
           //tr[5] = (float)(*Planner::actual_configuration_ptr_)[5];
           //tr[6] = (float)(*Planner::actual_configuration_ptr_)[6];
-          tr[3] = (*q_rand)[3] = (*Planner::actual_configuration_ptr_)[3];
-          tr[4] = (*q_rand)[4] = (*Planner::actual_configuration_ptr_)[4];
-          tr[5] = (*q_rand)[5] = (*Planner::actual_configuration_ptr_)[5];
-          tr[6] = (*q_rand)[6] = (*Planner::actual_configuration_ptr_)[6];
 
          
-            /*// afficher des échantillons parfois 
+          /*// afficher des échantillons parfois /////////////////////
             string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_3angles.urdf";
             string chiffre = boost::lexical_cast<std::string>(rand());
             string node_name = "0_scene_hpp_/robot_interactif" + chiffre;
             if(!Planner::iteration_%100)
-            //if(pathValid && Planner::mode_contact_)
-              //if(0)
-            {
-              client_.gui()->addURDF(node_name.data() , robot_name.data() ,"/hpp/install/share");
-              client_.gui()->applyConfiguration(node_name.data(), tr);
-            }
-            ///////////////////////////////         */ 
+          //if(pathValid && Planner::mode_contact_)
+          //if(0)
+          {
+          client_.gui()->addURDF(node_name.data() , robot_name.data() ,"/hpp/install/share");
+          client_.gui()->applyConfiguration(node_name.data(), tr);
+          }
+          ///////////////////////////////         */ 
 
-          //sleep(1);
+          
           Planner::iteration_++;
           //cout << "iteration contact " << iteration_ << endl;
           if(Planner::iteration_ == 5){
