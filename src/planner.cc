@@ -107,7 +107,7 @@ namespace hpp {
       nb_launchs++;
       type_ = 1; //device type 1 mouse 2 sigma7 3 haption
       random_prob_ = 0.00; // 0 all human  1 all machine
-      d_ = 0.05; // distance entrée mode contact
+      d_ = 1.55; // distance entrée mode contact
       Planner::mode_contact_ = false;
       change_obst_ = false;
       //force_feedback_=false;
@@ -118,12 +118,12 @@ namespace hpp {
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_chaise.urdf"; contact_activated_ = true;
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_strange.urdf"; contact_activated_ = true;
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_siege.urdf"; contact_activated_ = true;
-      //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_cube_mesh.urdf"; contact_activated_ = true;
+      string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_cube_mesh.urdf"; contact_activated_ = true;
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_strange.urdf"; contact_activated_ = true;
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_3angles.urdf"; contact_activated_ = true;
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_L.urdf"; contact_activated_ = true;
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_mesh_L.urdf"; contact_activated_ = true;
-      string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_mesh_E.urdf"; contact_activated_ = false;
+      //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_mesh_E.urdf"; contact_activated_ = true;
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_mesh_3angles.urdf"; contact_activated_ = true;
       float f = (float) 0.0001;
       gepetto::corbaserver::Color color;
@@ -155,7 +155,7 @@ if(nb_launchs<2)      client_.gui()->addURDF("0_scene_hpp_/robot_interactif", ro
       //cout << endl;
       if (nb_launchs<2) SixDOFMouseDriver::SetConnexion();
       SixDOFMouseDriver::MouseInit(type_, bounds);
-      ShowBounds();
+      //ShowBounds();
       ConfigurationPtr_t config (new Configuration_t ((hpp::model::size_type)7));
       (*config)[0] = 0;
       (*config)[1] = 0;
@@ -633,12 +633,12 @@ if(nb_launchs<2)      client_.gui()->addURDF("0_scene_hpp_/robot_interactif", ro
       //
       double rando = rand();
       rando = rando / RAND_MAX;
-      cout << "alpha="<<Planner::random_prob_<<" a="<<rando<<endl;
+      //cout << "alpha="<<Planner::random_prob_<<" a="<<rando<<endl;
       // keep random config
       if (rando > Planner::random_prob_ || Planner::mode_contact_)
       {
         if (Planner::mode_contact_){
-          cout << rando << " contact q \n";
+          //cout << rando << " contact q \n";
           Matrix3 rot;
           rot(0,0) = MGS.col[0].v[0];
           rot(0,1) = MGS.col[0].v[1];
@@ -676,10 +676,10 @@ if(phi==phi){
             ga = exp(phi)/10;
             pa = 1/ga /10;
           }
-          //pa = 0.05;
-          //ga = 5;
-          cout << "pa="<<pa<<" ga="<<ga<<endl;
-          cout << "uf.norm="<<uf.norm()<<endl;
+          pa = 0.02;
+          ga = 2;
+          //cout << "pa="<<pa<<" ga="<<ga<<endl;
+          //cout << "uf.norm="<<uf.norm()<<endl;
           //double t1 = (n[0]+n[1]+n[2])*(f[0]+f[1]+f[2]);
           //double t2 = sqrt(pow(n[0],2)+pow(n[1],2)+pow(n[2],2))
           //sqrt(pow(f[0],2)+pow(f[1],2)+pow(f[2],2));
@@ -688,9 +688,9 @@ if(phi==phi){
           //cout << "t1 " << t1 << " t2 " << t2 << endl;
           
           double K = uf.norm();
-          K = 0.1*uf.norm(); 
+          K = 0.10*uf.norm(); 
           //K = 2*uf.norm(); 
-          //K = 0.25;
+          K = 1.25;
           double ray = rand();
           ray=ray/RAND_MAX;
           double thet = rand();
@@ -705,9 +705,8 @@ if(phi==phi){
           //*/
 
 /*
-          double x, y;
-          x = rand();x=x / RAND_MAX;
-          y = rand();y=y / RAND_MAX;
+
+      
 //*/
           //rotation de l'ellipse
           if (1){
@@ -722,13 +721,17 @@ if(phi==phi){
             //rot_vt << cos(kk), -sin(kk), 0, sin(kk), cos(kk), 0, 0, 0, 1;
             vt1 << MGS.col[2].v[0],MGS.col[2].v[1],MGS.col[2].v[2];
             //vt1 = rot_vt * vt1;
+            //cout<< "vt1 " << vt1[0] << " " << vt1[1]<< " " << vt1[2]<< endl; 
+            //cout<< "vml " << vml[0] << " " << vml[1]<< " " << vml[2]<< endl; 
+            //ang = acos((vml.dot(vt1))/(vt1.norm()*vml.norm()));
+            //ang = atan2(vml[1],vt1[1])-atan2(vml[0], vt1[0]);
+            ang = atan2(vml[1],vml[0])-atan2(vt1[1], vt1[0]);
+
             
-            ang = acos((vml.dot(vt1))/(vt1.norm()*vml.norm()));
             //cout<<"vec_mvt " << vec_mvt.transpose()<< endl;
             //cout<<"normale " << n.transpose() << endl;
             //cout<<"vml " << vml.transpose()<<endl;
             //cout<<"vt1 " << vt1.transpose() << endl;
-            //cout << "angle à vt1  "<< ang << endl <<endl;
             
             //if (ang!=ang)ang=prev_ang; 
             //prev_ang = ang;
@@ -746,17 +749,19 @@ if(phi==phi){
             
             Eigen::Matrix2d nouv_rep;
             Eigen::Vector2d nouv_coord;
-            nouv_rep << cos(ang), -sin(ang), sin(ang), cos(ang);
-            nouv_coord << x, y;
             //TODO parfois l'angle vaut nan et hpp plante
             //correction à la va vite
+            nouv_rep << cos(ang), -sin(ang), sin(ang), cos(ang);
+            nouv_coord << x, y;
+            cout <<  " angl à vt1  "<< ang <<endl;
+
             if(ang==ang)
             nouv_coord = nouv_rep * nouv_coord;
 
             x=nouv_coord[0];y=nouv_coord[1];
             
           }
-          cout << "x="<<x<<" y="<<y<<"\n\n";
+          //cout << "x="<<x<<" y="<<y<<"\n\n";
 
           
           // garder z à zéro
@@ -843,11 +848,11 @@ if(phi==phi){
           }
         }
         else{ // mode interactif
-          cout << "mode interactif\n";
+          //cout << "mode interactif\n";
           *q_rand = *actual_configuration_ptr_; 
         }
       }
-      else cout << "mode rrt\n";
+      //else cout << "mode rrt\n";
 
       for (ConnectedComponents_t::const_iterator itcc =
           roadmap ()->connectedComponents ().begin ();
@@ -919,10 +924,10 @@ if(phi==phi){
       long int n, e;
       n = roadmap()->nodes().size();
       e = roadmap()->edges().size();
-      cout << "n="<<n<<" e="<<e<<endl;
+      //cout << "n="<<n<<" e="<<e<<endl;
       end = clock();
       temps += double(end - begin) / CLOCKS_PER_SEC/2;
-      cout << "temps=" << temps<<endl;
+      //cout << "temps=" << temps<<endl;
       begin = clock();
     }
 
@@ -1474,7 +1479,7 @@ if(phi==phi){
           result.clear();
           fcl::distance(obst_temp, robot_temp, request, result);
           //if(result.min_distance<5)
-          cout << "distance="<<result.min_distance<<endl;
+          //cout << "distance="<<result.min_distance<<endl;
 // TODO à désactiver pour les meshs          
 //result.min_distance=(floor(1000*result.min_distance)/1000);
           impr+=(*it_obst)->name() + "/" + (*it_rob)->name() + " " + boost::lexical_cast<std::string>(result.min_distance)+"\n";
