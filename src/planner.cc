@@ -95,6 +95,14 @@ namespace hpp {
     double dnn[7];//pour force feedback pour sigma7
 
 
+    bool belongs (const ConfigurationPtr_t& q, const Nodes_t& nodes)
+    {
+      for (Nodes_t::const_iterator itNode = nodes.begin ();
+          itNode != nodes.end (); ++itNode) {
+        if (*((*itNode)->configuration ()) == *q) return true;
+      }
+      return false;
+    }
 
     Planner::Planner (const Problem& problem,
         const RoadmapPtr_t& roadmap) :
@@ -107,9 +115,11 @@ namespace hpp {
       nb_launchs++;
       type_ = 1; //device type 1 mouse 2 sigma7 3 haption
       random_prob_ = 0.00; // 0 all human  1 all machine
-      d_ = 1.55; // distance entrée mode contact
+      d_ = 0.15; // distance entrée mode contact
       Planner::mode_contact_ = false;
-      change_obst_ = false;
+      change_obst_ = false; // utilisé pour sigma 7
+      hrrtc_ = true; 
+      hrrtc_ = false; 
       //force_feedback_=false;
       // adding interactive robot and positionning it
       client_.connect();
@@ -118,10 +128,10 @@ namespace hpp {
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_chaise.urdf"; contact_activated_ = true;
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_strange.urdf"; contact_activated_ = true;
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_siege.urdf"; contact_activated_ = true;
-      string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_cube_mesh.urdf"; contact_activated_ = true;
+      //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_cube_mesh.urdf"; contact_activated_ = true;
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_strange.urdf"; contact_activated_ = true;
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_3angles.urdf"; contact_activated_ = true;
-      //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_L.urdf"; contact_activated_ = true;
+      string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_L.urdf"; contact_activated_ = true;
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_mesh_L.urdf"; contact_activated_ = true;
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_mesh_E.urdf"; contact_activated_ = true;
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_mesh_3angles.urdf"; contact_activated_ = true;
@@ -155,7 +165,7 @@ if(nb_launchs<2)      client_.gui()->addURDF("0_scene_hpp_/robot_interactif", ro
       //cout << endl;
       if (nb_launchs<2) SixDOFMouseDriver::SetConnexion();
       SixDOFMouseDriver::MouseInit(type_, bounds);
-      //ShowBounds();
+      ShowBounds();
       ConfigurationPtr_t config (new Configuration_t ((hpp::model::size_type)7));
       (*config)[0] = 0;
       (*config)[1] = 0;
@@ -186,6 +196,314 @@ if(nb_launchs<2)      client_.gui()->addURDF("0_scene_hpp_/robot_interactif", ro
         boost::thread th1(boost::bind( &Planner::InteractiveDeviceThread,this));
       }
     }
+
+
+
+
+
+
+
+    void Planner::oneStep ()
+    {
+      static clock_t end, begin;
+      static double temps;
+      short int mode = 0; // pour analyse mode 1 = machine 2 = utilisateur 3 = contact
+      static short int mm = 0; // mode machine
+      static short int mu = 0; // mode utilisateur
+      static short int mc = 0; // mode contact
+      static time_t start = time(NULL);
+      static time_t end2 = 0;
+      //static float prev_ang=0;
+      //cout << "one step\n";
+      robot_mutex_.lock();
+      //cout << "robot_mutex_lock one step\n";
+      typedef boost::tuple <NodePtr_t, ConfigurationPtr_t, PathPtr_t>
+        DelayedEdge_t;
+      typedef std::vector <DelayedEdge_t> DelayedEdges_t;
+      DelayedEdges_t delayedEdges;
+      DevicePtr_t robot (problem ().robot ());
+      PathValidationPtr_t pathValidation (problem ().pathValidation ());
+      Nodes_t newNodes;
+      PathPtr_t validPath, path;
+      // Pick a random node
+      ConfigurationPtr_t q_rand = configurationShooter_->shoot ();
+      //
+      // First extend each connected component toward q_rand
+      //
+      double rando = rand();
+      rando = rando / RAND_MAX;
+      //cout << "alpha="<<Planner::random_prob_<<" a="<<rando<<endl;
+      // keep random config
+      if (rando > Planner::random_prob_ || Planner::mode_contact_)
+      {
+        if (Planner::mode_contact_){
+          mc++;
+          cout << rando << " contact q \n";
+
+          double x, y; // coordonnées du point de contact
+          if (hrrtc_)
+          {
+            cout << "hrrtc\n";
+            // élongation de l'ellipse //////////////////////
+            Eigen::Vector3d uf, cn;
+            uf = SixDOFMouseDriver::getUserForce();
+            cn = SixDOFMouseDriver::getContactNormal();
+            // angle force/normale phi
+            // cos phi = (n.f)/(|n||f|)
+            double phi;
+            double sert_a_rien;
+            uf.norm();
+            //cout << "uf " << uf.transpose() << " cn " << cn.transpose() << endl;
+            phi = (uf.dot(cn))/(uf.norm()*cn.norm());
+            phi = acos(phi);
+            phi = modf(phi, &sert_a_rien);
+            double pa, ga; // petit axe, grand axe
+            //pa = ga = 0.1;
+            //cout <<"planner contact?"<<SixDOFMouseDriver::userInContact()<<endl;
+            double max = exp(M_PI/2);
+            if(phi==phi){
+              //if(SixDOFMouseDriver::userInContact())
+              float Kphi = 0.01;
+              // ga = exp(phi)/max;
+              ga = Kphi * exp(phi);
+              pa = 1/ga;
+            }
+            cout << "phi=" << phi <<" e(phi)="<< exp(phi)<< " pa=" <<pa << " ga=" << ga << endl;
+            //pa = 0.1; ga = 1;
+
+            // surface de l'ellipse ///////////////////////// 
+            double Kc = 0;
+            Kc = 0.001*uf.norm(); 
+            //Kc = 0.10;
+            double ray = rand();
+            ray=ray/RAND_MAX;
+            double thet = rand();
+            thet = thet / RAND_MAX;
+            ray = sqrt(ray) * Kc;
+            thet = 2 * M_PI * thet;
+            x = pa * ray * cos(thet);
+            //x = ray * cos(thet);
+            y = ga * ray * sin(thet); 
+            float zz = 0;
+
+            //rotation de l'ellipse //////////////////////////////
+            if (1){
+              Eigen::Vector3f n(normal[0]);
+              Eigen::Vector3f vt1, vml;
+              float dpt = vec_mvt.dot(n);
+              vml=n*dpt;
+              vml = vec_mvt-vml;//vecteur mouvement local à la surface
+              double ang;
+              vt1 << MGS.col[2].v[0],MGS.col[2].v[1],MGS.col[2].v[2];
+              ang = atan2(vml[1],vml[0])-atan2(vt1[1], vt1[0]);
+              Eigen::Matrix2d nouv_rep;
+              Eigen::Vector2d nouv_coord;
+              nouv_rep << cos(ang), -sin(ang), sin(ang), cos(ang);
+              nouv_coord << x, y;
+              //cout <<  " angl à vt1  "<< ang <<endl;
+
+              //TODO parfois l'angle vaut nan et hpp plante
+              //correction à la va vite
+              if(ang==ang)
+                nouv_coord = nouv_rep * nouv_coord;
+
+              x=nouv_coord[0];y=nouv_coord[1];
+
+            }
+          }
+          else { // mode irrtc
+            cout << "irrtc\n";
+            x = (*q_rand)[0];
+            y = (*q_rand)[2];
+
+          }
+          //cout << "x="<<x<<" y="<<y<<"\n";
+
+         
+          // échantillonnage au contact ///////////////////// 
+          // garder z à zéro
+          Vector3 val(0, (float)x, (float)y);
+          //cout << "rot " << rot << endl;
+          //cout << "val " << val.transpose() << endl;
+          //std::cout << "one step distance centre/surf " << distance_ << std::endl;
+          //cout << "org " << org_[1] << " obj " << obj_[1]
+          //     << " signe org-obj " << signe(org_[1]-obj_[1]) << endl;
+          
+          Matrix3 rot;
+          rot(0,0) = MGS.col[0].v[0];
+          rot(0,1) = MGS.col[0].v[1];
+          rot(0,2) = MGS.col[0].v[2];
+          rot(1,0) = MGS.col[1].v[0];
+          rot(1,1) = MGS.col[1].v[1];
+          rot(1,2) = MGS.col[1].v[2];
+          rot(2,0) = MGS.col[2].v[0];
+          rot(2,1) = MGS.col[2].v[1];
+          rot(2,2) = MGS.col[2].v[2];
+          //cout << "rot" << rot << endl;
+          distance_mutex_.try_lock(); // TODO mutex à vérifier
+          Vector3 org(
+              (float)org_[0]+signe(obj_[0]-org_[0])*distances_[0]*(float)1.1,
+              (float)org_[1]+signe(obj_[1]-org_[1])*distances_[1]*(float)1.1,
+              (float)org_[2]+signe(obj_[2]-org_[2])*distances_[2]*(float)1.1
+              );
+          // TODO attention j'ai rajouté ci dessus un facteur 1.1
+          // car les échantillons ont tendance 
+          // à être en collision, c'est trop bas, à corriger
+          
+
+          //Vector3 old_distances(distances_);
+          //new_distances = temp3 * org;
+          //new_distances = rot * new_distances;
+          //zz = new_distances(2);
+          //cout << "orgv " << org.transpose() << endl;
+          //cout << "orgn " << org.transpose() << endl;
+
+          val = rot.transpose()*val + org;
+          /*
+          // gros hack pour rester dans les bornes
+          if (val[0]<NewMinBounds[0]) val[0] = NewMinBounds[0]; 
+          if (val[1]<NewMinBounds[1]) val[1] = NewMinBounds[1]; 
+          if (val[2]<NewMinBounds[2]) val[2] = NewMinBounds[2]; 
+          if (val[0]>NewMaxBounds[0]) val[0] = NewMinBounds[0]; 
+          if (val[1]>NewMaxBounds[1]) val[1] = NewMinBounds[1]; 
+          if (val[2]>NewMaxBounds[2]) val[2] = NewMinBounds[2]; 
+          //*/
+
+          //val[0]=x;val[1]=y;val[2]=2;
+          //cout << "val " << val.transpose() << endl;
+          //val = val+org; 
+          //cout << "nouveau val " << val.transpose() << endl;
+          distance_mutex_.unlock();
+
+
+          // sauvegarde /////////////////////////////////////////////////////
+          ::gepetto::corbaserver::Transform tr; // utilisé pour l'affichage
+          ((*q_rand)[0]) = val[0];
+          ((*q_rand)[1]) = val[1];
+          ((*q_rand)[2]) = val[2];
+          tr[3] = (*q_rand)[3] = (*Planner::actual_configuration_ptr_)[3];
+          tr[4] = (*q_rand)[4] = (*Planner::actual_configuration_ptr_)[4];
+          tr[5] = (*q_rand)[5] = (*Planner::actual_configuration_ptr_)[5];
+          tr[6] = (*q_rand)[6] = (*Planner::actual_configuration_ptr_)[6];
+          // fixer rotation
+          
+          //tr[3] = (float)(*Planner::actual_configuration_ptr_)[3];
+          //tr[4] = (float)(*Planner::actual_configuration_ptr_)[4];
+          //tr[5] = (float)(*Planner::actual_configuration_ptr_)[5];
+          //tr[6] = (float)(*Planner::actual_configuration_ptr_)[6];
+
+         
+          /*// afficher des échantillons parfois /////////////////////
+            string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_3angles.urdf";
+            string chiffre = boost::lexical_cast<std::string>(rand());
+            string node_name = "0_scene_hpp_/robot_interactif" + chiffre;
+            if(!Planner::iteration_%100)
+          //if(pathValid && Planner::mode_contact_)
+          //if(0)
+          {
+          client_.gui()->addURDF(node_name.data() , robot_name.data() ,"/hpp/install/share");
+          client_.gui()->applyConfiguration(node_name.data(), tr);
+          }
+          ///////////////////////////////         */ 
+
+          
+          Planner::iteration_++;
+          //cout << "iteration contact " << iteration_ << endl;
+          if(Planner::iteration_ == 5){
+            Planner::mode_contact_ = false;
+            // ancien emplacement de distance_mutex_.unlock();
+          }
+        }
+        else{ // mode interactif
+          mu++;
+          //cout << "mode interactif\n";
+          *q_rand = *actual_configuration_ptr_; 
+        }
+      }
+      else{
+        //cout << "mode rrt\n";
+        mm++;
+      }
+
+      for (ConnectedComponents_t::const_iterator itcc =
+          roadmap ()->connectedComponents ().begin ();
+          itcc != roadmap ()->connectedComponents ().end (); ++itcc) {
+        // Find nearest node in roadmap
+        value_type distance;
+        NodePtr_t near = roadmap ()->nearestNode (q_rand, *itcc, distance);
+        path = extend (near, q_rand);
+        if (path) {
+          core::PathValidationReportPtr_t report;
+          bool pathValid = pathValidation->validate (path, false, validPath,
+              report);
+          // Insert new path to q_near in roadmap
+          value_type t_final = validPath->timeRange ().second;
+          if (t_final != path->timeRange ().first) {
+            ConfigurationPtr_t q_new (new Configuration_t
+                (validPath->end ()));
+            if (!pathValid || !belongs (q_new, newNodes)) {
+              newNodes.push_back (roadmap ()->addNodeAndEdges
+                  (near, q_new, validPath));
+            } else {
+              // Store edges to add for later insertion.
+              // Adding edges while looping on connected components is indeed
+              // not recommended.
+              delayedEdges.push_back (DelayedEdge_t (near, q_new, validPath));
+            }
+          }
+        }
+      }
+      // Insert delayed edges
+      for (DelayedEdges_t::const_iterator itEdge = delayedEdges.begin ();
+          itEdge != delayedEdges.end (); ++itEdge) {
+        const NodePtr_t& near = itEdge-> get <0> ();
+        const ConfigurationPtr_t& q_new = itEdge-> get <1> ();
+        const PathPtr_t& validPath = itEdge-> get <2> ();
+        NodePtr_t newNode = roadmap ()->addNode (q_new);
+        roadmap ()->addEdge (near, newNode, validPath);
+        interval_t timeRange = validPath->timeRange ();
+        roadmap ()->addEdge (newNode, near, validPath->extract
+            (interval_t (timeRange.second ,
+                         timeRange.first)));
+      }
+
+      //
+      // Second, try to connect new nodes together
+      //
+      const SteeringMethodPtr_t& sm (problem ().steeringMethod ());
+      for (Nodes_t::const_iterator itn1 = newNodes.begin ();
+          itn1 != newNodes.end (); ++itn1) {
+        for (Nodes_t::const_iterator itn2 = boost::next (itn1);
+            itn2 != newNodes.end (); ++itn2) {
+          ConfigurationPtr_t q1 ((*itn1)->configuration ());
+          ConfigurationPtr_t q2 ((*itn2)->configuration ());
+          assert (*q1 != *q2);
+          path = (*sm) (*q1, *q2);
+          core::PathValidationReportPtr_t report;
+          if (path && pathValidation->validate (path, false, validPath,
+                report)) {
+            roadmap ()->addEdge (*itn1, *itn2, path);
+            interval_t timeRange = path->timeRange ();
+            roadmap ()->addEdge (*itn2, *itn1, path->extract
+                (interval_t (timeRange.second,
+                             timeRange.first)));
+          }
+        }
+      }
+      robot_mutex_.unlock();
+      //cout << "robot_mutex_unlock one step\n";
+      long int n, e;
+      n = roadmap()->nodes().size();
+      e = roadmap()->edges().size();
+      end = clock();
+      temps += double(end - begin) / CLOCKS_PER_SEC/2;
+      cout << "temps=" << temps << " n="<<n<<" e="<<e<<endl;
+      end2 = (double)(time(NULL) - start);
+      //cout << "temps2="<<end2<<endl;
+      //cout << "mm="<<mm<<" mu="<<mu<<" mc="<<mc<<endl;
+      begin = clock();
+    }
+
 
 
 
@@ -530,32 +848,32 @@ if(nb_launchs<2)      client_.gui()->addURDF("0_scene_hpp_/robot_interactif", ro
                 w[2] = v[2] + MGS.col[2].v[2];
                 axe = nom_ligne +='b';
                 client_.gui()->addLine(axe.c_str(), v, w, &color[0]);
-// //////////////////////////////////////////////////////////////*/
+                // //////////////////////////////////////////////////////////////*/
 
 
-            //::Eigen::Matrix3f MGS_;
-            //MGS_ << MGS.col[0].v[0],
-                 //MGS.col[1].v[0],
-                 //MGS.col[2].v[0],
-                 //MGS.col[0].v[1],
-                 //MGS.col[1].v[1],
-                 //MGS.col[2].v[1],
-                 //MGS.col[0].v[2],
-                 //MGS.col[1].v[2],
-                 //MGS.col[2].v[2];
-            //NewMinBounds = MGS_*min;
-            //NewMaxBounds = MGS_*max;
+                //::Eigen::Matrix3f MGS_;
+                //MGS_ << MGS.col[0].v[0],
+                //MGS.col[1].v[0],
+                //MGS.col[2].v[0],
+                //MGS.col[0].v[1],
+                //MGS.col[1].v[1],
+                //MGS.col[2].v[1],
+                //MGS.col[0].v[2],
+                //MGS.col[1].v[2],
+                //MGS.col[2].v[2];
+                //NewMinBounds = MGS_*min;
+                //NewMaxBounds = MGS_*max;
 
-            //cout << "d=" << result.min_distance << " \n";//<< std::endl;
-            if (result.min_distance<d_){
-              //force_feedback_ = true;
-              if (!Planner::mode_contact_){
-                //cout << "distance inférieure à 0.15" << std::endl;
-                //std::cout << " pt0 " << result.nearest_points[0] <<
-                //             " pt1 " << result.nearest_points[1] << std::endl;
-                // sur l'obstacle
-                org_ = result.nearest_points[0];
-                // sur le robot
+                //cout << "d=" << result.min_distance << " \n";//<< std::endl;
+                if (result.min_distance<d_){
+                  //force_feedback_ = true;
+                  if (!Planner::mode_contact_){
+                    //cout << "distance inférieure à 0.15" << std::endl;
+                    //std::cout << " pt0 " << result.nearest_points[0] <<
+                    //             " pt1 " << result.nearest_points[1] << std::endl;
+                    // sur l'obstacle
+                    org_ = result.nearest_points[0];
+                    // sur le robot
                 obj_ = result.nearest_points[1];
                 iteration_ = 0;
                 //cout << "contact activated\n";
@@ -573,20 +891,15 @@ if(nb_launchs<2)      client_.gui()->addURDF("0_scene_hpp_/robot_interactif", ro
     }
 //*
 
+
+
+
     void Planner::init (const PlannerWkPtr_t& weak)
     {
       PathPlanner::init (weak);
       weakPtr_ = weak;
     }
 
-    bool belongs (const ConfigurationPtr_t& q, const Nodes_t& nodes)
-    {
-      for (Nodes_t::const_iterator itNode = nodes.begin ();
-          itNode != nodes.end (); ++itNode) {
-        if (*((*itNode)->configuration ()) == *q) return true;
-      }
-      return false;
-    }
 
     PathPtr_t Planner::extend (const NodePtr_t& near,
         const ConfigurationPtr_t& target)
@@ -609,302 +922,6 @@ if(nb_launchs<2)      client_.gui()->addURDF("0_scene_hpp_/robot_interactif", ro
       }
       return (*sm) (*(near->configuration ()), *target);
     }
-
-    void Planner::oneStep ()
-    {
-      static clock_t end, begin;
-      static double temps;
-      //static float prev_ang=0;
-      //cout << "one step\n";
-      robot_mutex_.lock();
-      //cout << "robot_mutex_lock one step\n";
-      typedef boost::tuple <NodePtr_t, ConfigurationPtr_t, PathPtr_t>
-        DelayedEdge_t;
-      typedef std::vector <DelayedEdge_t> DelayedEdges_t;
-      DelayedEdges_t delayedEdges;
-      DevicePtr_t robot (problem ().robot ());
-      PathValidationPtr_t pathValidation (problem ().pathValidation ());
-      Nodes_t newNodes;
-      PathPtr_t validPath, path;
-      // Pick a random node
-      ConfigurationPtr_t q_rand = configurationShooter_->shoot ();
-      //
-      // First extend each connected component toward q_rand
-      //
-      double rando = rand();
-      rando = rando / RAND_MAX;
-      //cout << "alpha="<<Planner::random_prob_<<" a="<<rando<<endl;
-      // keep random config
-      if (rando > Planner::random_prob_ || Planner::mode_contact_)
-      {
-        if (Planner::mode_contact_){
-          //cout << rando << " contact q \n";
-
-          // élongation de l'ellipse //////////////////////
-          Eigen::Vector3d uf, cn;
-          uf = SixDOFMouseDriver::getUserForce();
-          cn = SixDOFMouseDriver::getContactNormal();
-          // angle force/normale phi
-          // cos phi = (n.f)/(|n||f|)
-          double phi;
-          double sert_a_rien;
-          uf.norm();
-          //cout << "uf " << uf.transpose() << " cn " << cn.transpose() << endl;
-          phi = (uf.dot(cn))/(uf.norm()*cn.norm());
-          phi = acos(phi);
-          phi = modf(phi, &sert_a_rien);//%(M_PI/2);
-          double pa, ga; // petit axe, grand axe
-          pa = ga = 0.1;
-          //cout <<"planner contact?"<<SixDOFMouseDriver::userInContact()<<endl;
-          double max = exp(M_PI/2);
-          //cout << "angle phi " << phi << endl;
-          if(phi==phi){
-            //if(SixDOFMouseDriver::userInContact())
-            ga = exp(phi)/max;
-            ga = exp(phi)/10;
-            pa = 1/ga /10;
-          }
-          pa = 0.02;
-          ga = 2;
-          //cout << "pa="<<pa<<" ga="<<ga<<endl;
-          //cout << "uf.norm="<<uf.norm()<<endl;
-          //double t1 = (n[0]+n[1]+n[2])*(f[0]+f[1]+f[2]);
-          //double t2 = sqrt(pow(n[0],2)+pow(n[1],2)+pow(n[2],2))
-          //sqrt(pow(f[0],2)+pow(f[1],2)+pow(f[2],2));
-          //t1 = t1/t2;
-          //phi = acos(t1);
-          //cout << "t1 " << t1 << " t2 " << t2 << endl;
-         
-          // surface de l'ellipse ///////////////////////// 
-          double K = uf.norm();
-          K = 0.10*uf.norm(); 
-          //K = 2*uf.norm(); 
-          K = 1.25;
-          double ray = rand();
-          ray=ray/RAND_MAX;
-          double thet = rand();
-          thet = thet / RAND_MAX;
-          ray = sqrt(ray) * K;
-          thet = 2 * M_PI * thet;
-          double x, y;
-          x = pa * ray * cos(thet);
-          //x = ray * cos(thet);
-          y = ga * ray * sin(thet); 
-          float zz = 0;
-          
-          //rotation de l'ellipse //////////////////////////////
-          if (1){
-            Eigen::Vector3f n(normal[0]);
-            Eigen::Vector3f vt1, vml;
-            float dpt = vec_mvt.dot(n);
-            vml=n*dpt;
-            vml = vec_mvt-vml;//vecteur mouvement local à la surface
-            double ang;
-            vt1 << MGS.col[2].v[0],MGS.col[2].v[1],MGS.col[2].v[2];
-            ang = atan2(vml[1],vml[0])-atan2(vt1[1], vt1[0]);
-            Eigen::Matrix2d nouv_rep;
-            Eigen::Vector2d nouv_coord;
-            nouv_rep << cos(ang), -sin(ang), sin(ang), cos(ang);
-            nouv_coord << x, y;
-            //cout <<  " angl à vt1  "<< ang <<endl;
-
-            //TODO parfois l'angle vaut nan et hpp plante
-            //correction à la va vite
-            if(ang==ang)
-            nouv_coord = nouv_rep * nouv_coord;
-
-            x=nouv_coord[0];y=nouv_coord[1];
-            
-          }
-          //cout << "x="<<x<<" y="<<y<<"\n\n";
-
-         
-          // échantillonnage au contact ///////////////////// 
-          // garder z à zéro
-          Vector3 val(0, (float)x, (float)y);
-          //cout << "rot " << rot << endl;
-          //cout << "val " << val.transpose() << endl;
-          //std::cout << "one step distance centre/surf " << distance_ << std::endl;
-          //cout << "org " << org_[1] << " obj " << obj_[1]
-          //     << " signe org-obj " << signe(org_[1]-obj_[1]) << endl;
-          
-          Matrix3 rot;
-          rot(0,0) = MGS.col[0].v[0];
-          rot(0,1) = MGS.col[0].v[1];
-          rot(0,2) = MGS.col[0].v[2];
-          rot(1,0) = MGS.col[1].v[0];
-          rot(1,1) = MGS.col[1].v[1];
-          rot(1,2) = MGS.col[1].v[2];
-          rot(2,0) = MGS.col[2].v[0];
-          rot(2,1) = MGS.col[2].v[1];
-          rot(2,2) = MGS.col[2].v[2];
-          //cout << "rot" << rot << endl;
-          distance_mutex_.try_lock(); // TODO mutex à vérifier
-          Vector3 org(
-              (float)org_[0]+signe(obj_[0]-org_[0])*distances_[0]*(float)1.1,
-              (float)org_[1]+signe(obj_[1]-org_[1])*distances_[1]*(float)1.1,
-              (float)org_[2]+signe(obj_[2]-org_[2])*distances_[2]*(float)1.1
-              );
-          // TODO attention j'ai rajouté ci dessus un facteur 1.1
-          // car les échantillons ont tendance 
-          // à être en collision, c'est trop bas, à corriger
-          
-
-          //Vector3 old_distances(distances_);
-          //new_distances = temp3 * org;
-          //new_distances = rot * new_distances;
-          //zz = new_distances(2);
-          //cout << "orgv " << org.transpose() << endl;
-          //cout << "orgn " << org.transpose() << endl;
-
-          val = rot.transpose()*val + org;
-          /*/
-          // gros hack pour rester dans les bornes
-          if (val[0]<NewMinBounds[0]) val[0] = NewMinBounds[0]; 
-          if (val[1]<NewMinBounds[1]) val[1] = NewMinBounds[1]; 
-          if (val[2]<NewMinBounds[2]) val[2] = NewMinBounds[2]; 
-          if (val[0]>NewMaxBounds[0]) val[0] = NewMinBounds[0]; 
-          if (val[1]>NewMaxBounds[1]) val[1] = NewMinBounds[1]; 
-          if (val[2]>NewMaxBounds[2]) val[2] = NewMinBounds[2]; 
-          //*/
-
-          //val[0]=x;val[1]=y;val[2]=2;
-          //cout << "val " << val.transpose() << endl;
-          //val = val+org; 
-          //cout << "nouveau val " << val.transpose() << endl;
-          distance_mutex_.unlock();
-
-
-          // sauvegarde /////////////////////////////////////////////////////
-          ::gepetto::corbaserver::Transform tr; // utilisé pour l'affichage
-          ((*q_rand)[0]) = val[0];
-          ((*q_rand)[1]) = val[1];
-          ((*q_rand)[2]) = val[2];
-          tr[3] = (*q_rand)[3] = (*Planner::actual_configuration_ptr_)[3];
-          tr[4] = (*q_rand)[4] = (*Planner::actual_configuration_ptr_)[4];
-          tr[5] = (*q_rand)[5] = (*Planner::actual_configuration_ptr_)[5];
-          tr[6] = (*q_rand)[6] = (*Planner::actual_configuration_ptr_)[6];
-          // fixer rotation
-          //tr[3] = (float)(*Planner::actual_configuration_ptr_)[3];
-          //tr[4] = (float)(*Planner::actual_configuration_ptr_)[4];
-          //tr[5] = (float)(*Planner::actual_configuration_ptr_)[5];
-          //tr[6] = (float)(*Planner::actual_configuration_ptr_)[6];
-
-         
-          /*// afficher des échantillons parfois /////////////////////
-            string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_3angles.urdf";
-            string chiffre = boost::lexical_cast<std::string>(rand());
-            string node_name = "0_scene_hpp_/robot_interactif" + chiffre;
-            if(!Planner::iteration_%100)
-          //if(pathValid && Planner::mode_contact_)
-          //if(0)
-          {
-          client_.gui()->addURDF(node_name.data() , robot_name.data() ,"/hpp/install/share");
-          client_.gui()->applyConfiguration(node_name.data(), tr);
-          }
-          ///////////////////////////////         */ 
-
-          
-          Planner::iteration_++;
-          //cout << "iteration contact " << iteration_ << endl;
-          if(Planner::iteration_ == 5){
-            Planner::mode_contact_ = false;
-            // ancien emplacement de distance_mutex_.unlock();
-          }
-        }
-        else{ // mode interactif
-          //cout << "mode interactif\n";
-          *q_rand = *actual_configuration_ptr_; 
-        }
-      }
-      //else cout << "mode rrt\n";
-
-      for (ConnectedComponents_t::const_iterator itcc =
-          roadmap ()->connectedComponents ().begin ();
-          itcc != roadmap ()->connectedComponents ().end (); ++itcc) {
-        // Find nearest node in roadmap
-        value_type distance;
-        NodePtr_t near = roadmap ()->nearestNode (q_rand, *itcc, distance);
-        path = extend (near, q_rand);
-        if (path) {
-          core::PathValidationReportPtr_t report;
-          bool pathValid = pathValidation->validate (path, false, validPath,
-              report);
-          // Insert new path to q_near in roadmap
-          value_type t_final = validPath->timeRange ().second;
-          if (t_final != path->timeRange ().first) {
-            ConfigurationPtr_t q_new (new Configuration_t
-                (validPath->end ()));
-            if (!pathValid || !belongs (q_new, newNodes)) {
-              newNodes.push_back (roadmap ()->addNodeAndEdges
-                  (near, q_new, validPath));
-            } else {
-              // Store edges to add for later insertion.
-              // Adding edges while looping on connected components is indeed
-              // not recommended.
-              delayedEdges.push_back (DelayedEdge_t (near, q_new, validPath));
-            }
-          }
-        }
-      }
-      // Insert delayed edges
-      for (DelayedEdges_t::const_iterator itEdge = delayedEdges.begin ();
-          itEdge != delayedEdges.end (); ++itEdge) {
-        const NodePtr_t& near = itEdge-> get <0> ();
-        const ConfigurationPtr_t& q_new = itEdge-> get <1> ();
-        const PathPtr_t& validPath = itEdge-> get <2> ();
-        NodePtr_t newNode = roadmap ()->addNode (q_new);
-        roadmap ()->addEdge (near, newNode, validPath);
-        interval_t timeRange = validPath->timeRange ();
-        roadmap ()->addEdge (newNode, near, validPath->extract
-            (interval_t (timeRange.second ,
-                         timeRange.first)));
-      }
-
-      //
-      // Second, try to connect new nodes together
-      //
-      const SteeringMethodPtr_t& sm (problem ().steeringMethod ());
-      for (Nodes_t::const_iterator itn1 = newNodes.begin ();
-          itn1 != newNodes.end (); ++itn1) {
-        for (Nodes_t::const_iterator itn2 = boost::next (itn1);
-            itn2 != newNodes.end (); ++itn2) {
-          ConfigurationPtr_t q1 ((*itn1)->configuration ());
-          ConfigurationPtr_t q2 ((*itn2)->configuration ());
-          assert (*q1 != *q2);
-          path = (*sm) (*q1, *q2);
-          core::PathValidationReportPtr_t report;
-          if (path && pathValidation->validate (path, false, validPath,
-                report)) {
-            roadmap ()->addEdge (*itn1, *itn2, path);
-            interval_t timeRange = path->timeRange ();
-            roadmap ()->addEdge (*itn2, *itn1, path->extract
-                (interval_t (timeRange.second,
-                             timeRange.first)));
-          }
-        }
-      }
-      robot_mutex_.unlock();
-      //cout << "robot_mutex_unlock one step\n";
-      long int n, e;
-      n = roadmap()->nodes().size();
-      e = roadmap()->edges().size();
-      //cout << "n="<<n<<" e="<<e<<endl;
-      end = clock();
-      temps += double(end - begin) / CLOCKS_PER_SEC/2;
-      //cout << "temps=" << temps<<endl;
-      begin = clock();
-    }
-
-
-
-
-
-
-
-
-
-
 
 
 

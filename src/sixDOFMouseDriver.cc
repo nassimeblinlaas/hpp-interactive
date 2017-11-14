@@ -284,7 +284,7 @@ void SixDOFMouseDriver::MouseInit(short int type, const double* bounds)
   type_=type;
   if (type_==1)
   {
-    fd_ = open("/dev/hidraw1", O_RDONLY);
+    fd_ = open("/dev/hidraw0", O_RDONLY);
     if (fd_ < 0) {
       perror("Unable to open interactive device");
       abort();
@@ -746,7 +746,7 @@ void SixDOFMouseDriver::ReadMouse(const double* bounds_)
       contact_normal_<<n[0], n[1], n[2];
       contact_normal_.normalize();
       //cout << "XXXXXXX cn="<<contact_normal_.transpose()<<endl;
-    cout << "array size " << array_size<< endl;
+    //cout << "array size " << array_size<< endl;
     if(0)for (int i=0; i<array_size; i++){
       cout << "pt obj1 ";
       for (int j=0; j<3; j++)
@@ -805,12 +805,12 @@ void SixDOFMouseDriver::ReadMouse(const double* bounds_)
       pos[0] = -0.0035-recv_config->getObjCooridnate().getPosition()[0];
       pos[1] = 0.0035+recv_config->getObjCooridnate().getPosition()[1];
       pos[2] = 0.0035+recv_config->getObjCooridnate().getPosition()[2];
-      pos[0] = -recv_config->getObjCooridnate().getPosition()[0];
-      pos[1] = +recv_config->getObjCooridnate().getPosition()[1];
-      pos[2] = +recv_config->getObjCooridnate().getPosition()[2];
       pos[0] = 0.216-recv_config->getObjCooridnate().getPosition()[0];
       pos[1] = -0.030+recv_config->getObjCooridnate().getPosition()[1];
       pos[2] = +0.002+recv_config->getObjCooridnate().getPosition()[2];
+      pos[0] = -0.009-recv_config->getObjCooridnate().getPosition()[0];
+      pos[1] = +0.005+recv_config->getObjCooridnate().getPosition()[1];
+      pos[2] = +recv_config->getObjCooridnate().getPosition()[2];
 
 
       temp_trans.translation(pos);

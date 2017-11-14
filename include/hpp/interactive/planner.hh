@@ -82,6 +82,7 @@ namespace hpp {
       bool exist_obstacle_;
       bool contact_activated_;  // enabling contact algorithm
       bool mode_contact_; // entering contact mode
+      bool hrrtc_; // vrai hrrtc faux irrtc
       double quat_[4]; 
 
       fcl::Vec3f org_;    // orig pt référence pour gram schmidt
