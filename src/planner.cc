@@ -115,25 +115,23 @@ namespace hpp {
       nb_launchs++;
       type_ = 1; //device type 1 mouse 2 sigma7 3 haption
       random_prob_ = 0.00; // 0 all human  1 all machine
-      d_ = 0.15; // distance entrée mode contact
+      d_ = 0.45; // distance entrée mode contact
       Planner::mode_contact_ = false;
       change_obst_ = false; // utilisé pour sigma 7
       hrrtc_ = true; 
-      hrrtc_ = false; 
-      //force_feedback_=false;
+      //hrrtc_ = false; 
+      //force_feedback_=false; sigma 7
       // adding interactive robot and positionning it
       client_.connect();
       cout << "adding landmark to viewer\n";
       // pour env_roman mesh
-      //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_chaise.urdf"; contact_activated_ = true;
-      //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_strange.urdf"; contact_activated_ = true;
-      //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_siege.urdf"; contact_activated_ = true;
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_cube_mesh.urdf"; contact_activated_ = true;
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_strange.urdf"; contact_activated_ = true;
+      //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_L.urdf"; contact_activated_ = true;
+      //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_cursor.urdf"; contact_activated_ = true;
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_3angles.urdf"; contact_activated_ = true;
-      string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_L.urdf"; contact_activated_ = true;
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_mesh_L.urdf"; contact_activated_ = true;
-      //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_mesh_E.urdf"; contact_activated_ = true;
+      string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_mesh_E.urdf"; contact_activated_ = true;
       //string robot_name = "/hpp/src/hpp_tutorial/urdf/robot_mesh_3angles.urdf"; contact_activated_ = true;
       float f = (float) 0.0001;
       gepetto::corbaserver::Color color;
@@ -165,7 +163,7 @@ if(nb_launchs<2)      client_.gui()->addURDF("0_scene_hpp_/robot_interactif", ro
       //cout << endl;
       if (nb_launchs<2) SixDOFMouseDriver::SetConnexion();
       SixDOFMouseDriver::MouseInit(type_, bounds);
-      ShowBounds();
+      //ShowBounds();
       ConfigurationPtr_t config (new Configuration_t ((hpp::model::size_type)7));
       (*config)[0] = 0;
       (*config)[1] = 0;
@@ -236,7 +234,7 @@ if(nb_launchs<2)      client_.gui()->addURDF("0_scene_hpp_/robot_interactif", ro
       // keep random config
       if (rando > Planner::random_prob_ || Planner::mode_contact_)
       {
-        if (Planner::mode_contact_){
+        if (Planner::mode_contact_ ){
           mc++;
           cout << rando << " contact q \n";
 
@@ -268,13 +266,13 @@ if(nb_launchs<2)      client_.gui()->addURDF("0_scene_hpp_/robot_interactif", ro
               ga = Kphi * exp(phi);
               pa = 1/ga;
             }
-            cout << "phi=" << phi <<" e(phi)="<< exp(phi)<< " pa=" <<pa << " ga=" << ga << endl;
-            //pa = 0.1; ga = 1;
+            pa = 0.1; ga = 5;
+            //cout << "phi=" << phi <<" e(phi)="<< exp(phi)<< " pa=" <<pa << " ga=" << ga << endl;
 
             // surface de l'ellipse ///////////////////////// 
             double Kc = 0;
             Kc = 0.001*uf.norm(); 
-            //Kc = 0.10;
+            Kc = 0.5;
             double ray = rand();
             ray=ray/RAND_MAX;
             double thet = rand();

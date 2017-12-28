@@ -284,7 +284,7 @@ void SixDOFMouseDriver::MouseInit(short int type, const double* bounds)
   type_=type;
   if (type_==1)
   {
-    fd_ = open("/dev/hidraw0", O_RDONLY);
+    fd_ = open("/dev/hidraw1", O_RDONLY);
     if (fd_ < 0) {
       perror("Unable to open interactive device");
       abort();
@@ -514,7 +514,7 @@ void SixDOFMouseDriver::ReadMouse(const double* bounds_)
           (float) SixDOFMouseDriver::deviceValuesNormalized_[2]/divideFactor*SixDOFMouseDriver::cameraVectors_[i+6];
       }
       //*/
-      /*
+      //*
       // bounds limits ---------------- TODO : provoque un effet de bords avec les rotations
       if (pos[0]+transformation_.translation()[0]<bounds[0]){
       pos[0] = 0;
